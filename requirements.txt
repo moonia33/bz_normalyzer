@@ -1,0 +1,10 @@
+Django>=5.2,<6.1
+django-ninja>=1.4
+python-dotenv>=1.0
+openpyxl>=3.1
+lxml>=5.0
+requests>=2.32
+psycopg[binary]>=3.2
+gunicorn>=23.0
+pytest>=8.0
+pytest-django>=4.9
