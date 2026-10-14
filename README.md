@@ -391,6 +391,11 @@ Jei varianto `Brand` laukas tuščias, FOX adapteris taiko fallback pagal `Produ
 - adapteris pagal `feed.language` pritaiko `FOX_HEADER_ALIASES` žemėlapį ir visas antraštes perveda į kanonines EN reikšmes, todėl visa kita logika lieka ta pati;
 - papildomas/koreguojamas mapping'as galimas per `feed.config["header_map"]` (lokalizuota → kanoninė antraštė).
 
+### MOSS kalbiniai feed'ai (kitokia XML schema)
+
+- MOSS PL/DE XML naudoja kitokius laukų pavadinimus nei EN: `ID_PRODUCT` (=`OC`), `SKUPINA` (=`VARIANT`), `PACKAGING` (=`BALENIE`), `CENA_S_DPH_EU` (=`PRICE_VAT`), `SKLADOVOST` (=`AVAILABLE`), `SORTIMENT` (=`CATEGORYTEXT`, skirtukas ` | ` vietoj `|||`), `IMGURL_*` (=`IMG*`), `VIDEO_*` (=`YOUTUBE*`);
+- adapteris `_item_to_row` stadijoje perveda juos į kanoninius EN pavadinimus – visa kita logika lieka ta pati.
+
 ### MOSS video
 
 - XML laukuose `YOUTUBE`, `YOUTUBE_2`, ... tiekėjas atiduoda **tik YouTube video ID**;

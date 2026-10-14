@@ -15,6 +15,47 @@ from apps.suppliers.adapters.registry import register_adapter
 class MossAdapter(BaseAdapter):
     code = "moss"
 
+    # PL/DE feed'ai naudoja kitokią XML schemą (SK laukų pavadinimai).
+    # Žemėlapis: alternatyvus laukas -> kanoninis (EN) laukas.
+    _FIELD_ALIASES = {
+        "ID_PRODUCT": "OC",
+        "SKUPINA": "VARIANT",
+        "PACKAGING": "BALENIE",
+        "CENA_S_DPH_EU": "PRICE_VAT",
+        "SKLADOVOST": "AVAILABLE",
+    }
+
+    def _item_to_row(self, item: etree._Element) -> dict[str, Any]:
+        row: dict[str, Any] = {}
+        for child in item:
+            key = etree.QName(child).localname
+            value = self._text(child.text)
+            key = self._FIELD_ALIASES.get(key.upper(), key)
+            if key == "SORTIMENT":
+                key = "CATEGORYTEXT"
+                value = self._normalize_sortiment(value)
+            # IMGURL_* -> IMG*, VIDEO_* -> YOUTUBE* (dedup jau padarytas žemiau)
+            upper = key.upper()
+            if upper.startswith("IMGURL"):
+                key = "IMG" + key[6:]
+            elif upper.startswith("VIDEO"):
+                key = "YOUTUBE" + key[5:]
+            if key not in row:
+                row[key] = value
+                continue
+            existing = self._text(row.get(key))
+            if not existing and value:
+                row[key] = value
+        return row
+
+    @staticmethod
+    def _normalize_sortiment(value: str) -> str:
+        """PL/DE 'SORTIMENT' naudoja ' | ' skirtuką; EN CATEGORYTEXT – '|||'."""
+        if "|" in value and "|||" not in value:
+            parts = [part.strip() for part in value.split("|") if part.strip()]
+            return "|||".join(parts)
+        return value
+
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         root = etree.fromstring(payload)
         for item in root.findall(".//SHOPITEM"):
@@ -135,19 +176,6 @@ class MossAdapter(BaseAdapter):
             extra=extra,
             raw=self._clean_dict(row.get("raw", row)),
         )
-
-    def _item_to_row(self, item: etree._Element) -> dict[str, Any]:
-        row: dict[str, Any] = {}
-        for child in item:
-            key = etree.QName(child).localname
-            value = self._text(child.text)
-            if key not in row:
-                row[key] = value
-                continue
-            existing = self._text(row.get(key))
-            if not existing and value:
-                row[key] = value
-        return row
 
     def _collect_images(self, row: dict[str, Any]) -> list[str]:
         image_values: list[str] = []
