@@ -7,7 +7,10 @@ from apps.suppliers.models import Supplier, SupplierFeed
 class SupplierFeedInline(admin.TabularInline):
     model = SupplierFeed
     extra = 0
-    fields = ["name", "kind", "url", "file", "adapter_code", "is_active"]
+    fields = [
+        "name", "kind", "role", "language", "feed_group",
+        "url", "file", "adapter_code", "sync_interval_minutes", "is_active",
+    ]
 
 
 @admin.register(Supplier)
@@ -58,6 +61,9 @@ class SupplierAdmin(admin.ModelAdmin):
 
 @admin.register(SupplierFeed)
 class SupplierFeedAdmin(admin.ModelAdmin):
-    list_display = ["supplier", "name", "kind", "adapter_code", "is_active", "last_success_at"]
-    list_filter = ["kind", "is_active"]
+    list_display = [
+        "supplier", "name", "kind", "role", "language", "feed_group",
+        "sync_interval_minutes", "is_active", "last_success_at",
+    ]
+    list_filter = ["kind", "role", "language", "is_active"]
     search_fields = ["name", "supplier__code", "url"]

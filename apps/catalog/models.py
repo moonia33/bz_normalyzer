@@ -100,3 +100,40 @@ class Product(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.sku} {self.name}"
+
+
+class ProductText(TimeStampedModel):
+    """Produkto tekstinė informacija konkrečia kalba (vertimas).
+
+    Bazinė kalba (`Language.is_base`) saugoma `Product` laukuose;
+    čia – papildomos kalbos iš kalbinių feed'ų arba AI vertimų.
+    """
+
+    product = models.ForeignKey(Product, related_name="texts", on_delete=models.CASCADE)
+    language = models.ForeignKey("corecfg.Language", on_delete=models.CASCADE)
+    name = models.CharField(max_length=500, blank=True)
+    base_name = models.CharField(max_length=500, blank=True)
+    slug = models.SlugField(max_length=220, blank=True)
+    description = models.TextField(blank=True)
+    technical_description = models.TextField(blank=True)
+    combined_full_text = models.TextField(blank=True)
+    source_offer = models.ForeignKey(
+        "ingestion.Offer",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="product_texts",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "language"],
+                name="uniq_product_text_language",
+            )
+        ]
+        verbose_name = "prekės vertimas"
+        verbose_name_plural = "prekių vertimai"
+
+    def __str__(self) -> str:
+        return f"{self.product.sku} [{self.language.code}]"

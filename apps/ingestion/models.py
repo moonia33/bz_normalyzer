@@ -104,6 +104,12 @@ class Offer(TimeStampedModel):
         default=False,
         help_text="Tik publikuoti pasiūlymai atiduodami per viešą API.",
     )
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text="Turinio hash – change detection (be stock/availability laukų).",
+    )
     last_imported_at = models.DateTimeField(null=True, blank=True)
     extra = models.JSONField(default=dict, blank=True)
 
@@ -123,3 +129,33 @@ class Offer(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.supplier.code}:{self.external_id} {self.name}"
+
+
+class OfferText(models.Model):
+    """Offer tekstai konkrečia kalba (kalbiniai feed'ai).
+
+    Bazinės kalbos turinys – `Offer` laukuose. Kalbinis feed'as
+    (feed.language != bazinė) rašo tik čia, neperrašydamas pagrindinių laukų.
+    """
+
+    offer = models.ForeignKey(Offer, related_name="texts", on_delete=models.CASCADE)
+    language = models.ForeignKey("corecfg.Language", on_delete=models.CASCADE)
+    name = models.CharField(max_length=500, blank=True)
+    base_name = models.CharField(max_length=500, blank=True)
+    description = models.TextField(blank=True)
+    technical_description = models.TextField(blank=True)
+    combined_full_text = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["offer", "language"],
+                name="uniq_offer_text_language",
+            )
+        ]
+        verbose_name = "pasiūlymo vertimas"
+        verbose_name_plural = "pasiūlymų vertimai"
+
+    def __str__(self) -> str:
+        return f"{self.offer.external_id} [{self.language.code}]"

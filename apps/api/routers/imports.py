@@ -3,7 +3,7 @@ from ninja.files import UploadedFile
 
 from apps.api.schemas import ImportJobOut, MessageOut
 from apps.ingestion.models import ImportJob
-from apps.ingestion.pipeline import run_import
+from apps.ingestion.pipeline import expand_feed_to_group, run_import
 from apps.suppliers.models import Supplier, SupplierFeed
 
 router = Router(tags=["Importas"])
@@ -23,10 +23,21 @@ def run_supplier_import(request, supplier_code: str, feed_id: int | None = None)
     feed = None
     if feed_id:
         feed = SupplierFeed.objects.get(pk=feed_id, supplier=supplier)
-    job = ImportJob.objects.create(supplier=supplier, feed=feed)
-    run_import(job)
-    job.refresh_from_db()
-    return job
+    last_job = None
+    # Kalbiniai feed'ai visada importuojami kartu su visa grupe.
+    feeds = expand_feed_to_group(feed) if feed else list(
+        supplier.feeds.filter(is_active=True).order_by("feed_group", "name")
+    )
+    for active_feed in feeds:
+        job = ImportJob.objects.create(supplier=supplier, feed=active_feed)
+        run_import(job)
+        last_job = job
+    if last_job is None:
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        run_import(job)
+        last_job = job
+    last_job.refresh_from_db()
+    return last_job
 
 
 @router.post("/{supplier_code}/upload", response={200: ImportJobOut, 400: MessageOut})

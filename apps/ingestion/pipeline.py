@@ -1,20 +1,108 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.catalog.models import Product
+from apps.catalog.models import Product, ProductText
+from apps.corecfg.models import Language
 from apps.ingestion.dto import NormalizedItem
-from apps.ingestion.models import ImportJob, Offer, RawItem
+from apps.ingestion.models import ImportJob, Offer, OfferText, RawItem
 from apps.mapping.models import ProductLink
 from apps.mapping.services import linked_product, map_brand, map_category
 from apps.pricing.engine import compute_selling_price
 from apps.suppliers.adapters.base import AdapterError
 from apps.suppliers.adapters.resolver import resolve_adapter
-from apps.suppliers.models import SupplierFeed
+from apps.suppliers.models import FeedRole, SupplierFeed
+
+logger = logging.getLogger(__name__)
+
+MAX_ERROR_ITEMS = 100
+TEXT_FIELDS = ("name", "base_name", "description", "technical_description", "combined_full_text")
+
+
+@dataclass
+class FeedContext:
+    """Iš feed'o konfigūracijos išvesta importavimo semantika."""
+
+    feed: SupplierFeed
+    role: str
+    language: Language | None
+    base_language: Language | None
+
+    @property
+    def is_partial(self) -> bool:
+        return self.role in {FeedRole.STOCK, FeedRole.DISCONTINUED}
+
+    @property
+    def is_discontinued(self) -> bool:
+        return self.role == FeedRole.DISCONTINUED
+
+    @property
+    def is_translation(self) -> bool:
+        return (
+            self.language is not None
+            and self.base_language is not None
+            and self.language_id != self.base_language_id
+        )
+
+    @property
+    def language_id(self) -> int | None:
+        return self.language.id if self.language else None
+
+    @property
+    def base_language_id(self) -> int | None:
+        return self.base_language.id if self.base_language else None
+
+
+def get_base_language() -> Language | None:
+    return Language.objects.filter(is_base=True).first() or Language.objects.filter(
+        is_active=True
+    ).first()
+
+
+def expand_feed_to_group(feed: SupplierFeed) -> list[SupplierFeed]:
+    """Grąžina visus aktyvius tos pačios grupės feed'us importavimo tvarka.
+
+    Kalbiniai feed'ai visada importuojami kartu; bazinės kalbos – pirmiausia.
+    Feed'as be grupės grąžina tik save.
+    """
+    if not feed.feed_group:
+        return [feed]
+    group = list(
+        SupplierFeed.objects.filter(
+            supplier=feed.supplier,
+            feed_group=feed.feed_group,
+            role=feed.role,
+            is_active=True,
+        ).select_related("language")
+    )
+    base = get_base_language()
+
+    def sort_key(f: SupplierFeed) -> tuple[int, str]:
+        if base and f.language_id == base.id:
+            return (0, f.name)
+        if f.language_id is None:
+            return (1, f.name)
+        return (2, f.name)
+
+    group.sort(key=sort_key)
+    return group
+
+
+def _make_context(feed: SupplierFeed) -> FeedContext:
+    return FeedContext(
+        feed=feed,
+        role=feed.role or FeedRole.CATALOG,
+        language=feed.language,
+        base_language=get_base_language(),
+    )
 
 
 def run_import(job: ImportJob) -> ImportJob:
@@ -24,30 +112,33 @@ def run_import(job: ImportJob) -> ImportJob:
     job.save(update_fields=["status", "started_at", "error_message", "updated_at"])
 
     stats = {
-        "fetched": 0,
         "normalized": 0,
         "upserted": 0,
+        "unchanged": 0,
         "skipped_partial_missing": 0,
         "unmapped_categories": 0,
+        "translations": 0,
         "errors": 0,
+        "error_items": [],
     }
     try:
         feed = _resolve_feed(job)
+        ctx = _make_context(feed)
         adapter = resolve_adapter(feed)
         uploaded = job.uploaded_file.path if job.uploaded_file else None
         payload = adapter.fetch(uploaded_path=uploaded)
-        stats["fetched"] = 1
 
-        for item in adapter.iter_items(payload):
+        for row_no, item in enumerate(adapter.iter_items(payload), start=1):
             stats["normalized"] += 1
             try:
                 with transaction.atomic():
                     _store_raw(job, item)
-                    offer = _upsert_offer(job, item, stats)
+                    offer = _upsert_offer(job, item, stats, ctx)
                     if offer is not None:
                         stats["upserted"] += 1
-            except Exception:
+            except Exception as exc:
                 stats["errors"] += 1
+                _record_error(stats, row_no, item, exc)
 
         feed.last_success_at = timezone.now()
         feed.save(update_fields=["last_success_at", "updated_at"])
@@ -56,6 +147,7 @@ def run_import(job: ImportJob) -> ImportJob:
         job.finished_at = timezone.now()
         job.save(update_fields=["stats", "status", "finished_at", "updated_at"])
     except Exception as exc:
+        logger.exception("Import job #%s failed", job.pk)
         job.stats = stats
         job.status = ImportJob.Status.FAILED
         job.error_message = str(exc)
@@ -63,6 +155,24 @@ def run_import(job: ImportJob) -> ImportJob:
         job.save(update_fields=["stats", "status", "error_message", "finished_at", "updated_at"])
         raise
     return job
+
+
+def _record_error(stats: dict, row_no: int, item: NormalizedItem, exc: Exception) -> None:
+    logger.exception(
+        "Import item failed (row=%s, external_id=%s): %s",
+        row_no,
+        getattr(item, "external_id", ""),
+        exc,
+    )
+    error_items = stats.setdefault("error_items", [])
+    if len(error_items) < MAX_ERROR_ITEMS:
+        error_items.append(
+            {
+                "row_no": row_no,
+                "external_id": getattr(item, "external_id", ""),
+                "error": str(exc)[:500],
+            }
+        )
 
 
 def _resolve_feed(job: ImportJob) -> SupplierFeed:
@@ -89,6 +199,16 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
     existing = linked_product(job.supplier, item.external_id)
     if existing:
         return existing
+
+    # EAN – pirminis kryžminis (tarp tiekėjų) identiteto raktas.
+    if offer.ean:
+        product = Product.objects.filter(ean__iexact=offer.ean).order_by("pk").first()
+        if product:
+            return product
+
+    # Heuristikos tik tarp šio tiekėjo jau susietų prekių –
+    # kad skirtingų tiekėjų product_group kodai nesusikirstų.
+    supplier_products = Product.objects.filter(supplier_links__supplier=job.supplier)
 
     candidate_filters: list[Q] = []
 
@@ -139,7 +259,7 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         candidate_filters.append(Q(product_group__iexact=offer.product_group))
 
     for candidate in candidate_filters:
-        product = Product.objects.filter(candidate).order_by("pk").first()
+        product = supplier_products.filter(candidate).order_by("pk").first()
         if product:
             return product
 
@@ -158,7 +278,7 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         filters &= Q(base_name__iexact=offer.base_name)
 
     if filters:
-        product = Product.objects.filter(filters).order_by("pk").first()
+        product = supplier_products.filter(filters).order_by("pk").first()
         if product:
             return product
 
@@ -285,11 +405,122 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     return product
 
 
-def _upsert_offer(job: ImportJob, item: NormalizedItem, stats: dict) -> Offer | None:
-    partial_update = _is_partial_update(item)
+def _content_hash(item: NormalizedItem) -> str:
+    """Turinio hash change detection'ui – be volatilių laukų (stock/availability)."""
+    payload = {
+        "name": item.name,
+        "ean": item.ean,
+        "sku": item.sku,
+        "brand_name": item.brand_name,
+        "category_path": item.category_path,
+        "description": item.description,
+        "attributes": item.attributes,
+        "images": item.images,
+        "purchase_price": str(item.purchase_price) if item.purchase_price is not None else None,
+        "currency": item.currency,
+        "extra": {
+            k: v
+            for k, v in (item.extra or {}).items()
+            if k not in {"status", "raw_date", "is_available"}
+        },
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+
+def _net_price(value: Decimal | None, includes_vat: bool, vat_rate: Decimal) -> Decimal | None:
+    if value is None or not includes_vat:
+        return value
+    divisor = Decimal("1") + vat_rate
+    return (value / divisor).quantize(Decimal("0.0001"))
+
+
+def _item_text_fields(item: NormalizedItem) -> dict[str, str]:
+    return {
+        "name": (item.name or "").strip(),
+        "base_name": _extra_text(item.extra, "base_name"),
+        "description": (item.description or "").strip(),
+        "technical_description": _extra_text(item.extra, "technical_description"),
+        "combined_full_text": _extra_text(item.extra, "combined_full_text"),
+    }
+
+
+def _upsert_offer_text(
+    job: ImportJob,
+    item: NormalizedItem,
+    offer: Offer,
+    language: Language,
+) -> None:
+    fields = _item_text_fields(item)
+    if not any(fields.values()):
+        return
+    OfferText.objects.update_or_create(
+        offer=offer,
+        language=language,
+        defaults=fields,
+    )
+    if offer.product_id:
+        _propagate_product_text(offer, language, fields)
+
+
+def _propagate_product_text(offer: Offer, language: Language, fields: dict[str, str]) -> None:
+    from django.utils.text import slugify
+
+    text = ProductText.objects.filter(product_id=offer.product_id, language=language).first()
+    if text is None:
+        ProductText.objects.create(
+            product_id=offer.product_id,
+            language=language,
+            source_offer=offer,
+            slug=slugify(fields["name"])[:220] if fields.get("name") else "",
+            **fields,
+        )
+        return
+    # Perrašome tik jei šis offer'is buvo to vertimo šaltinis arba tekstas tuščias.
+    if text.source_offer_id not in (None, offer.id):
+        return
+    changed = []
+    for key, value in fields.items():
+        if value and getattr(text, key) != value:
+            setattr(text, key, value)
+            changed.append(key)
+    if not text.slug and fields.get("name"):
+        text.slug = slugify(fields["name"])[:220]
+        changed.append("slug")
+    if changed:
+        text.source_offer = offer
+        text.save(update_fields=[*changed, "source_offer", "updated_at"])
+
+
+def _upsert_offer(
+    job: ImportJob,
+    item: NormalizedItem,
+    stats: dict,
+    ctx: FeedContext,
+) -> Offer | None:
+    partial_update = ctx.is_partial
     offer = Offer.objects.filter(supplier=job.supplier, external_id=item.external_id).first()
     if offer is None and partial_update:
         offer = _find_partial_offer_by_secondary_identity(job, item)
+
+    if ctx.is_translation:
+        if offer is None:
+            # Kalbinis feed'as be bazinės prekės – sukurti minimalų offer,
+            # kad tekstai nepradingtų; publikuojama tik kai atsiranda bazė.
+            offer = Offer.objects.create(
+                supplier=job.supplier,
+                external_id=item.external_id,
+                name=item.name,
+                sku=item.sku or item.external_id,
+                is_published=False,
+            )
+        _upsert_offer_text(job, item, offer, ctx.language)
+        stats["translations"] += 1
+        offer.last_imported_at = timezone.now()
+        offer.save(update_fields=["last_imported_at", "updated_at"])
+        return offer
+
     if offer is None and partial_update:
         stats["skipped_partial_missing"] = int(stats.get("skipped_partial_missing", 0)) + 1
         return None
@@ -303,7 +534,13 @@ def _upsert_offer(job: ImportJob, item: NormalizedItem, stats: dict) -> Offer | 
     else:
         created = False
 
-    is_discontinued = _is_discontinued_item(item)
+    is_discontinued = ctx.is_discontinued or _is_discontinued_item(item)
+    supplier = job.supplier
+    purchase_price = _net_price(
+        item.purchase_price,
+        supplier.purchase_price_includes_vat,
+        supplier.vat_rate,
+    )
 
     incoming_sub_category = _extra_text(item.extra, "sub_category_raw")
     incoming_size = _extra_text(item.extra, "size_raw")
@@ -315,6 +552,26 @@ def _upsert_offer(job: ImportJob, item: NormalizedItem, stats: dict) -> Offer | 
     incoming_shipping_weight_kg = _extra_decimal(item.extra, "shipping_weight_kg")
     category_raw = (item.category_path or "").strip()
     sub_category_raw = incoming_sub_category.strip()
+
+    # Change detection: jei turinys nepasikeitė – atnaujiname tik
+    # volatilius laukus (stock/availability), be produkto sinchronizacijos.
+    new_hash = _content_hash(item)
+    if not created and offer.content_hash == new_hash and not is_discontinued:
+        volatile_changed = []
+        if offer.stock != item.stock:
+            offer.stock = item.stock
+            volatile_changed.append("stock")
+        if offer.availability_date != item.availability_date:
+            offer.availability_date = item.availability_date
+            volatile_changed.append("availability_date")
+        if offer.is_available != item.is_available:
+            offer.is_available = item.is_available
+            volatile_changed.append("is_available")
+        offer.last_imported_at = timezone.now()
+        volatile_changed.append("last_imported_at")
+        offer.save(update_fields=[*volatile_changed, "updated_at"])
+        stats["unchanged"] = int(stats.get("unchanged", 0)) + 1
+        return offer
 
     if partial_update and not created:
         category = offer.category
@@ -390,8 +647,8 @@ def _upsert_offer(job: ImportJob, item: NormalizedItem, stats: dict) -> Offer | 
 
     offer.stock = item.stock
     offer.availability_date = item.availability_date
-    if item.purchase_price is not None or not partial_update or created:
-        offer.purchase_price = item.purchase_price
+    if purchase_price is not None or not partial_update or created:
+        offer.purchase_price = purchase_price
     incoming_rrp_price = _extra_decimal(item.extra, "rrp_price")
     if incoming_rrp_price is not None or not partial_update or created:
         offer.rrp_price = incoming_rrp_price
@@ -400,14 +657,14 @@ def _upsert_offer(job: ImportJob, item: NormalizedItem, stats: dict) -> Offer | 
     offer.is_available = item.is_available
     offer.is_discontinued = is_discontinued
     offer.extra = item.extra
+    offer.content_hash = new_hash
     offer.last_imported_at = timezone.now()
 
     if not (partial_update and not created and offer.product_id):
         offer.product = _ensure_product(job, item, offer)
 
-    if offer.rrp_price is not None:
-        offer.selling_price = offer.rrp_price
-    elif not partial_update or created:
+    # RRP yra tik informacinė rekomenduota kaina – selling_price visada iš taisyklių.
+    if not partial_update or created:
         offer.selling_price = compute_selling_price(offer)
     if is_discontinued:
         offer.is_available = False
@@ -426,8 +683,6 @@ def _extra_text(extra: dict, key: str) -> str:
     return str(value)
 
 
-
-
 def _extra_decimal(extra: dict, key: str) -> Decimal | None:
     if not isinstance(extra, dict):
         return None
@@ -442,16 +697,10 @@ def _extra_decimal(extra: dict, key: str) -> Decimal | None:
         return None
 
 
-def _is_partial_update(item: NormalizedItem) -> bool:
-    if not isinstance(item.extra, dict):
-        return False
-    return bool(item.extra.get("partial_update"))
-
-
 def _find_partial_offer_by_secondary_identity(job: ImportJob, item: NormalizedItem) -> Offer | None:
-    source = str(item.extra.get("source", "")).strip().lower() if isinstance(item.extra, dict) else ""
+    """Stock feed'ams – antrinis matching'as pagal EAN (kai external_id skiriasi)."""
     ean = (item.ean or "").strip()
-    if source != "fox_stock" or not ean:
+    if not ean:
         return None
     return Offer.objects.filter(supplier=job.supplier, ean=ean).order_by("pk").first()
 
@@ -460,5 +709,4 @@ def _is_discontinued_item(item: NormalizedItem) -> bool:
     if not isinstance(item.extra, dict):
         return False
     status = str(item.extra.get("status", "")).strip().lower()
-    source = str(item.extra.get("source", "")).strip().lower()
-    return status == "discontinued" or source == "fox_discontinued"
+    return status == "discontinued"

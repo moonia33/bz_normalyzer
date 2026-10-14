@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
 
-from apps.ingestion.models import ImportJob, Offer, RawItem
+from apps.ingestion.models import ImportJob, Offer, OfferText, RawItem
 from apps.ingestion.pipeline import run_import
 
 
@@ -31,8 +31,16 @@ class ImportJobAdmin(admin.ModelAdmin):
         self.message_user(request, f"Įvykdyta: {queryset.count()}")
 
 
+class OfferTextInline(admin.TabularInline):
+    model = OfferText
+    extra = 0
+    fields = ["language", "name", "base_name"]
+    readonly_fields = ["updated_at"]
+
+
 @admin.register(Offer)
 class OfferAdmin(admin.ModelAdmin):
+    inlines = [OfferTextInline]
     list_display = [
         "supplier",
         "art_no",

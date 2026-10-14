@@ -37,11 +37,13 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "apps.corecfg",
     "apps.catalog",
     "apps.suppliers",
     "apps.ingestion",
     "apps.mapping",
     "apps.pricing",
+    "apps.catalog_export",
     "apps.api",
 ]
 
@@ -77,8 +79,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": _env("POSTGRES_DB", "bz_normalyzer"),
-        "USER": _env("POSTGRES_USER", "standartinis-postgres"),
-        "PASSWORD": _env("POSTGRES_PASSWORD", "moonia33"),
+        "USER": _env("POSTGRES_USER", "postgres"),
+        "PASSWORD": _env("POSTGRES_PASSWORD", ""),
         "HOST": _env("POSTGRES_HOST", "localhost"),
         "PORT": _env("POSTGRES_PORT", "5432"),
     }
@@ -119,4 +121,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Viešam katalogo API. Tuščia reikšmė = autentifikacija išjungta (tik DEBUG).
-API_KEY = _env("DJANGO_API_KEY", "dev-api-key")
+API_KEY = _env("DJANGO_API_KEY", "")
+
+# Shop (katalogo gavėjas) push integracija.
+SHOP_API_BASE_URL = _env("SHOP_API_BASE_URL", "")
+SHOP_API_KEY = _env("SHOP_API_KEY", "")
+
+# Numatytasis PVM tarifas, naudojamas kai tiekėjas neturi savo.
+DEFAULT_VAT_RATE = _env("DEFAULT_VAT_RATE", "0.21")

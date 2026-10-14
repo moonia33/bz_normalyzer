@@ -182,10 +182,24 @@ Kiekvienas feed'as turi:
 
 - `supplier` sąsają su tiekėju,
 - `name`,
-- `kind`,
+- `kind` (`xml_url`, `json_url`, `csv_url`, `excel_url`, `excel_upload`, `csv_upload`, `scraper`, `api`, `custom`),
+- `role` – `catalog` (pilni duomenys), `stock` (tik likučiai/prieinamumas), `discontinued` (nutrauktos),
+- `language` – feed'o tekstų kalba. Bazinės kalbos feed'as rašo `Offer` laukus; kitų kalbų feed'ai rašo `OfferText` vertimus ir neperrašo bazinių laukų,
+- `feed_group` – vienos grupės feed'ai (visos kalbos) visada importuojami kartu, bazinė kalba pirmiausia,
+- `sync_interval_minutes` – automatinio importo periodas (pvz. katalogas kasdien = 1440, likučiai kas valandą = 60); tuščia = tik rankinis,
 - `url` arba `file`,
 - `adapter_code` (jei adapteris yra konkretus),
 - `config` JSON lauką (XPath, item paths, field mapping, sheet name, header row ir pan.).
+
+Tiekėjas (`Supplier`) turi kainų semantiką:
+
+- `vat_rate` (default 0.21),
+- `selling_price_includes_vat` (default true – pardavimo kaina su PVM, eksportui skaičiuojamas `price_net`),
+- `purchase_price_includes_vat` (moss = true, nes `PRICE_VAT`; fox/ccm = false),
+- `export_warehouse_code` – shop sandėlio kodas likučių eksportui (tuščia = supplier.code).
+
+Kalbos ir bendri nustatymai – `apps/corecfg` (`Language`, `ConfigEntry`).
+Pradinis užpildymas (en/lt/pl/de + fox/ccm/moss feed'ai): `python manage.py setup_feeds`.
 
 ### 3. Importuoti feed'ą
 
@@ -195,12 +209,22 @@ CLI:
 python manage.py import_feed --supplier fox
 ```
 
-Komanda importuoja **visus aktyvius tiekėjo feed'us** pagal pavadinimo tvarką (pvz. bazinis, stock, discontinued).
-Jei reikia importuoti tik vieną konkretų šaltinį:
+Komanda importuoja **visus aktyvius tiekėjo feed'us** (kalbiniai feed'ai grupuojami – bazinė kalba pirmiausia).
+Jei reikia importuoti vieną grupę:
 
 ```powershell
 python manage.py import_feed --supplier fox --feed 12
 ```
+
+`--feed` visada importuoja **visą grupę** – kalbiniai feed'ai niekada neimportuojami pavieniui.
+
+Periodinis importas (cron / Windows Task Scheduler, pvz. kas 15 min.):
+
+```powershell
+python manage.py import_due_feeds
+```
+
+Importuoja visus feed'us, kuriems praėjo `sync_interval_minutes` (jei grupėje bent vienas feed'as due – importuojama visa grupė). `--dry-run` parodo sąrašą nieko neimportavus.
 
 Arba per admin – sukurti `ImportJob` ir jį paleisti rankiniu būdu.
 
@@ -226,6 +250,12 @@ Kainų variklis veikia pagal `priority` ir taiko taisykles paeiliui:
 - `set_price`
 - `round`
 - `end_99` / `end_95` / `cent`
+
+Semantika:
+
+- `purchase_price` saugomas **neto** (be PVM). Jei `supplier.purchase_price_includes_vat` – importe dalinama iš `1 + vat_rate` (moss `PRICE_VAT`).
+- `selling_price` skaičiuojamas iš `purchase_price` per `PriceRule` taisykles; `rrp_price` yra tik informacinė rekomenduota kaina – į pardavimo kainą nekeliauja.
+- Eksportui `price_net = selling_price / (1 + vat_rate)` kai `selling_price_includes_vat` (shop formatas visada be PVM).
 
 ## Adapterio kontraktas
 
@@ -421,8 +451,29 @@ Svarbu: vertimai ir aprašymai turi būti atskirti nuo bazinių produktų duomen
 | GET | `/api/products/` | Kanoninės prekės |
 | GET | `/api/categories/` | Vidinės kategorijos |
 | GET | `/api/suppliers/` | Tiekėjai |
-| POST | `/api/imports/{code}/run` | Importo paleidimas |
+| POST | `/api/imports/{code}/run` | Importo paleidimas (kartu importuoja visą feed grupę) |
 | POST | `/api/imports/{code}/upload` | Failo įkėlimas ir importas |
+
+## Eksportas į shop (canonical JSON v1)
+
+Normalyzeris generuoja `catalog_import.md` aprašytą formatą (`format_version: 1`):
+
+```powershell
+# Katalogas
+python manage.py export_catalog --out catalog.json          # į failą
+python manage.py export_catalog --push                      # POST į shop ops API
+python manage.py export_catalog --supplier fox --dry-run    # peržiūra
+
+# Likučiai (per supplier -> warehouse_code)
+python manage.py export_stock --supplier fox --push
+```
+
+Push konfigūracija `.env`: `SHOP_API_BASE_URL`, `SHOP_API_KEY`.
+Kiekvienas eksportas registruojamas `ExportRun` (sha256, item_count, shop atsakymas).
+
+Variantai: `Product` grupuoja susietus `Offer`'ius; kiekvienas offer = variantas (`code`=offer.sku, `ean`, `options.size`, `price_net`, `stock{warehouse:qty}`). Tas pats EAN iš kelių tiekėjų = vienas variantas su kelių sandėlių likučiais.
+
+Vertimai: `ProductText`/`OfferText` per kalbą; `translations.lt` kol kas pildoma baziniu (EN) tekstu, kol neįdiegtas vertimų pipeline.
 
 Puslapiavimas:
 

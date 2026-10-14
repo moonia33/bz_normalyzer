@@ -8,12 +8,13 @@ from django.core.management import call_command
 from django.test import TestCase
 from openpyxl import Workbook
 
-from apps.catalog.models import Brand, Category
-from apps.ingestion.models import ImportJob, Offer
+from apps.catalog.models import Brand, Category, Product, ProductText
+from apps.corecfg.models import Language
+from apps.ingestion.models import ImportJob, Offer, OfferText
 from apps.ingestion.pipeline import run_import
 from apps.mapping.models import CategoryMapping
 from apps.pricing.models import PriceAction, PriceRule
-from apps.suppliers.models import SourceKind, Supplier, SupplierFeed
+from apps.suppliers.models import FeedRole, SourceKind, Supplier, SupplierFeed
 
 
 class ImportPipelineTests(TestCase):
@@ -237,7 +238,7 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(first.product.shipping_depth_cm, Decimal("19.8"))
         self.assertEqual(first.product.shipping_weight_kg, Decimal("0.178"))
         self.assertEqual(first.rrp_price, Decimal("20.99"))
-        self.assertEqual(first.selling_price, Decimal("20.99"))
+        self.assertEqual(first.selling_price, Decimal("10.50"))
         self.assertEqual(first.category, category)
         self.assertEqual(first.extra["identifiers"]["product_group"], "GRP-1")
         self.assertEqual(first.images, ["https://img.example.com/aaa-1-main.jpg"])
@@ -317,6 +318,7 @@ class ImportPipelineTests(TestCase):
             supplier=supplier,
             name="02-stock",
             kind=SourceKind.CSV_UPLOAD,
+            role=FeedRole.STOCK,
             adapter_code="fox_stock",
         )
         stock_feed.file.save(
@@ -329,6 +331,7 @@ class ImportPipelineTests(TestCase):
             supplier=supplier,
             name="03-discontinued",
             kind=SourceKind.CSV_UPLOAD,
+            role=FeedRole.DISCONTINUED,
             adapter_code="fox_discontinued",
         )
         discontinued_feed.file.save(
@@ -358,6 +361,7 @@ class ImportPipelineTests(TestCase):
             supplier=supplier,
             name="02-stock",
             kind=SourceKind.CSV_UPLOAD,
+            role=FeedRole.STOCK,
             adapter_code="fox_stock",
         )
         stock_feed.file.save(
@@ -420,6 +424,7 @@ class ImportPipelineTests(TestCase):
             supplier=supplier,
             name="02-stock",
             kind=SourceKind.CSV_UPLOAD,
+            role=FeedRole.STOCK,
             adapter_code="fox_stock",
         )
         stock_feed.file.save(
@@ -543,3 +548,175 @@ class ImportPipelineTests(TestCase):
                 "https://delph.b-cdn.net/obr/101000001_2.jpg",
             ],
         )
+
+
+class LanguageFeedTests(TestCase):
+    def setUp(self):
+        self.lang_en = Language.objects.create(code="en", name="English", is_base=True)
+        self.lang_pl = Language.objects.create(code="pl", name="Polish")
+        self.supplier = Supplier.objects.create(code="fox", name="FOX")
+
+    def _json_feed(self, name, language, rows):
+        feed = SupplierFeed.objects.create(
+            supplier=self.supplier,
+            name=name,
+            kind=SourceKind.JSON_URL,
+            role=FeedRole.CATALOG,
+            language=language,
+            feed_group="pricelist",
+            adapter_code="generic_json",
+            config={
+                "fields": {
+                    "external_id": "id",
+                    "name": "title",
+                    "purchase_price": "price",
+                    "description": "desc",
+                    "stock": "stock",
+                }
+            },
+        )
+        feed.file.save(
+            f"{name}.json",
+            ContentFile(json.dumps(rows).encode()),
+            save=True,
+        )
+        return feed
+
+    def test_translation_feed_writes_offertext_and_producttext(self):
+        self._json_feed(
+            "en",
+            self.lang_en,
+            [{"id": "A-1", "title": "Base EN", "price": "10.00", "desc": "EN desc", "stock": 2}],
+        )
+        pl_feed = self._json_feed(
+            "pl",
+            self.lang_pl,
+            [{"id": "A-1", "title": "Baza PL", "price": "10.00", "desc": "Opis PL", "stock": 2}],
+        )
+
+        call_command("import_feed", "--supplier", "fox", "--feed", str(pl_feed.pk))
+
+        offer = Offer.objects.get(supplier=self.supplier, external_id="A-1")
+        # Kalbinis feed'as neperrašo bazinių laukų
+        self.assertEqual(offer.name, "Base EN")
+        self.assertEqual(offer.description, "EN desc")
+
+        text = OfferText.objects.get(offer=offer, language=self.lang_pl)
+        self.assertEqual(text.name, "Baza PL")
+        self.assertEqual(text.description, "Opis PL")
+
+        ptext = ProductText.objects.get(product=offer.product, language=self.lang_pl)
+        self.assertEqual(ptext.name, "Baza PL")
+        self.assertTrue(ptext.slug)
+
+    def test_translation_feed_alone_creates_minimal_offer(self):
+        pl_feed = self._json_feed(
+            "pl",
+            self.lang_pl,
+            [{"id": "A-2", "title": "Tylko PL", "desc": "Opis"}],
+        )
+        call_command("import_feed", "--supplier", "fox", "--feed", str(pl_feed.pk))
+        offer = Offer.objects.get(supplier=self.supplier, external_id="A-2")
+        self.assertFalse(offer.is_published)
+        self.assertTrue(OfferText.objects.filter(offer=offer, language=self.lang_pl).exists())
+
+    def test_group_expands_to_all_languages(self):
+        en_feed = self._json_feed("en", self.lang_en, [{"id": "A-3", "title": "EN", "price": "1"}])
+        self._json_feed("pl", self.lang_pl, [{"id": "A-3", "title": "PL"}])
+        call_command("import_feed", "--supplier", "fox", "--feed", str(en_feed.pk))
+        # Abu feed'ai importuoti (2 job'ai), bazinė kalba pirmiausia
+        self.assertEqual(ImportJob.objects.filter(supplier=self.supplier).count(), 2)
+        offer = Offer.objects.get(supplier=self.supplier, external_id="A-3")
+        self.assertEqual(offer.name, "EN")
+        self.assertTrue(OfferText.objects.filter(offer=offer, language=self.lang_pl).exists())
+
+
+class ChangeDetectionTests(TestCase):
+    def test_reimport_same_file_marks_unchanged(self):
+        supplier = Supplier.objects.create(code="demo", name="Demo")
+        payload = json.dumps([{"id": "S-1", "title": "X", "price": "5.00"}]).encode()
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="demo",
+            kind=SourceKind.JSON_URL,
+            adapter_code="generic_json",
+            config={
+                "fields": {
+                    "external_id": "id",
+                    "name": "title",
+                    "purchase_price": "price",
+                }
+            },
+        )
+        feed.file.save("demo.json", ContentFile(payload), save=True)
+
+        run_import(ImportJob.objects.create(supplier=supplier, feed=feed))
+        job2 = run_import(ImportJob.objects.create(supplier=supplier, feed=feed))
+        self.assertEqual(job2.stats.get("unchanged"), 1)
+
+        # Pasikeitus kainai – hash kitas, pilnas upsert
+        feed.file.save("demo.json", ContentFile(
+            json.dumps([{"id": "S-1", "title": "X", "price": "6.00"}]).encode()
+        ), save=True)
+        job3 = run_import(ImportJob.objects.create(supplier=supplier, feed=feed))
+        self.assertEqual(job3.stats.get("unchanged", 0), 0)
+        offer = Offer.objects.get(supplier=supplier, external_id="S-1")
+        self.assertEqual(offer.purchase_price, Decimal("6.00"))
+
+
+class FeedDueTests(TestCase):
+    def test_is_due_and_import_due_feeds(self):
+        supplier = Supplier.objects.create(code="demo", name="Demo")
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="hourly",
+            kind=SourceKind.JSON_URL,
+            adapter_code="generic_json",
+            sync_interval_minutes=60,
+            config={"fields": {"external_id": "id", "name": "title"}},
+        )
+        feed.file.save(
+            "due.json", ContentFile(json.dumps([{"id": "D-1", "title": "X"}]).encode()),
+            save=True,
+        )
+        SupplierFeed.objects.create(
+            supplier=supplier,
+            name="manual",
+            kind=SourceKind.JSON_URL,
+            adapter_code="generic_json",
+        )
+        self.assertTrue(feed.is_due())
+        call_command("import_due_feeds")
+        feed.refresh_from_db()
+        self.assertFalse(feed.is_due())
+        self.assertTrue(Offer.objects.filter(supplier=supplier, external_id="D-1").exists())
+
+
+class EanMatchingTests(TestCase):
+    def test_ean_matches_existing_product_across_suppliers(self):
+        fox = Supplier.objects.create(code="fox", name="FOX")
+        moss = Supplier.objects.create(code="moss", name="MOSS")
+        product = Product.objects.create(sku="fox-1", name="X", ean="4000000000001")
+
+        payload = json.dumps(
+            [{"id": "M-1", "title": "Same product", "price": "9.99", "ean": "4000000000001"}]
+        ).encode()
+        feed = SupplierFeed.objects.create(
+            supplier=moss,
+            name="moss",
+            kind=SourceKind.JSON_URL,
+            adapter_code="generic_json",
+            config={
+                "fields": {
+                    "external_id": "id",
+                    "name": "title",
+                    "purchase_price": "price",
+                    "ean": "ean",
+                }
+            },
+        )
+        feed.file.save("moss.json", ContentFile(payload), save=True)
+        run_import(ImportJob.objects.create(supplier=moss, feed=feed))
+
+        offer = Offer.objects.get(supplier=moss, external_id="M-1")
+        self.assertEqual(offer.product_id, product.id)

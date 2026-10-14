@@ -8,6 +8,7 @@ GENERIC_BY_KIND = {
     SourceKind.XML_URL: "generic_xml",
     SourceKind.JSON_URL: "generic_json",
     SourceKind.CSV_URL: "generic_excel",
+    SourceKind.EXCEL_URL: "generic_excel",
     SourceKind.EXCEL_UPLOAD: "generic_excel",
     SourceKind.CSV_UPLOAD: "generic_excel",
 }

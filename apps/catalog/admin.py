@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from apps.ingestion.models import Offer
-from apps.catalog.models import Brand, Category, Product
+from apps.catalog.models import Brand, Category, Product, ProductText
 
 
 def _effective_image_urls(obj):
@@ -109,9 +109,16 @@ class CategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
 
 
+class ProductTextInline(admin.TabularInline):
+    model = ProductText
+    extra = 0
+    fields = ["language", "name", "slug", "description"]
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     show_facets = admin.ShowFacets.NEVER
+    inlines = [ProductTextInline]
     search_fields = ["sku", "name", "ean"]
     list_display = [
         "thumbnail",
