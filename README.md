@@ -385,6 +385,13 @@ Jei varianto `Brand` laukas tuščias, FOX adapteris taiko fallback pagal `Produ
 - `MEDIA FILES REFERENCE` lapo failų vardai yra ignoruojami, nes jie neturi būti įtraukiami į `attributes`;
 - nuorodos deduplikuojamos, išlaikant eiliškumą.
 
+### FOX video
+
+- `VIDEOS` lapo `Product Video (XX)`, `Instructional Video (XX)`, `Tutorial Video (XX)` stulpeliai surenkami į `Offer.videos` kaip `[{url, type, language}]` (type: `product|instructional|tutorial`, language iš stulpelio kodo, pvz. `en`/`pl`/`de`);
+- kalbiniai feed'ai (pvz., PL) merge'ina savo kalbos video į tą patį offer'į (dedup pagal URL);
+- produkto lygmenyje `Product.videos` yra visų offer'ų video sujungimas;
+- eksportui `videos` blokas eina į `catalog_import` payload'ą; shop'e išsaugoma `ProductVideo` modeliuose (puslapyje: `product.videos.all`).
+
 ### FOX specifikacijos ir pristatymo matmenys
 
 - nuo `SPECS` lapo stulpelio `Unit Height` ir toliau reikšmės saugomos `attributes.specs`;

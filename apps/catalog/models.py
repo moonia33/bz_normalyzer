@@ -81,6 +81,11 @@ class Product(TimeStampedModel):
     ean = models.CharField(max_length=32, blank=True, db_index=True)
     main_image_url = models.URLField(blank=True, max_length=1000)
     images = models.JSONField(default=list, blank=True)
+    videos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='[{"url": ..., "type": "product|instructional|tutorial", "language": "en"}]',
+    )
     description = models.TextField(blank=True)
     technical_description = models.TextField(blank=True)
     combined_full_text = models.TextField(blank=True)

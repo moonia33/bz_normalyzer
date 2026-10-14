@@ -310,6 +310,7 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
                 "shipping_weight_kg": offer.shipping_weight_kg,
                 "main_image_url": offer.main_image_url,
                 "images": list(offer.images) if isinstance(offer.images, list) else [],
+                "videos": list(offer.videos) if isinstance(offer.videos, list) else [],
             },
         )
 
@@ -379,6 +380,11 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     elif product.images:
         product.images = []
         changed_fields.append("images")
+    if isinstance(offer.videos, list):
+        merged_videos = _merge_video_lists(product.videos, offer.videos)
+        if product.videos != merged_videos:
+            product.videos = merged_videos
+            changed_fields.append("videos")
     if offer.technical_description and product.technical_description != offer.technical_description:
         product.technical_description = offer.technical_description
         changed_fields.append("technical_description")
@@ -416,6 +422,7 @@ def _content_hash(item: NormalizedItem) -> str:
         "description": item.description,
         "attributes": item.attributes,
         "images": item.images,
+        "videos": item.videos,
         "purchase_price": str(item.purchase_price) if item.purchase_price is not None else None,
         "currency": item.currency,
         "extra": {
@@ -516,6 +523,7 @@ def _upsert_offer(
                 is_published=False,
             )
         _upsert_offer_text(job, item, offer, ctx.language)
+        _merge_offer_videos(offer, item.videos)
         stats["translations"] += 1
         offer.last_imported_at = timezone.now()
         offer.save(update_fields=["last_imported_at", "updated_at"])
@@ -644,6 +652,8 @@ def _upsert_offer(
         offer.attributes = item.attributes
     if item.images or not partial_update or created:
         offer.images = item.images
+    if item.videos or not partial_update or created:
+        offer.videos = item.videos
 
     offer.stock = item.stock
     offer.availability_date = item.availability_date
@@ -674,6 +684,40 @@ def _upsert_offer(
         offer.is_published = True
     offer.save()
     return offer
+
+
+def _merge_video_lists(existing: list | None, incoming: list | None) -> list[dict]:
+    """Sujungia video sąrašus, dedupuoja pagal URL. Turinys [{url,type,language}]."""
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for source in (existing, incoming):
+        for video in source or []:
+            url = str((video or {}).get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            merged.append(
+                {
+                    "url": url,
+                    "type": str(video.get("type") or "product"),
+                    "language": str(video.get("language") or ""),
+                }
+            )
+    return merged
+
+
+def _merge_offer_videos(offer: Offer, incoming: list | None) -> None:
+    """Kalbinis feed'as papildo offer.videos savo kalbos video URL'ais."""
+    merged = _merge_video_lists(offer.videos, incoming)
+    if merged != offer.videos:
+        offer.videos = merged
+        offer.save(update_fields=["videos", "updated_at"])
+        if offer.product_id:
+            product = offer.product
+            product_merged = _merge_video_lists(product.videos, incoming)
+            if product_merged != product.videos:
+                product.videos = product_merged
+                product.save(update_fields=["videos", "updated_at"])
 
 
 def _extra_text(extra: dict, key: str) -> str:

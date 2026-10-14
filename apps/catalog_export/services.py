@@ -85,6 +85,26 @@ def _images(product: Product) -> list[dict]:
     ]
 
 
+def _videos(product: Product) -> list[dict]:
+    """YouTube/video URL'ai: [{url, type, language}], dedup pagal url."""
+    videos = product.videos if isinstance(product.videos, list) else []
+    result = []
+    seen: set[str] = set()
+    for video in videos:
+        url = str((video or {}).get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        result.append(
+            {
+                "url": url,
+                "type": str(video.get("type") or "product"),
+                "language": str(video.get("language") or ""),
+            }
+        )
+    return result
+
+
 def _offer_variant_code(offer: Offer) -> str:
     """Variant code = shop Variant.sku. Supplier prefiksas – FOX/CCM Art-No. gali dubliuotis."""
     sku = (offer.sku or "").strip() or offer.external_id
@@ -224,6 +244,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 "translations": _translation_block(product, base_code),
                 "features": _features(product),
                 "images": _images(product),
+                "videos": _videos(product),
                 "variants": variants,
             }
         )

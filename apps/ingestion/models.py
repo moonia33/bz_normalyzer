@@ -85,6 +85,11 @@ class Offer(TimeStampedModel):
     combined_full_text = models.TextField(blank=True)
     attributes = models.JSONField(default=dict, blank=True)
     images = models.JSONField(default=list, blank=True)
+    videos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='[{"url": ..., "type": "product|instructional|tutorial", "language": "en"}]',
+    )
     stock = models.IntegerField(default=0)
     availability_date = models.DateField(null=True, blank=True)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)

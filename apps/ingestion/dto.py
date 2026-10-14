@@ -19,6 +19,8 @@ class NormalizedItem:
     description: str = ""
     attributes: dict[str, Any] = field(default_factory=dict)
     images: list[str] = field(default_factory=list)
+    # [{"url": ..., "type": "product|instructional|tutorial", "language": "en"}]
+    videos: list[dict[str, str]] = field(default_factory=list)
     stock: int = 0
     availability_date: date | None = None
     purchase_price: Decimal | None = None

@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+import re
 from openpyxl import load_workbook
 
 from apps.ingestion.dto import NormalizedItem
@@ -24,6 +25,7 @@ class FoxAdapter(BaseAdapter):
         text_rows = self._sheet_index(workbook, "TEXT")
         media_cloud_rows = self._sheet_index(workbook, "MEDIA CLOUD LINKS")
         specs_rows = self._sheet_index(workbook, "SPECS")
+        video_rows = self._sheet_index(workbook, "VIDEOS")
 
         group_brand_map: dict[str, str] = {}
         group_base_name_map: dict[str, str] = {}
@@ -47,6 +49,7 @@ class FoxAdapter(BaseAdapter):
             text_row = text_rows.get(art_no, {})
             specs_row = specs_rows.get(art_no, {})
             media_cloud_row = media_cloud_rows.get(art_no, {})
+            videos = self._extract_videos(video_rows.get(art_no, {}))
 
             variant_name = self._text(base.get("Name"))
             base_name = self._text(text_row.get("Product Description")) or group_base_name_map.get(
@@ -89,6 +92,7 @@ class FoxAdapter(BaseAdapter):
                 "text": self._clean_dict(text_row),
                 "specs": self._clean_dict(specs_row),
                 "media_cloud_links": self._clean_dict(media_cloud_row),
+                "videos": self._clean_dict(video_rows.get(art_no, {})),
             }
 
             yield {
@@ -110,6 +114,7 @@ class FoxAdapter(BaseAdapter):
                 "stock": 0,
                 "images": images,
                 "main_image_url": main_image_url,
+                "videos": videos,
                 "attributes": {
                     "specs": specs_attributes,
                     "shipping_dimensions": shipping_dimensions,
@@ -163,6 +168,7 @@ class FoxAdapter(BaseAdapter):
             description=self._text(row.get("description")),
             attributes=filtered_attributes,
             images=self._clean_images(row.get("images")),
+            videos=self._clean_videos(row.get("videos")),
             stock=0,
             purchase_price=self._to_decimal(row.get("purchase_price")),
             currency=self._text(row.get("currency")) or "EUR",
@@ -220,6 +226,48 @@ class FoxAdapter(BaseAdapter):
             seen.add(url)
             ordered.append(url)
         return ordered
+
+    # "Product Video (EN)" / "Instructional Video (DE)" / "Tutorial Video (PL)"
+    _VIDEO_COLUMN_RE = re.compile(r"^(Product|Instructional|Tutorial) Video \(([A-Z]{2})\)$")
+
+    def _extract_videos(self, video_row: dict[str, Any]) -> list[dict[str, str]]:
+        videos: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for key, value in video_row.items():
+            match = self._VIDEO_COLUMN_RE.match(str(key).strip())
+            if not match:
+                continue
+            url = self._text(value)
+            if not url or not url.lower().startswith(("http://", "https://")) or url in seen:
+                continue
+            seen.add(url)
+            videos.append(
+                {
+                    "url": url,
+                    "type": match.group(1).lower(),
+                    "language": match.group(2).lower(),
+                }
+            )
+        return videos
+
+    def _clean_videos(self, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        cleaned: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            url = self._text(item.get("url"))
+            if not url:
+                continue
+            cleaned.append(
+                {
+                    "url": url,
+                    "type": self._text(item.get("type")) or "product",
+                    "language": self._text(item.get("language")),
+                }
+            )
+        return cleaned
 
     def _specs_attributes(self, specs_row: dict[str, Any]) -> dict[str, Any]:
         if not specs_row:
