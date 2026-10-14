@@ -40,15 +40,17 @@ Naujas tiekėjas turi būti įvedamas be pagrindinio kodo perrašymo. Kiekvienas
 ```text
 config/                 Django projektas, nustatymai ir URL
 apps/
-  catalog/              Kanoninės prekės, kategorijos, ženklai
+  catalog/              Kanoninės prekės, kategorijos, ženklai, ProductText
+  corecfg/              Language, ConfigEntry (kalbos + shop konfigūracija)
   suppliers/            Tiekėjai, feed'ai, adapterių registras
-    adapters/           Generic XML/JSON/Excel adapteriai
-  ingestion/            ImportJob, RawItem, Offer, import pipeline
-  mapping/              Kategorijų/ženklo susiejimai
+    adapters/           FOX/CCM/MOSS + generic XML/JSON/Excel adapteriai
+  ingestion/            ImportJob, RawItem, Offer, OfferText, import pipeline
+  mapping/              Kategorijų/ženklo/produkto susiejimai (ProductLink)
   pricing/              Kainų taisyklės ir skaičiavimas
+  catalog_export/       Canonical JSON v1 eksportas, ExportRun, ShopClient
   api/                  Django Ninja routeriai ir schemas
 media/                  įkeltų failų saugykla
-_docs_suplier/         pavyzdiniai tiekėjų duomenys, pvz. Fox Excel
+docs_suplier/           pavyzdiniai tiekėjų duomenys (FOX/CCM Excel ir kt.)
 ```
 
 ## Dabartinė projektinė būklė
@@ -113,10 +115,19 @@ DJANGO_API_KEY=dev-api-key
 
 POSTGRES_DB=bz_normalyzer
 POSTGRES_USER=standartinis-postgres
-POSTGRES_PASSWORD=moonia33
+POSTGRES_PASSWORD=
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 CSRF_TRUSTED_ORIGINS=http://localhost:8000,https://localhost
+
+# Shop (katalogo gavėjas) push integracija
+# Auth: JWT per cookie – reikia staff vartotojo shop'e
+SHOP_API_BASE_URL=
+SHOP_USER_EMAIL=
+SHOP_USER_PASSWORD=
+
+# OpenAI Batch API – LT vertimai (lėtas, pigus; 24h langas)
+OPENAI_API_KEY=
 ```
 
 Prieš paleidžiant reikia nukopijuoti `.env.example` į `.env`.
@@ -234,6 +245,8 @@ Arba per admin – sukurti `ImportJob` ir jį paleisti rankiniu būdu.
 - `Offer` saugo normalizuotą pasiūlymą,
 - `Product` naudojamas kanoniniam produktui,
 - `is_published` nurodo, ar objektas yra publikuojamas į viešą API.
+
+Publikavimo sąlyga: `category` sumap'inta **ir** `selling_price` egzistuoja **ir** `images` nėra tuščias. Prekės be nuotraukų importuojamos, bet lieka nepublikuotos (neeksportuojamos į shop).
 
 ### 5. Kainų taisyklės
 
@@ -491,12 +504,45 @@ python manage.py export_catalog --supplier fox --dry-run    # peržiūra
 python manage.py export_stock --supplier fox --push
 ```
 
-Push konfigūracija `.env`: `SHOP_API_BASE_URL`, `SHOP_API_KEY`.
+Push konfigūracija `.env`: `SHOP_API_BASE_URL`, `SHOP_USER_EMAIL`, `SHOP_USER_PASSWORD` (JWT login `/api/v1/auth/login`, staff vartotojas).
 Kiekvienas eksportas registruojamas `ExportRun` (sha256, item_count, shop atsakymas).
+
+### Shop kategorijų sinchronizavimas
+
+Shop kategorijos yra kanoninis šaltinis eksporto `category` laukui:
+
+```powershell
+python manage.py sync_shop_categories
+```
+
+Komanda paima **visą** shop kategorijų medį per `/api/v1/ops/imports/categories` ir atnaujina vietinį `Category` (slug = shop slug). Reikalingas staff vartotojas (`.env` `SHOP_USER_*`).
+
+### LT vertimas (OpenAI Batch API)
+
+Shop reikalauja `translations.lt`; tiekėjų LT feed'ų nėra → LT gauname AI vertimu:
+
+```powershell
+python manage.py translate_lt --prepare [--limit N]   # sugeneruoja JSONL batch failą
+python manage.py translate_lt --submit                 # įkelia į OpenAI Batch API
+python manage.py translate_lt --status                 # progresas
+python manage.py translate_lt --apply                  # įrašo į OfferText + ProductText
+```
+
+- verčiami `name`, `base_name`, `description`, `technical_description` (`combined_full_text` praleidžiamas – jis ir yra `description` šaltinis);
+- system prompt'as turi žvejybos domenu žodynėlį (rod→meškerė, reel→ritė, boilie→boilius...);
+- modelis: `gpt-4.1-mini` default (`ConfigEntry translation_model` arba `--model` perrašo);
+- kol LT nėra – eksportas naudoja EN fallback (`FALLBACK_TRANSLATION_LANG`).
+
+### Video (YouTube)
+
+- FOX/CCM: `VIDEOS` lapas `Product/Instructional/Tutorial Video (XX)` → `Offer.videos` kaip `[{url,type,language}]`;
+- MOSS: `YOUTUBE*`, `VIDEO_*` → video ID → `https://youtu.be/<id>` (vienodas formatas kaip FOX);
+- kalbiniai feed'ai merge'ina savo kalbos video (dedup pagal URL); `Product.videos` agreguoja visų offer'ų;
+- eksportui → `videos` blokas; shop'e → `ProductVideo` modelis.
 
 Variantai: `Product` grupuoja susietus `Offer`'ius; kiekvienas offer = variantas (`code`=offer.sku, `ean`, `options.size`, `price_net`, `stock{warehouse:qty}`). Tas pats EAN iš kelių tiekėjų = vienas variantas su kelių sandėlių likučiais.
 
-Vertimai: `ProductText`/`OfferText` per kalbą; `translations.lt` kol kas pildoma baziniu (EN) tekstu, kol neįdiegtas vertimų pipeline.
+Vertimai: `translations.en` = baziniai `Product` laukai; `pl`/`de` = `ProductText`/`OfferText` iš kalbinių feed'ų; `lt` = AI vertimas (`translate_lt`) arba EN fallback.
 
 Puslapiavimas:
 

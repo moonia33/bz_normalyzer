@@ -130,5 +130,8 @@ SHOP_API_KEY = _env("SHOP_API_KEY", "")
 SHOP_USER_EMAIL = _env("SHOP_USER_EMAIL", "")
 SHOP_USER_PASSWORD = _env("SHOP_USER_PASSWORD", "")
 
+# OpenAI Batch API (LT vertimai). Tuščia = vertimų pipeline išjungtas.
+OPENAI_API_KEY = _env("OPENAI_API_KEY", "")
+
 # Numatytasis PVM tarifas, naudojamas kai tiekėjas neturi savo.
 DEFAULT_VAT_RATE = _env("DEFAULT_VAT_RATE", "0.21")
