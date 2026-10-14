@@ -124,8 +124,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 API_KEY = _env("DJANGO_API_KEY", "")
 
 # Shop (katalogo gavėjas) push integracija.
+# Auth: JWT per cookie – POST /api/v1/auth/login su staff vartotoju.
 SHOP_API_BASE_URL = _env("SHOP_API_BASE_URL", "")
 SHOP_API_KEY = _env("SHOP_API_KEY", "")
+SHOP_USER_EMAIL = _env("SHOP_USER_EMAIL", "")
+SHOP_USER_PASSWORD = _env("SHOP_USER_PASSWORD", "")
 
 # Numatytasis PVM tarifas, naudojamas kai tiekėjas neturi savo.
 DEFAULT_VAT_RATE = _env("DEFAULT_VAT_RATE", "0.21")

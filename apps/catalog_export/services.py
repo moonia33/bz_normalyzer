@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import requests
 from django.conf import settings
@@ -86,7 +86,18 @@ def _images(product: Product) -> list[dict]:
 
 
 def _offer_variant_code(offer: Offer) -> str:
-    return (offer.sku or "").strip() or f"{offer.supplier.code}-{offer.external_id}"
+    """Variant code = shop Variant.sku. Supplier prefiksas – FOX/CCM Art-No. gali dubliuotis."""
+    sku = (offer.sku or "").strip() or offer.external_id
+    return f"{offer.supplier.code}-{sku}"
+
+
+def _to_int_cm(value) -> int:
+    if value is None:
+        return 0
+    try:
+        return int(Decimal(str(value)).to_integral_value())
+    except (InvalidOperation, ValueError):
+        return 0
 
 
 def _variant_key(offer: Offer) -> str:
@@ -117,6 +128,17 @@ def _build_variants(offers: list[Offer]) -> list[dict]:
                 "ean": offer.ean or "",
                 "options": options,
                 "price_net": str(price_net) if price_net is not None else None,
+                "cost_net": (
+                    str(offer.purchase_price.quantize(Decimal("0.01")))
+                    if offer.purchase_price is not None
+                    else None
+                ),
+                "weight_g": _to_int_cm(
+                    (offer.shipping_weight_kg * 1000) if offer.shipping_weight_kg else None
+                ),
+                "height_cm": _to_int_cm(offer.shipping_height_cm),
+                "width_cm": _to_int_cm(offer.shipping_width_cm),
+                "length_cm": _to_int_cm(offer.shipping_depth_cm),
                 "stock": {},
             }
             variants[key] = existing
@@ -195,7 +217,10 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 "is_active": product.is_active,
                 "price_net": _item_price_net(product, offers),
                 "cost_net": _item_cost_net(product, offers),
-                "weight_g": weight_g,
+                "weight_g": weight_g or 0,
+                "height_cm": _to_int_cm(product.shipping_height_cm),
+                "width_cm": _to_int_cm(product.shipping_width_cm),
+                "length_cm": _to_int_cm(product.shipping_depth_cm),
                 "translations": _translation_block(product, base_code),
                 "features": _features(product),
                 "images": _images(product),
@@ -240,24 +265,66 @@ def payload_sha256(payload: dict) -> str:
     ).hexdigest()
 
 
-def push_to_shop(path: str, payload: dict, timeout: int = 120) -> dict:
-    base_url = (settings.SHOP_API_BASE_URL or "").rstrip("/")
-    if not base_url:
-        raise RuntimeError("SHOP_API_BASE_URL nenustatytas (.env).")
-    headers = {"Content-Type": "application/json"}
-    if settings.SHOP_API_KEY:
-        headers["X-API-Key"] = settings.SHOP_API_KEY
-    response = requests.post(
-        f"{base_url}{path}",
-        json=payload,
-        headers=headers,
-        timeout=timeout,
-    )
-    response.raise_for_status()
-    try:
+class ShopClient:
+    """HTTP klientas shop ops API.
+
+    Shop'as naudoja JWT per HttpOnly cookie (accounts.JWTAuth): login
+    `POST /api/v1/auth/login` {email, password} -> `access_token` cookie
+    (~15 min), refresh per `POST /api/v1/auth/refresh`.
+    Reikia staff vartotojo (_require_ops_user: is_staff/is_superuser).
+    """
+
+    def __init__(self, base_url: str | None = None):
+        self.base_url = (base_url or settings.SHOP_API_BASE_URL or "").rstrip("/")
+        if not self.base_url:
+            raise RuntimeError("SHOP_API_BASE_URL nenustatytas (.env).")
+        self.session = requests.Session()
+        self._logged_in = False
+
+    def _login(self) -> None:
+        email = getattr(settings, "SHOP_USER_EMAIL", "") or ""
+        password = getattr(settings, "SHOP_USER_PASSWORD", "") or ""
+        if not email or not password:
+            raise RuntimeError("SHOP_USER_EMAIL / SHOP_USER_PASSWORD nenustatyti (.env).")
+        response = self.session.post(
+            f"{self.base_url}/api/v1/auth/login",
+            json={"email": email, "password": password},
+            timeout=30,
+        )
+        response.raise_for_status()
+        self._logged_in = True
+
+    def post(self, path: str, payload: dict, timeout: int = 120) -> dict:
+        if not self._logged_in:
+            self._login()
+        response = self.session.post(
+            f"{self.base_url}{path}", json=payload, timeout=timeout
+        )
+        if response.status_code == 401:
+            # access token galėjo baigtis – relogin ir kartojam
+            self._login()
+            response = self.session.post(
+                f"{self.base_url}{path}", json=payload, timeout=timeout
+            )
+        response.raise_for_status()
+        try:
+            return response.json()
+        except ValueError:
+            return {"status": response.status_code, "body": response.text[:500]}
+
+    def get(self, path: str, timeout: int = 60):
+        if not self._logged_in:
+            self._login()
+        response = self.session.get(f"{self.base_url}{path}", timeout=timeout)
+        if response.status_code == 401:
+            self._login()
+            response = self.session.get(f"{self.base_url}{path}", timeout=timeout)
+        response.raise_for_status()
         return response.json()
-    except ValueError:
-        return {"status": response.status_code, "body": response.text[:500]}
+
+
+def push_to_shop(path: str, payload: dict, timeout: int = 120) -> dict:
+    return ShopClient().post(path, payload, timeout=timeout)
 
 
 def run_export(
