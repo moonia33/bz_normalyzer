@@ -385,6 +385,17 @@ Jei varianto `Brand` laukas tuščias, FOX adapteris taiko fallback pagal `Produ
 - `MEDIA FILES REFERENCE` lapo failų vardai yra ignoruojami, nes jie neturi būti įtraukiami į `attributes`;
 - nuorodos deduplikuojamos, išlaikant eiliškumą.
 
+### FOX/CCM kalbiniai failai (lokalizuotos antraštės)
+
+- PL/DE ir kiti kalbiniai `*_pricelist.xlsx` failai turi **išverstas stulpelių antraštes** (`Nr art.`, `Art.-Nr.`, `Grupa produktów`, ...);
+- adapteris pagal `feed.language` pritaiko `FOX_HEADER_ALIASES` žemėlapį ir visas antraštes perveda į kanonines EN reikšmes, todėl visa kita logika lieka ta pati;
+- papildomas/koreguojamas mapping'as galimas per `feed.config["header_map"]` (lokalizuota → kanoninė antraštė).
+
+### MOSS video
+
+- XML laukuose `YOUTUBE`, `YOUTUBE_2`, ... tiekėjas atiduoda **tik YouTube video ID**;
+- adapteris jį paverčia pilnu `https://youtu.be/<id>` URL (vienodas formatas kaip FOX) ir deda į `videos` su `type="product"`, `language=""` (video nekinta per kalbas).
+
 ### FOX video
 
 - `VIDEOS` lapo `Product Video (XX)`, `Instructional Video (XX)`, `Tutorial Video (XX)` stulpeliai surenkami į `Offer.videos` kaip `[{url, type, language}]` (type: `product|instructional|tutorial`, language iš stulpelio kodo, pvz. `en`/`pl`/`de`);

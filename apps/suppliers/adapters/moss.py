@@ -33,6 +33,7 @@ class MossAdapter(BaseAdapter):
             category_root, category_sub_path = self._split_category(category_full_path)
 
             images = self._collect_images(row)
+            videos = self._collect_videos(row)
             weight_kg, dimensions_cm = self._extract_dimensions(row)
             shipping_height_cm = self._to_decimal(row.get("HEIGHT"))
             shipping_width_cm = self._to_decimal(row.get("WIDTH"))
@@ -50,6 +51,7 @@ class MossAdapter(BaseAdapter):
                 "category_path": category_root,
                 "description": self._text(row.get("DESCRIPTION")),
                 "images": images,
+                "videos": videos,
                 "stock": stock,
                 "purchase_price": self._to_decimal(row.get("PRICE_VAT")),
                 "currency": "EUR",
@@ -125,6 +127,7 @@ class MossAdapter(BaseAdapter):
             description=self._text(row.get("description") or row.get("DESCRIPTION")),
             attributes=filtered_attributes,
             images=self._clean_images(row.get("images")),
+            videos=self._clean_videos(row.get("videos")),
             stock=max(stock, 0),
             purchase_price=self._to_decimal(row.get("purchase_price") or row.get("PRICE_VAT")),
             currency="EUR",
@@ -166,6 +169,49 @@ class MossAdapter(BaseAdapter):
             seen.add(image)
             deduplicated.append(image)
         return deduplicated
+
+    # YOUTUBE, YOUTUBE_2, ... – MOSS feed'e saugomas tik YouTube video ID.
+    # Normalizuojama į pilną youtu.be URL – toks pats formatas kaip FOX feed'uose.
+    @staticmethod
+    def _youtube_id_to_url(video_id: str) -> str:
+        if video_id.lower().startswith(("http://", "https://")):
+            return video_id
+        return f"https://youtu.be/{video_id}"
+
+    def _collect_videos(self, row: dict[str, Any]) -> list[dict[str, str]]:
+        videos: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for key, value in row.items():
+            if not str(key).upper().startswith("YOUTUBE"):
+                continue
+            video_id = self._text(value)
+            if not video_id:
+                continue
+            url = self._youtube_id_to_url(video_id)
+            if url in seen:
+                continue
+            seen.add(url)
+            videos.append({"url": url, "type": "product", "language": ""})
+        return videos
+
+    def _clean_videos(self, value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        cleaned: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            url = self._text(item.get("url"))
+            if not url:
+                continue
+            cleaned.append(
+                {
+                    "url": url,
+                    "type": self._text(item.get("type")) or "product",
+                    "language": self._text(item.get("language")),
+                }
+            )
+        return cleaned
 
     def _extract_dimensions(self, row: dict[str, Any]) -> tuple[float | None, dict[str, float]]:
         weight_raw = self._to_decimal(row.get("WEIGHT"))

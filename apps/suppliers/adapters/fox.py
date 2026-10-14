@@ -14,9 +14,99 @@ from apps.suppliers.adapters.base import AdapterError, BaseAdapter
 from apps.suppliers.adapters.registry import register_adapter
 
 
+# FOX/CCM kalbiniai failai turi IŠVERSTAS stulpelių antraštes.
+# Žemėlapis: lokalizuota antraštė -> kanoninė (EN) antraštė.
+# Papildomas/kitoks mapping'as gali būti per feed.config["header_map"].
+FOX_HEADER_ALIASES: dict[str, dict[str, str]] = {
+    "pl": {
+        "Nr art.": "Art-No.",
+        "Grupa produktów": "Product Group",
+        "Marka": "Brand",
+        "Nazwa": "Name",
+        "Cena hurtowa EUR": "Trade EUR",
+        "Cena detaliczna EUR": "RRP EUR",
+        "Kod kreskowy EAN sztuka": "Barcode Single EAN",
+        "Kod kreskowy EAN opakowanie": "Barcode Tradepack EAN",
+        "Kategoria": "Category",
+        "Podkategoria": "Sub Category",
+        "Rodzina": "Family",
+        "Data dostępności": "Availability Date",
+        "Opis produktu": "Product Description",
+        "Opis techniczny": "Techn. Description",
+        "Pełny tekst łączony": "Combined Full Text",
+        "Rozmiar": "Size",
+        "Wysokość jednostki": "Unit Height",
+        "Wysokość detaliczna cm": "Retail Height cm",
+        "Szerokość detaliczna cm": "Retail Width cm",
+        "Głębokość detaliczna cm": "Retail Depth cm",
+        "Waga detaliczna g": "Retail Weight gram",
+    },
+    "de": {
+        "Art.-Nr.": "Art-No.",
+        "Produktgruppe": "Product Group",
+        "Marke": "Brand",
+        # 'Name' lieka 'Name'
+        "EK-Preis EUR": "Trade EUR",
+        "UVP EUR": "RRP EUR",
+        "EAN Einzelbarcode": "Barcode Single EAN",
+        "EAN Umverpackung": "Barcode Tradepack EAN",
+        "Kategorie": "Category",
+        "Unterkategorie": "Sub Category",
+        "Familie": "Family",
+        "Verfügbarkeitsdatum": "Availability Date",
+        "Produktbeschreibung": "Product Description",
+        "Technische Beschreibung": "Techn. Description",
+        "Kombinierter Volltext": "Combined Full Text",
+        "Größe": "Size",
+        "Einheitshöhe": "Unit Height",
+        "Handelshöhe cm": "Retail Height cm",
+        "Handelsbreite cm": "Retail Width cm",
+        "Handelstiefe cm": "Retail Depth cm",
+        "Handelsgewicht g": "Retail Weight gram",
+    },
+}
+
+# Video stulpeliai lokalizuoti, bet (XX) kalbos kodas lieka: pvz.
+# PL: "Film produktowy (EN)", DE: "Produktvideo (DE)". Alias -> kanoninis prefix.
+FOX_VIDEO_HEADER_ALIASES: dict[str, dict[str, str]] = {
+    "pl": {
+        "Film produktowy": "Product Video",
+        "Film instruktażowy": "Instructional Video",
+        "Film tutorial": "Tutorial Video",
+    },
+    "de": {
+        "Produktvideo": "Product Video",
+        "Anleitungsvideo": "Instructional Video",
+        "Tutorialvideo": "Tutorial Video",
+    },
+}
+
+
 @register_adapter
 class FoxAdapter(BaseAdapter):
     code = "fox"
+
+    def _header_map(self) -> dict[str, str]:
+        custom = self.config.get("header_map") or {}
+        language_code = (
+            self.feed.language.code if self.feed.language_id else ""
+        )
+        return {**FOX_HEADER_ALIASES.get(language_code, {}), **custom}
+
+    def _canonical_header(self, header: str) -> str:
+        header_map = self._header_map()
+        if header in header_map:
+            return header_map[header]
+        # Video antraštės turi kalbos sufiksą: "... (XX)"
+        video_match = re.match(r"^(.*)\s\(([A-Z]{2})\)$", header or "")
+        if video_match:
+            prefixes = FOX_VIDEO_HEADER_ALIASES.get(
+                self.feed.language.code if self.feed.language_id else "", {}
+            )
+            canonical = prefixes.get(video_match.group(1).strip())
+            if canonical:
+                return f"{canonical} ({video_match.group(2)})"
+        return header
 
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
@@ -185,7 +275,7 @@ class FoxAdapter(BaseAdapter):
         header = next(rows, None)
         if header is None:
             return []
-        headers = [self._text(value) for value in header]
+        headers = [self._canonical_header(self._text(value)) for value in header]
         result: list[dict[str, Any]] = []
         for row in rows:
             if not any(cell not in (None, "") for cell in row):
