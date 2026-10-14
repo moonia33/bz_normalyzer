@@ -680,8 +680,11 @@ def _upsert_offer(
         offer.is_available = False
         offer.stock = 0
         offer.is_published = False
-    elif offer.category_id and offer.selling_price is not None:
+    elif offer.category_id and offer.selling_price is not None and offer.images:
+        # Prekė be nuotraukų nepublikuojama (neeksportuojama į shop).
         offer.is_published = True
+    else:
+        offer.is_published = False
     offer.save()
     return offer
 
