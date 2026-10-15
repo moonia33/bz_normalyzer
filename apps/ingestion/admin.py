@@ -38,9 +38,40 @@ class OfferTextInline(admin.TabularInline):
     readonly_fields = ["updated_at"]
 
 
+@admin.register(OfferText)
+class OfferTextAdmin(admin.ModelAdmin):
+    list_display = [
+        "offer",
+        "language",
+        "name",
+        "seo_title",
+        "has_description",
+        "updated_at",
+    ]
+    list_filter = ["language"]
+    list_select_related = ["offer", "offer__supplier", "language"]
+    list_per_page = 50
+    raw_id_fields = ["offer"]
+    search_fields = ["offer__external_id", "offer__name", "name"]
+    readonly_fields = ["updated_at"]
+
+    @admin.display(description="Turi aprašymą", boolean=True)
+    def has_description(self, obj):
+        return bool(obj.description)
+
+
 @admin.register(Offer)
 class OfferAdmin(admin.ModelAdmin):
     inlines = [OfferTextInline]
+    list_per_page = 50
+    show_facets = admin.ShowFacets.NEVER
+    list_select_related = [
+        "supplier",
+        "category",
+        "category__parent__parent__parent",
+        "brand",
+        "product",
+    ]
     list_display = [
         "supplier",
         "art_no",
@@ -83,6 +114,7 @@ class OfferAdmin(admin.ModelAdmin):
         "product_group",
     ]
     search_fields = ["name", "external_id", "ean", "sku"]
+    raw_id_fields = ["product"]
     actions = ["publish", "unpublish", "reprice", "deactivate_without_main_image"]
     readonly_fields = ["main_image", "product_group", "art_no"]
 

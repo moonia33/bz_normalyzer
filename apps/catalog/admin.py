@@ -115,9 +115,38 @@ class ProductTextInline(admin.TabularInline):
     fields = ["language", "name", "slug", "description"]
 
 
+@admin.register(ProductText)
+class ProductTextAdmin(admin.ModelAdmin):
+    list_display = [
+        "product",
+        "language",
+        "name",
+        "slug",
+        "seo_title",
+        "has_description",
+        "updated_at",
+    ]
+    list_filter = ["language"]
+    list_select_related = ["product", "language"]
+    list_per_page = 50
+    raw_id_fields = ["product", "source_offer"]
+    search_fields = ["product__sku", "product__name", "name"]
+    readonly_fields = ["created_at", "updated_at"]
+
+    @admin.display(description="Turi aprašymą", boolean=True)
+    def has_description(self, obj):
+        return bool(obj.description)
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     show_facets = admin.ShowFacets.NEVER
+    list_per_page = 50
+    list_select_related = [
+        "category",
+        "category__parent__parent__parent",
+        "brand",
+    ]
     inlines = [ProductTextInline]
     search_fields = ["sku", "name", "ean"]
     list_display = [
@@ -181,19 +210,26 @@ class ProductAdmin(admin.ModelAdmin):
     def image_count(self, obj):
         return _image_count_for(obj)
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("offers__supplier")
+
     @admin.display(description="Suplier category")
     def supplier_category(self, obj):
         if obj.category_raw:
             return obj.category_raw
-        value = obj.offers.exclude(category_raw="").values_list("category_raw", flat=True).first()
-        return value or "-"
+        for offer in obj.offers.all():
+            if offer.category_raw:
+                return offer.category_raw
+        return "-"
 
     @admin.display(description="Suplier sub category")
     def supplier_sub_category(self, obj):
         if obj.sub_category_raw:
             return obj.sub_category_raw
-        value = obj.offers.exclude(sub_category_raw="").values_list("sub_category_raw", flat=True).first()
-        return value or "-"
+        for offer in obj.offers.all():
+            if offer.sub_category_raw:
+                return offer.sub_category_raw
+        return "-"
 
     @admin.display(description="Default store category")
     def default_store_category(self, obj):
@@ -205,8 +241,10 @@ class ProductAdmin(admin.ModelAdmin):
 
     @admin.display(description="Suplier")
     def supplier(self, obj):
-        code = obj.offers.exclude(supplier__code="").values_list("supplier__code", flat=True).first()
-        return code or "-"
+        for offer in obj.offers.all():
+            if offer.supplier_id and offer.supplier.code:
+                return offer.supplier.code
+        return "-"
 
     @admin.action(description="Išjungti be nuotraukų")
     def deactivate_without_image(self, request, queryset):

@@ -68,6 +68,20 @@ Formatavimas:
 - Teksto tonas: informatyvus, pardaviminis (e-komercija).
 - Jei sąrašas – išlaikyk struktūrą; nepersistenk su skyryba."""
 
+# SEO-only režimas: turimus (bet kurios kalbos) tekstus paimame kaip kontekstą
+# ir generuojame tik seo_* laukus, neperrašydami name/description.
+SEO_SYSTEM_PROMPT_TEMPLATE = """Tu esi SEO specialistas, rašantis {lang} kalba žvejybos reikmenų e-komercijai.
+
+Gausi prekės duomenis (pavadinimas, aprašymas, kategorija, prekės ženklas – gali būti bet kuria kalba).
+Sugeneruok tik SEO laukus {lang} kalba.
+
+Taisyklės:
+- seo_title: iki 60 simbolių, privalo turėti prekės esmę (meškerė, ritė, valas, minkštas masalas, boilius...) + prekės ženklą. Jei pavadinime tik modelio kodas – esmę išvesk iš kategorijos/aprašymo.
+- seo_description: 150–160 simbolių, natūralus pardaviminis tekstas.
+- seo_keywords: 5–10 raktažodžių kableliais, {lang} kalba (be prekės kodo/EAN).
+- Prekių ženklai, modelių kodai, vienetai – neverčiami.
+- Išvesk JSON objektą TIK su laukais: "seo_title", "seo_description", "seo_keywords"."""
+
 
 def _estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / 4)
@@ -102,6 +116,11 @@ class Command(BaseCommand):
         parser.add_argument("--model", default=None, help="OpenAI modelis (default iš config)")
         parser.add_argument("--limit", type=int, default=0, help="Riboti eilučių skaičių")
         parser.add_argument("--force", action="store_true", help="Versti viską iš naujo")
+        parser.add_argument(
+            "--seo-only",
+            action="store_true",
+            help="Generuoti tik seo_* laukus (name/description neperrašomi; EN rašoma į Product.seo_*)",
+        )
         parser.add_argument("--out", default=None, help="Išvesties failas")
 
     def _language(self, code: str) -> Language:
@@ -114,9 +133,20 @@ class Command(BaseCommand):
         lang_name = LANG_NAMES.get(lang.code, lang.name or lang.code)
         return SYSTEM_PROMPT_TEMPLATE.format(lang=lang_name)
 
+    def _seo_prompt(self, lang: Language) -> str:
+        lang_name = LANG_NAMES.get(lang.code, lang.name or lang.code)
+        return SEO_SYSTEM_PROMPT_TEMPLATE.format(lang=lang_name)
+
     def handle(self, *args, **options):
         lang = self._language(options["language"])
         options.setdefault("out", options["out"] or f"translation_{lang.code}_batch.jsonl")
+
+        if options["seo_only"]:
+            options["out"] = (
+                options["out"]
+                if options["out"] != f"translation_{lang.code}_batch.jsonl"
+                else f"seo_{lang.code}_batch.jsonl"
+            )
 
         if options["prepare"]:
             self._prepare(lang, options)
@@ -139,19 +169,56 @@ class Command(BaseCommand):
             )
         return qs
 
-    def _prepare(self, lang, options):
-        model = options["model"] or get_config("translation_model", DEFAULT_MODEL)
-        offers = list(self._offers_to_translate(lang, options["force"]))
-        if options["limit"]:
-            offers = offers[: options["limit"]]
-        if not offers:
-            self.stdout.write(f"Nieko versti į '{lang.code}' – visi publikuoti offer'iai jau turi tekstus.")
-            return
+    def _seo_targets(self, lang, force: bool):
+        """`custom_id` prefiksas nusako taikinį: 'ot:<id>' OfferText, 'p:<id>' Product.
 
-        total_tokens = 0
-        system_prompt = self._system_prompt(lang)
-        with open(options["out"], "w", encoding="utf-8") as handle:
-            for offer in offers:
+        - bazinė kalba (en): SEO rašoma į Product.seo_* (nėra OfferText en)
+        - kitos kalbos: į OfferText(target lang).seo_*, propaguojama į ProductText
+        """
+        targets: list[tuple[str, object, dict]] = []
+        if lang.is_base:
+            from apps.catalog.models import Product
+
+            products = Product.objects.filter(
+                is_active=True, offers__is_published=True
+            ).distinct()
+            if not force:
+                products = products.filter(seo_title="")
+            for product in products.iterator():
+                context = {
+                    "name": product.name or "",
+                    "description": product.description or "",
+                    "category": product.category_raw or product.sub_category_raw or "",
+                    "brand": product.brand.name if product.brand_id else "",
+                }
+                targets.append((f"p:{product.id}", product, context))
+            return targets
+
+        texts = OfferText.objects.filter(
+            language=lang, offer__is_published=True
+        ).select_related("offer", "offer__product")
+        if not force:
+            texts = texts.filter(seo_title="")
+        for text in texts.iterator():
+            offer = text.offer
+            context = {
+                "name": text.name or offer.name or "",
+                "description": text.description or offer.description or "",
+                "category": offer.category_raw or offer.sub_category_raw or "",
+                "brand": offer.brand_name_raw or "",
+            }
+            targets.append((f"ot:{text.id}", text, context))
+        return targets
+
+    def _prepare(self, lang, options):
+        seo_only = options["seo_only"]
+        model = options["model"] or get_config("translation_model", DEFAULT_MODEL)
+
+        if seo_only:
+            targets = self._seo_targets(lang, options["force"])
+        else:
+            targets = []
+            for offer in self._offers_to_translate(lang, options["force"]):
                 fields = {
                     "name": offer.name or "",
                     "base_name": offer.base_name or "",
@@ -159,8 +226,21 @@ class Command(BaseCommand):
                     "technical_description": offer.technical_description or "",
                     "category": offer.category_raw or offer.sub_category_raw or "",
                     "brand": offer.brand_name_raw or "",
-                    "seo_title": offer.seo_title if hasattr(offer, "seo_title") else "",
                 }
+                targets.append((f"o:{offer.id}", offer, fields))
+
+        if options["limit"]:
+            targets = targets[: options["limit"]]
+        if not targets:
+            self.stdout.write(f"Nieko daryti '{lang.code}' – viskas jau užpildyta.")
+            return
+
+        total_tokens = 0
+        system_prompt = self._seo_prompt(lang) if seo_only else self._system_prompt(lang)
+        out_tokens = 300 if seo_only else 800
+        written = 0
+        with open(options["out"], "w", encoding="utf-8") as handle:
+            for custom_id, _obj, fields in targets:
                 if not any(fields.values()):
                     continue
                 body = {
@@ -173,21 +253,22 @@ class Command(BaseCommand):
                     ],
                 }
                 line = {
-                    "custom_id": str(offer.id),
+                    "custom_id": custom_id,
                     "method": "POST",
                     "url": "/v1/chat/completions",
                     "body": body,
                 }
                 handle.write(json.dumps(line, ensure_ascii=False) + "\n")
+                written += 1
                 total_tokens += (
                     _estimate_tokens(system_prompt)
                     + _estimate_tokens(json.dumps(fields))
-                    + 600  # išvestis ~ panašus dydis + seo laukai
+                    + out_tokens
                 )
 
         self.stdout.write(self.style.SUCCESS(
-            f"Paruošta {len(offers)} eilučių -> {options['out']}\n"
-            f"Kalba: {lang.code} | Modelis: {model}\n"
+            f"Paruošta {written} eilučių -> {options['out']}\n"
+            f"Kalba: {lang.code} | Modelis: {model} | Režimas: {'seo-only' if seo_only else 'full'}\n"
             f"Apytikslis token'ų įvertis: ~{total_tokens:,}\n"
             f"(Batch API = 50% nuolaida)"
         ))
@@ -280,26 +361,66 @@ class Command(BaseCommand):
         )
         out.raise_for_status()
 
-        ok = errors = 0
-        offer_ids = [int(json.loads(l)["custom_id"]) for l in out.text.splitlines() if l.strip()]
-        offers = {o.id: o for o in Offer.objects.filter(id__in=offer_ids).select_related("product")}
+        rows = [json.loads(l) for l in out.text.splitlines() if l.strip()]
+        offer_ids, text_ids, product_ids = [], [], []
+        for row in rows:
+            prefix, _, raw_id = str(row.get("custom_id", "")).partition(":")
+            if not raw_id.isdigit():
+                continue
+            if prefix == "ot":
+                text_ids.append(int(raw_id))
+            elif prefix == "p":
+                product_ids.append(int(raw_id))
+            else:
+                offer_ids.append(int(raw_id))
 
-        for line in out.text.splitlines():
-            if not line.strip():
+        from apps.catalog.models import Product
+
+        offers = {o.id: o for o in Offer.objects.filter(id__in=offer_ids).select_related("product")}
+        texts = {
+            t.id: t
+            for t in OfferText.objects.filter(id__in=text_ids).select_related("offer", "offer__product")
+        }
+        products = {p.id: p for p in Product.objects.filter(id__in=product_ids)}
+
+        ok = errors = 0
+        for row in rows:
+            prefix, _, raw_id = str(row.get("custom_id", "")).partition(":")
+            content = self._row_content(row)
+            if content is None or not raw_id.isdigit():
+                errors += 1
                 continue
-            row = json.loads(line)
-            offer = offers.get(int(row["custom_id"]))
+            seo = self._seo_fields(content)
+
+            if prefix == "p":
+                product = products.get(int(raw_id))
+                if not product:
+                    errors += 1
+                    continue
+                for key, value in seo.items():
+                    if value:
+                        setattr(product, key, value)
+                product.save(update_fields=list(seo.keys()) + ["updated_at"])
+                ok += 1
+                continue
+
+            if prefix == "ot":
+                text = texts.get(int(raw_id))
+                if not text:
+                    errors += 1
+                    continue
+                for key, value in seo.items():
+                    if value:
+                        setattr(text, key, value)
+                text.save(update_fields=list(seo.keys()) + ["updated_at"])
+                offer = text.offer
+                if offer and offer.product_id:
+                    self._propagate_seo_to_product(offer, lang, seo)
+                ok += 1
+                continue
+
+            offer = offers.get(int(raw_id))
             if not offer:
-                errors += 1
-                continue
-            body = (row.get("response") or {}).get("body") or {}
-            choices = body.get("choices") or []
-            if not choices:
-                errors += 1
-                continue
-            try:
-                content = json.loads(choices[0]["message"]["content"])
-            except (json.JSONDecodeError, KeyError, IndexError):
                 errors += 1
                 continue
             fields = {
@@ -307,9 +428,7 @@ class Command(BaseCommand):
                 "base_name": (content.get("base_name") or "").strip(),
                 "description": (content.get("description") or "").strip(),
                 "technical_description": (content.get("technical_description") or "").strip(),
-                "seo_title": (content.get("seo_title") or "").strip()[:255],
-                "seo_description": (content.get("seo_description") or "").strip()[:320],
-                "seo_keywords": (content.get("seo_keywords") or "").strip()[:255],
+                **seo,
             }
             OfferText.objects.update_or_create(offer=offer, language=lang, defaults=fields)
             if offer.product_id:
@@ -317,8 +436,48 @@ class Command(BaseCommand):
             ok += 1
 
         self.stdout.write(self.style.SUCCESS(
-            f"Įrašyta {ok} '{lang.code}' vertimų (klaidų: {errors})."
+            f"Įrašyta {ok} '{lang.code}' įrašų (klaidų: {errors})."
         ))
+
+    @staticmethod
+    def _row_content(row) -> dict | None:
+        body = (row.get("response") or {}).get("body") or {}
+        choices = body.get("choices") or []
+        if not choices:
+            return None
+        try:
+            return json.loads(choices[0]["message"]["content"])
+        except (json.JSONDecodeError, KeyError, IndexError):
+            return None
+
+    @staticmethod
+    def _seo_fields(content: dict) -> dict:
+        return {
+            "seo_title": (content.get("seo_title") or "").strip()[:255],
+            "seo_description": (content.get("seo_description") or "").strip()[:320],
+            "seo_keywords": (content.get("seo_keywords") or "").strip()[:255],
+        }
+
+    def _propagate_seo_to_product(self, offer, lang, seo):
+        text = ProductText.objects.filter(
+            product_id=offer.product_id, language=lang
+        ).first()
+        if text is None:
+            ProductText.objects.create(
+                product_id=offer.product_id,
+                language=lang,
+                source_offer=offer,
+                **seo,
+            )
+            return
+        if text.source_offer_id not in (None, offer.id):
+            return
+        changed = [k for k, v in seo.items() if v and getattr(text, k) != v]
+        for key in changed:
+            setattr(text, key, seo[key])
+        if changed:
+            text.source_offer = offer
+            text.save(update_fields=[*changed, "source_offer", "updated_at"])
 
     def _propagate_to_product(self, offer, lang, fields):
         from django.utils.text import slugify
