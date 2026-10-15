@@ -89,6 +89,9 @@ class Product(TimeStampedModel):
     description = models.TextField(blank=True)
     technical_description = models.TextField(blank=True)
     combined_full_text = models.TextField(blank=True)
+    seo_title = models.CharField(max_length=255, blank=True)
+    seo_description = models.CharField(max_length=320, blank=True)
+    seo_keywords = models.CharField(max_length=255, blank=True)
     purchase_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     rrp_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     shipping_height_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
@@ -122,6 +125,9 @@ class ProductText(TimeStampedModel):
     description = models.TextField(blank=True)
     technical_description = models.TextField(blank=True)
     combined_full_text = models.TextField(blank=True)
+    seo_title = models.CharField(max_length=255, blank=True)
+    seo_description = models.CharField(max_length=320, blank=True)
+    seo_keywords = models.CharField(max_length=255, blank=True)
     source_offer = models.ForeignKey(
         "ingestion.Offer",
         null=True,

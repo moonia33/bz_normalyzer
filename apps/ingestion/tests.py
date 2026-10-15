@@ -43,6 +43,7 @@ class ImportPipelineTests(TestCase):
                     "category": "Rods",
                     "brand": "Shimano",
                     "stock": 3,
+                    "image": "https://cdn.example/spinningas.jpg",
                 }
             ]
         ).encode()
@@ -59,6 +60,7 @@ class ImportPipelineTests(TestCase):
                     "category_path": "category",
                     "brand_name": "brand",
                     "stock": "stock",
+                    "images": "image",
                 }
             },
         )

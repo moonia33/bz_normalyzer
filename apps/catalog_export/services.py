@@ -48,11 +48,17 @@ def _translation_block(product: Product, base_lang: str) -> dict:
             "name": text.name,
             "slug": text.slug or slugify(text.name)[:220],
             "description": text.description,
+            "seo_title": text.seo_title,
+            "seo_description": text.seo_description,
+            "seo_keywords": text.seo_keywords,
         }
     base = {
         "name": product.name,
         "slug": slugify(product.name)[:220],
         "description": product.description,
+        "seo_title": product.seo_title,
+        "seo_description": product.seo_description,
+        "seo_keywords": product.seo_keywords,
     }
     texts.setdefault(base_lang, base)
     # Shop reikalauja lt; kol nėra vertimų pipeline – bazinis tekstas.
@@ -160,10 +166,18 @@ def _build_variants(offers: list[Offer]) -> list[dict]:
                 "width_cm": _to_int_cm(offer.shipping_width_cm),
                 "length_cm": _to_int_cm(offer.shipping_depth_cm),
                 "stock": {},
+                "images": [],
             }
             variants[key] = existing
             order.append(key)
         existing["stock"][warehouse] = int(existing["stock"].get(warehouse, 0)) + int(stock)
+        # Variantui priskirtos nuotraukos (dedup pagal URL per tiekėjus).
+        for url in offer.images or []:
+            url = str(url).strip()
+            if url and all(v["url"] != url for v in existing["images"]):
+                existing["images"].append(
+                    {"url": url, "alt": offer.name, "sort_order": len(existing["images"])}
+                )
     return [variants[key] for key in order]
 
 

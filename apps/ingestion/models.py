@@ -150,6 +150,9 @@ class OfferText(models.Model):
     description = models.TextField(blank=True)
     technical_description = models.TextField(blank=True)
     combined_full_text = models.TextField(blank=True)
+    seo_title = models.CharField(max_length=255, blank=True)
+    seo_description = models.CharField(max_length=320, blank=True)
+    seo_keywords = models.CharField(max_length=255, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

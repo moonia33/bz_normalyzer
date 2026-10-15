@@ -8,6 +8,8 @@ LANGUAGES = [
     {"code": "lt", "name": "Lietuvių", "is_base": False, "position": 20},
     {"code": "pl", "name": "Lenkų", "is_base": False, "position": 30},
     {"code": "de", "name": "Vokiečių", "is_base": False, "position": 40},
+    {"code": "lv", "name": "Latvių", "is_base": False, "position": 50},
+    {"code": "et", "name": "Estų", "is_base": False, "position": 60},
 ]
 
 FOX_BASE_URL = "https://order.foxtackle.biz/download/FoxPimFiles"

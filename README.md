@@ -517,21 +517,31 @@ python manage.py sync_shop_categories
 
 Komanda paima **visą** shop kategorijų medį per `/api/v1/ops/imports/categories` ir atnaujina vietinį `Category` (slug = shop slug). Reikalingas staff vartotojas (`.env` `SHOP_USER_*`).
 
-### LT vertimas (OpenAI Batch API)
+### AI vertimas (OpenAI Batch API)
 
-Shop reikalauja `translations.lt`; tiekėjų LT feed'ų nėra → LT gauname AI vertimu:
+Shop reikalauja `translations.lt`; tiekėjų LT/LV/ET feed'ų nėra → tas kalbas gauname AI vertimu:
 
 ```powershell
-python manage.py translate_lt --prepare [--limit N]   # sugeneruoja JSONL batch failą
-python manage.py translate_lt --submit                 # įkelia į OpenAI Batch API
-python manage.py translate_lt --status                 # progresas
-python manage.py translate_lt --apply                  # įrašo į OfferText + ProductText
+python manage.py translate_lang --language lt --prepare [--limit N]   # sugeneruoja JSONL batch failą
+python manage.py translate_lang --language lt --submit                 # įkelia į OpenAI Batch API
+python manage.py translate_lang --language lt --status                 # progresas
+python manage.py translate_lang --language lt --apply                  # įrašo į OfferText + ProductText
 ```
 
-- verčiami `name`, `base_name`, `description`, `technical_description` (`combined_full_text` praleidžiamas – jis ir yra `description` šaltinis);
-- system prompt'as turi žvejybos domenu žodynėlį (rod→meškerė, reel→ritė, boilie→boilius...);
-- modelis: `gpt-4.1-mini` default (`ConfigEntry translation_model` arba `--model` perrašo);
+- `--language` – bet kuri aktyvi `Language` kalba (lt/lv/et/pl/de...). Kalbos `lv`, `et` jau registruotos (`setup_feeds`).
+- verčiami `name`, `base_name`, `description`, `technical_description` + generuojami **SEO laukai** (`seo_title`, `seo_description`, `seo_keywords` – rašomi į `OfferText`/`ProductText` ir eksportuojami `translations.<lang>` bloke);
+- system prompt'as turi žvejybos domenu žodynėlį (rod→meškerė, reel→ritė, boilie→boilius...) ir **vardo praturinimo taisyklę**: jei `name` yra tik modelio kodas/prekės ženklas (pvz. "Delphin TOKYO"), modelis prideda prekės esmę iš konteksto ("Delphin TOKYO monofilamentinis valas");
+- batch kontekstui perduodami ir `category`, `brand` laukai;
+- modelis: `gpt-4.1` default (`ConfigEntry translation_model` arba `--model` perrašo);
+- verčiami tik `is_published` offer'iai be tos kalbos `OfferText`; `--force` perrašo viską; batch ID saugomas `ConfigEntry translation_batch_id_<lang>`;
 - kol LT nėra – eksportas naudoja EN fallback (`FALLBACK_TRANSLATION_LANG`).
+
+### SEO laukai
+
+`Product`, `ProductText`, `OfferText` turi `seo_title` / `seo_description` / `seo_keywords` laukus.
+Feed'ai jų nepildo (defaults neištrina AI reikšmių) – jie užpildomi AI vertimo metu (`translate_lang --apply`)
+ir eksportuojami kiekvieno `translations.<lang>` bloko viduje (`seo_title`, `seo_description`, `seo_keywords`).
+Bazinėms EN reikšmėms naudojami `Product.seo_*` laukai.
 
 ### Video (YouTube)
 
@@ -540,9 +550,9 @@ python manage.py translate_lt --apply                  # įrašo į OfferText + 
 - kalbiniai feed'ai merge'ina savo kalbos video (dedup pagal URL); `Product.videos` agreguoja visų offer'ų;
 - eksportui → `videos` blokas; shop'e → `ProductVideo` modelis.
 
-Variantai: `Product` grupuoja susietus `Offer`'ius; kiekvienas offer = variantas (`code`=offer.sku, `ean`, `options.size`, `price_net`, `stock{warehouse:qty}`). Tas pats EAN iš kelių tiekėjų = vienas variantas su kelių sandėlių likučiais.
+Variantai: `Product` grupuoja susietus `Offer`'ius; kiekvienas offer = variantas (`code`=offer.sku, `ean`, `options.size`, `price_net`, `stock{warehouse:qty}`). Tas pats EAN iš kelių tiekėjų = vienas variantas su kelių sandėlių likučiais. **Variantų nuotraukos**: `Offer.images` eksportuojamos `variants[].images` (dedup pagal URL) → shop'e `ProductImage.variants` M2M; produkto `images` lieka bendra galerija.
 
-Vertimai: `translations.en` = baziniai `Product` laukai; `pl`/`de` = `ProductText`/`OfferText` iš kalbinių feed'ų; `lt` = AI vertimas (`translate_lt`) arba EN fallback.
+Vertimai: `translations.en` = baziniai `Product` laukai; `pl`/`de` = `ProductText`/`OfferText` iš kalbinių feed'ų; `lt`/`lv`/`et` = AI vertimas (`translate_lang`) arba EN fallback (`lt`). Kiekvienas kalbos blokas turi `name`, `slug`, `description`, `seo_title`, `seo_description`, `seo_keywords`.
 
 Puslapiavimas:
 
