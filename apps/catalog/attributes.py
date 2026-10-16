@@ -32,6 +32,9 @@ _CANONICAL: list[tuple[str, str, list[str]]] = [
     ("volume", "axis", ["Liquid Volume", "Flüssigkeitsvolumen", "Objętość płynu"]),
     ("line_diameter", "axis", ["Line Ø", "Ø Schnur", "Ø żyłki", "Line Diameter"]),
     ("line_length", "axis", ["Line Length m", "Schnurlänge m", "Długość żyłki m"]),
+    # Gaminio matmuo (ne pakuotės) – kai varijuoja grupėje, tai tikra ašis
+    # (graibšto / matelio / meškerės ilgis). Žemiausias prioritetas.
+    ("unit_length", "axis", ["Unit Length", "Einheitslänge", "Długość jednostki"]),
     # ---- FEATURES ----
     ("transport_length", "feature", ["Transport Length cm", "Transportlänge cm", "Długość transportowa cm"]),
     ("guides_qty", "feature", ["Guides QTY", "Guides Quantity", "Ringanzahl", "Liczba przelotek"]),
@@ -58,7 +61,6 @@ _CANONICAL: list[tuple[str, str, list[str]]] = [
     # ---- IGNORE ----
     ("_unit_height", "ignore", ["Unit Height", "Einheitshöhe", "Wysokość jednostki"]),
     ("_unit_width", "ignore", ["Unit Width", "Einheitsbreite", "Szerokość jednostki"]),
-    ("_unit_length", "ignore", ["Unit Length", "Einheitslänge", "Długość jednostki"]),
     ("_transport_height", "ignore", ["Transport Height", "Transporthöhe", "Wysokość transportu"]),
     ("_transport_width", "ignore", ["Transport Width", "Transportbreite", "Szerokość transportu"]),
     ("_transport_length_raw", "ignore", ["Transport Length", "Transportlänge", "Długość transportu"]),
