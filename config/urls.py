@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path
 
 from apps.api.api import api
@@ -10,6 +11,7 @@ admin.site.site_title = "Normalyzer"
 admin.site.index_title = "Tiekėjų prekių normalizavimas"
 
 urlpatterns = [
+    path("healthz/", lambda request: JsonResponse({"status": "ok"})),
     path("admin/", admin.site.urls),
     path("api/", api.urls),
 ]
