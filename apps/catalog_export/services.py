@@ -70,6 +70,7 @@ from apps.catalog.attributes import (
     AXIS_PRIORITY,
     MAX_OPTIONS,
     classify_label,
+    normalize_option_value,
     strip_axis_prefix,
     value_code,
 )
@@ -108,20 +109,28 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
     """Grupės lygio ašių planas.
 
     - tip_diameter == line_diameter -> viena ašis (line_diameter)
-    - line_diameter + line_length -> sujungta 'line' ašis ("0,18mm / 300m")
     - ašis su ta pačia reikšme visame grupėje -> feature (ne option)
     - max MAX_OPTIONS ašių (pirmenybė: daugiau skirtingų reikšmių, tada
       registrų prioriteto tvarka)
-    Grąžina ({offer_id: {axis: value_code}}, {axis: value} demoted -> features).
+    - reikšmės normalizuojamos (XXL=2xl, '0,08MM'->'0-08mm', White=white)
+
+    Grąžina ({offer_id: {axis: code}}, {axis: label} demoted -> features,
+    {axis: {code: label}} option_labels -> shop OptionValue.label).
     """
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
+    # Reikšmių normalizavimas prieš varying patikrą: 'White'/'white',
+    # 'XXL'/'2XL' yra ta pati reikšmė (ne atskiras variantas).
+    labels: dict[str, dict[str, str]] = {}
     for axes in raw.values():
         if axes.get("tip_diameter") and axes["tip_diameter"] == axes.get("line_diameter"):
             del axes["tip_diameter"]
-        ld, ll = axes.get("line_diameter"), axes.get("line_length")
-        if ld and ll:
-            axes["line"] = f"{ld} / {ll}"
-            del axes["line_diameter"], axes["line_length"]
+        for ax in list(axes):
+            code, label = normalize_option_value(ax, axes[ax])
+            if not code:
+                del axes[ax]
+                continue
+            axes[ax] = code
+            labels.setdefault(ax, {}).setdefault(code, label)
 
     all_axes = {ax for axes in raw.values() for ax in axes}
     varying = {
@@ -132,9 +141,10 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
     # Nevarijuojančios ašys -> feature reikšmės (bendros visam produktui)
     demoted: dict[str, str] = {}
     for ax in all_axes - varying:
-        values = [axes[ax] for axes in raw.values() if ax in axes]
-        if values:
-            demoted[ax] = values[0]
+        for axes in raw.values():
+            if ax in axes:
+                demoted[ax] = labels.get(ax, {}).get(axes[ax], axes[ax])
+                break
     # >MAX_OPTIONS: paliekam ašis, geriausiai išskiriančias variantus
     chosen = sorted(
         varying,
@@ -144,10 +154,10 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
         ),
     )[:MAX_OPTIONS]
     options = {
-        oid: {ax: value_code(v) for ax, v in axes.items() if ax in chosen}
+        oid: {ax: axes[ax] for ax in axes if ax in chosen}
         for oid, axes in raw.items()
     }
-    return options, demoted
+    return options, demoted, labels
 
 
 def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> list[dict]:
@@ -184,12 +194,24 @@ def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> l
     # Ašys su vienoda reikšme visame produkte -> feature
     for ax, value in (demoted_axes or {}).items():
         add(ax, value)
-    # Compliance: Material/Fabric Information -> feature
+    # Compliance: Material/Fabric Information -> feature (trumpa);
+    # gpsr/ingredients -> additional_info (ilgas teisinis tekstas, ne feature)
     compliance = attrs.get("compliance")
     if isinstance(compliance, dict):
-        for key in ("material_fabric", "gpsr", "ingredients"):
-            add(key, compliance.get(key))
+        add("material_fabric", compliance.get("material_fabric"))
     return features
+
+
+def _additional_info(product: Product) -> dict[str, str]:
+    """GPSR / ingredients -> Product.additional_info (ne feature – ilgas tekstas)."""
+    compliance = (product.attributes or {}).get("compliance")
+    if not isinstance(compliance, dict):
+        return {}
+    return {
+        key: str(compliance[key]).strip()
+        for key in ("gpsr", "ingredients")
+        if str(compliance.get(key) or "").strip()
+    }
 
 
 def _images(product: Product) -> list[dict]:
@@ -298,9 +320,9 @@ def _merge_variant(dst: dict, src: dict) -> None:
             dst["images"].append(img)
 
 
-def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str]]:
-    """Variantai + demoted axes (bendros reikšmės -> item features)."""
-    options_by_offer, demoted = _plan_variants(offers)
+def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict]:
+    """Variantai + demoted axes + option value label'ai (axis -> code -> label)."""
+    options_by_offer, demoted, option_labels = _plan_variants(offers)
     variants: list[dict] = []
     index: dict[str, dict] = {}
     for offer in offers:
@@ -330,7 +352,7 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str]]:
             index[key] = variant
         variant["stock"][warehouse] = int(variant["stock"].get(warehouse, 0)) + int(stock)
         _add_offer_images(variant, offer)
-    return variants, demoted
+    return variants, demoted, option_labels
 
 
 def _item_price_net(product: Product, offers: list[Offer]) -> str | None:
@@ -387,7 +409,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
         if not offers:
             continue
 
-        variants, demoted_axes = _build_variants(offers)
+        variants, demoted_axes, option_labels = _build_variants(offers)
         weight_g = None
         if product.shipping_weight_kg is not None:
             weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
@@ -409,6 +431,8 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 "length_cm": _to_int_cm(product.shipping_depth_cm),
                 "translations": _translation_block(product, base_code),
                 "features": _features(product, demoted_axes),
+                "additional_info": _additional_info(product),
+                "option_labels": option_labels,
                 "images": _images(product),
                 "videos": _videos(product),
                 "variants": variants,

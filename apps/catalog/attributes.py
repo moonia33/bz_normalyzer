@@ -151,3 +151,70 @@ def strip_axis_prefix(value: str) -> str:
         if head.strip().lower() in LABEL_MAP or head.strip().lower() in META_LABELS:
             return tail.strip()
     return text
+
+
+# Vienetai, atpažįstami "skaičius+vienetas" reikšmėse (option value normalizacijai)
+_UNITS = (
+    "mm", "cm", "m", "g", "kg", "lbs", "lb", "oz", "ft", "in",
+    "yd", "yds", "ml", "l", "ah", "w", "v", "a",
+)
+_UNIT_VALUE_RE = None  # kompiliuojama tingiai normalize_option_value
+
+
+def normalize_option_value(axis: str, raw) -> tuple[str, str]:
+    """(canonical_code, human_label) – filtrų reikšmių unifikavimas.
+
+    - Dydžių aliasai: 'XXL'/'xxl'/'2XL'/'Xxl'/'XX-Large' -> '2xl' ('2XL')
+    - Vienetai: '0,08MM'/'0.08 mm' -> kodas '0-08mm', label '0,08 mm'
+    - Case: 'White'/'white' -> tas pats kodas 'white'
+    """
+    global _UNIT_VALUE_RE
+    import re
+
+    if _UNIT_VALUE_RE is None:
+        _UNIT_VALUE_RE = re.compile(
+            rf"^(\d+(?:[.,]\d+)?)\s*({'|'.join(_UNITS)})$", re.IGNORECASE
+        )
+    text = re.sub(r"\s+", " ", str(strip_axis_prefix(raw))).strip()
+    if not text:
+        return "", ""
+    norm = text.lower().replace(" ", "")
+    # Dydžių aliasai – flat raktas be tarpų/brūkšnelių ('X-Large'->'xl')
+    flat = norm.replace("-", "").replace("_", "")
+    alias = {
+        "xsmall": "xs", "xtrasmall": "xs", "extrasmall": "xs",
+        "xlarge": "xl", "xtralarge": "xl", "extralarge": "xl",
+        "xxlarge": "2xl", "xxxlarge": "3xl",
+        "onesize": "one-size", "onesizefitsall": "one-size",
+        "free": "one-size", "freesize": "one-size", "uni": "one-size",
+        "small": "s", "medium": "m", "large": "l",
+        "std": "standard",
+    }
+    if flat in alias:
+        code = alias[flat]
+        return code, "One Size" if code == "one-size" else code.upper()
+    m = re.fullmatch(r"(x+|\d+x)l", norm)
+    if m:
+        head = m.group(1)
+        n = len(head) if head.startswith("x") else int(head[:-1])
+        code = "xl" if n == 1 else f"{n}xl"
+        return code, code.upper()
+    if norm in ("xxs", "xs", "s", "m", "l"):
+        return ("2xs" if norm == "xxs" else norm), norm.upper().replace("XXS", "2XS")
+    # skaičius + vienetas: '0,08MM' -> '0-08mm' / '0,08 mm'; '200 M' -> '200m' / '200 m'
+    mu = _UNIT_VALUE_RE.match(norm)
+    if mu:
+        num, unit = mu.group(1), mu.group(2).lower()
+        return value_code(f"{num}{unit}"), f"{num.replace('.', ',')} {unit}"
+    # Plikas skaičius ašyje su žinomu vienetu -> label su vienetu
+    axis_unit = {
+        "line_diameter": "mm", "tip_diameter": "mm", "diameter": "mm",
+        "line_length": "m", "rod_length_m": "m", "rod_length_ft": "ft",
+        "weight": "g", "casting_weight": "g",
+        "unit_length": "cm", "unit_width": "cm", "unit_height": "cm",
+        "transport_length": "cm", "diving_depth": "m",
+        "lure_size": "cm", "volume": "ml",
+    }.get(axis)
+    if axis_unit and re.fullmatch(r"\d+(?:[.,]\d+)?", norm):
+        return value_code(f"{norm}{axis_unit}"), f"{norm.replace('.', ',')} {axis_unit}"
+    return value_code(text), text

@@ -80,7 +80,7 @@ class Command(BaseCommand):
                 continue
             # Planned options (ta pati logika kaip eksporte): tuščia arba
             # dubliuojanti combo -> ne variantas, atskiras produktas.
-            planned, _ = _plan_variants(offers)
+            planned, _, _ = _plan_variants(offers)
             seen_combos: dict[tuple, object] = {}
             to_split = []
             for offer in offers:
