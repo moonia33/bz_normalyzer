@@ -32,9 +32,12 @@ _CANONICAL: list[tuple[str, str, list[str]]] = [
     ("volume", "axis", ["Liquid Volume", "Flüssigkeitsvolumen", "Objętość płynu"]),
     ("line_diameter", "axis", ["Line Ø", "Ø Schnur", "Ø żyłki", "Line Diameter"]),
     ("line_length", "axis", ["Line Length m", "Schnurlänge m", "Długość żyłki m"]),
-    # Gaminio matmuo (ne pakuotės) – kai varijuoja grupėje, tai tikra ašis
-    # (graibšto / matelio / meškerės ilgis). Žemiausias prioritetas.
+    # Gaminio matmenys (ne pakuotės) – kai varijuoja grupėje, tai tikros
+    # ašys (graibšto/matelio ilgis, krepšio plotis ir t.t.). Žemiausias
+    # prioritetas, kad nevaržytų model/color/size.
     ("unit_length", "axis", ["Unit Length", "Einheitslänge", "Długość jednostki"]),
+    ("unit_width", "axis", ["Unit Width", "Einheitsbreite", "Szerokość jednostki"]),
+    ("unit_height", "axis", ["Unit Height", "Einheitshöhe", "Wysokość jednostki"]),
     # ---- FEATURES ----
     ("transport_length", "feature", ["Transport Length cm", "Transportlänge cm", "Długość transportowa cm"]),
     ("guides_qty", "feature", ["Guides QTY", "Guides Quantity", "Ringanzahl", "Liczba przelotek"]),
@@ -59,8 +62,6 @@ _CANONICAL: list[tuple[str, str, list[str]]] = [
     ("length", "shipping", ["Retail Depth cm", "Handelstiefe cm", "Głębokość detaliczna cm"]),
     ("weight_shipping", "shipping", ["Retail Weight gram", "Handelsgewicht g", "Waga detaliczna g"]),
     # ---- IGNORE ----
-    ("_unit_height", "ignore", ["Unit Height", "Einheitshöhe", "Wysokość jednostki"]),
-    ("_unit_width", "ignore", ["Unit Width", "Einheitsbreite", "Szerokość jednostki"]),
     ("_transport_height", "ignore", ["Transport Height", "Transporthöhe", "Wysokość transportu"]),
     ("_transport_width", "ignore", ["Transport Width", "Transportbreite", "Szerokość transportu"]),
     ("_transport_length_raw", "ignore", ["Transport Length", "Transportlänge", "Długość transportu"]),

@@ -246,15 +246,17 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(first.extra["identifiers"]["product_group"], "GRP-1")
         self.assertEqual(first.images, ["https://img.example.com/aaa-1-main.jpg"])
         self.assertEqual(first.main_image_url, "https://img.example.com/aaa-1-main.jpg")
-        # Unit Height -> ignore bucket (nesaugomas attributes)
-        self.assertNotIn("Unit Height", first.attributes.get("axes", {}))
+        # Unit Height -> unit_height axis (gaminio matmuo, gali būti variantas)
+        self.assertEqual(first.attributes["axes"]["unit_height"], 10)
         self.assertNotIn("Unit Height", first.attributes.get("features", {}))
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Width cm"], 29.6)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Height cm"], 2.5)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Depth cm"], 19.8)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Weight gram"], 178)
-        # SPECS klasifikuota: Size -> axis 'size', Unit Height -> ignore
-        self.assertEqual(first.attributes["axes"], {"size": "Medium"})
+        # SPECS klasifikuota: Size -> 'size', Unit Height -> 'unit_height'
+        self.assertEqual(
+            first.attributes["axes"], {"size": "Medium", "unit_height": 10}
+        )
         self.assertNotIn("specs", first.attributes)
         self.assertNotIn("image_files", first.attributes)
 
