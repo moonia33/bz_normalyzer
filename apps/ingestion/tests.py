@@ -221,7 +221,8 @@ class ImportPipelineTests(TestCase):
         first = Offer.objects.get(supplier=supplier, external_id="AAA-1")
         second = Offer.objects.get(supplier=supplier, external_id="AAA-2")
 
-        self.assertEqual(first.base_name, "Group Name")
+        # base_name = Product Description + brand prefiksas
+        self.assertEqual(first.base_name, "Fox Rage Group Name")
         self.assertEqual(first.size_raw, "Medium")
         self.assertEqual(first.shipping_height_cm, Decimal("2.5"))
         self.assertEqual(first.shipping_width_cm, Decimal("29.6"))
@@ -245,11 +246,16 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(first.extra["identifiers"]["product_group"], "GRP-1")
         self.assertEqual(first.images, ["https://img.example.com/aaa-1-main.jpg"])
         self.assertEqual(first.main_image_url, "https://img.example.com/aaa-1-main.jpg")
-        self.assertEqual(first.attributes["specs"]["Unit Height"], 10)
+        # Unit Height -> ignore bucket (nesaugomas attributes)
+        self.assertNotIn("Unit Height", first.attributes.get("axes", {}))
+        self.assertNotIn("Unit Height", first.attributes.get("features", {}))
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Width cm"], 29.6)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Height cm"], 2.5)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Depth cm"], 19.8)
         self.assertEqual(first.attributes["shipping_dimensions"]["Retail Weight gram"], 178)
+        # SPECS klasifikuota: Size -> axis 'size', Unit Height -> ignore
+        self.assertEqual(first.attributes["axes"], {"size": "Medium"})
+        self.assertNotIn("specs", first.attributes)
         self.assertNotIn("image_files", first.attributes)
 
         self.assertEqual(second.brand_name_raw, "Fox Rage")
@@ -257,7 +263,7 @@ class ImportPipelineTests(TestCase):
         self.assertIsNotNone(second.product)
         self.assertEqual(second.product.brand.name, "Fox Rage")
         self.assertEqual(second.product.main_image_url, "https://img.example.com/aaa-2-main.jpg")
-        self.assertEqual(second.product.base_name, "Group Name")
+        self.assertEqual(second.product.base_name, "Fox Rage Group Name")
         self.assertEqual(
             second.images,
             [

@@ -9,6 +9,7 @@ from typing import Any
 import re
 from openpyxl import load_workbook
 
+from apps.catalog.attributes import classify_label
 from apps.ingestion.dto import NormalizedItem
 from apps.suppliers.adapters.base import AdapterError, BaseAdapter
 from apps.suppliers.adapters.registry import register_adapter
@@ -116,6 +117,7 @@ class FoxAdapter(BaseAdapter):
         media_cloud_rows = self._sheet_index(workbook, "MEDIA CLOUD LINKS")
         specs_rows = self._sheet_index(workbook, "SPECS")
         video_rows = self._sheet_index(workbook, "VIDEOS")
+        compliance_rows = self._sheet_index(workbook, "COMPLIANCE")
 
         group_brand_map: dict[str, str] = {}
         group_base_name_map: dict[str, str] = {}
@@ -139,6 +141,7 @@ class FoxAdapter(BaseAdapter):
             text_row = text_rows.get(art_no, {})
             specs_row = specs_rows.get(art_no, {})
             media_cloud_row = media_cloud_rows.get(art_no, {})
+            compliance_row = compliance_rows.get(art_no, {})
             videos = self._extract_videos(video_rows.get(art_no, {}))
 
             variant_name = self._text(base.get("Name"))
@@ -151,6 +154,13 @@ class FoxAdapter(BaseAdapter):
                 or self._text(text_row.get("Brand"))
                 or group_brand_map.get(product_group, "")
             )
+            # Pavadinimui visada priešdedamas brand (jei jo dar nėra).
+            name = variant_name or base_name or art_no
+            if brand_name:
+                if not name.lower().startswith(brand_name.lower()):
+                    name = f"{brand_name} {name}"
+                if base_name and not base_name.lower().startswith(brand_name.lower()):
+                    base_name = f"{brand_name} {base_name}"
 
             category_name = self._text(base.get("Category"))
             sub_category = self._text(base.get("Sub Category"))
@@ -162,8 +172,11 @@ class FoxAdapter(BaseAdapter):
             technical_description = self._text(text_row.get("Techn. Description"))
             combined_full_text = self._text(text_row.get("Combined Full Text"))
 
-            specs_attributes = self._specs_attributes(specs_row)
+            axes, features = self._specs_classified(specs_row)
             shipping_dimensions = self._shipping_dimensions(specs_row)
+            compliance = self._compliance_attributes(compliance_row)
+            if compliance.get("material_fabric"):
+                features.setdefault("material_fabric", compliance["material_fabric"])
             size_raw = self._text(specs_row.get("Size"))
             shipping_height_cm = self._to_decimal(specs_row.get("Retail Height cm"))
             shipping_width_cm = self._to_decimal(specs_row.get("Retail Width cm"))
@@ -188,7 +201,7 @@ class FoxAdapter(BaseAdapter):
             yield {
                 "external_id": art_no,
                 "sku": art_no,
-                "name": variant_name or base_name or art_no,
+                "name": name,
                 "base_name": base_name,
                 "description": combined_full_text or base_name or variant_name,
                 "technical_description": technical_description,
@@ -206,8 +219,12 @@ class FoxAdapter(BaseAdapter):
                 "main_image_url": main_image_url,
                 "videos": videos,
                 "attributes": {
-                    "specs": specs_attributes,
+                    "axes": axes,
+                    "features": features,
+                    "compliance": compliance,
                     "shipping_dimensions": shipping_dimensions,
+                    # be product_group -> atsarginės dalys, jų nereikia
+                    "spare_part": not bool(product_group),
                 },
                 "identifiers": identifiers,
                 "size_raw": size_raw,
@@ -359,20 +376,41 @@ class FoxAdapter(BaseAdapter):
             )
         return cleaned
 
-    def _specs_attributes(self, specs_row: dict[str, Any]) -> dict[str, Any]:
-        if not specs_row:
-            return {}
-        capture = False
-        result: dict[str, Any] = {}
-        for key, value in specs_row.items():
-            if key == "Unit Height":
-                capture = True
-            if not capture:
-                continue
+    def _specs_classified(self, specs_row: dict[str, Any]) -> tuple[dict, dict]:
+        """SPEC lapa -> ({axes: code->value}, {features: code->value}).
+
+        Klasifikuoja per kanoninį registrą (visų kalbų label'iai),
+        shipping ir ignore stulpeliai praleidžiami.
+        """
+        axes: dict[str, Any] = {}
+        features: dict[str, Any] = {}
+        for label, value in (specs_row or {}).items():
             clean = self._clean_value(value)
             if clean in (None, ""):
                 continue
-            result[key] = clean
+            code, kind = classify_label(str(label))
+            if not code:
+                continue
+            if kind == "axis":
+                axes.setdefault(code, clean)
+            elif kind == "feature":
+                features.setdefault(code, clean)
+        return axes, features
+
+    def _compliance_attributes(self, compliance_row: dict[str, Any]) -> dict[str, Any]:
+        """COMPLIANCE lapa -> material_fabric + papildoma info (gpsr, ingredients)."""
+        result: dict[str, Any] = {}
+        for label, value in (compliance_row or {}).items():
+            clean = self._clean_value(value)
+            if clean in (None, ""):
+                continue
+            low = str(label).strip().lower()
+            if "material" in low or "fabric" in low or "materiał" in low or "materialzusammensetzung" in low:
+                result.setdefault("material_fabric", clean)
+            elif "gpsr" in low or "safety regulation" in low:
+                result.setdefault("gpsr", clean)
+            elif "ingredient" in low or "składnik" in low or "inhaltsstoff" in low:
+                result.setdefault("ingredients", clean)
         return result
 
     def _shipping_dimensions(self, specs_row: dict[str, Any]) -> dict[str, Any]:
@@ -399,7 +437,7 @@ class FoxAdapter(BaseAdapter):
     @staticmethod
     def _filter_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
         cleaned = {} if not attributes else {str(key): value for key, value in attributes.items()}
-        allowed = {"specs", "shipping_dimensions"}
+        allowed = {"axes", "features", "compliance", "shipping_dimensions", "spare_part", "specs"}
         for key in list(cleaned):
             if key not in allowed:
                 cleaned.pop(key, None)

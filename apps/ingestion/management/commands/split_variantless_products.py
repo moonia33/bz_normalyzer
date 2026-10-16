@@ -4,7 +4,7 @@ from django.db.models import Count
 from django.utils.text import slugify
 
 from apps.catalog.models import Product, ProductText
-from apps.catalog_export.services import offer_option_combo
+from apps.catalog_export.services import _plan_variants
 from apps.ingestion.models import Offer
 from apps.mapping.models import ProductLink
 
@@ -78,10 +78,13 @@ class Command(BaseCommand):
             if all(not offer.product_group for offer in offers):
                 bad_products.append((product, offers))
                 continue
+            # Planned options (ta pati logika kaip eksporte): tuščia arba
+            # dubliuojanti combo -> ne variantas, atskiras produktas.
+            planned, _ = _plan_variants(offers)
             seen_combos: dict[tuple, object] = {}
             to_split = []
             for offer in offers:
-                combo = tuple(sorted(offer_option_combo(offer).items()))
+                combo = tuple(sorted(planned.get(offer.id, {}).items()))
                 if not combo or combo in seen_combos:
                     to_split.append(offer)
                 else:

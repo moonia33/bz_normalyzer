@@ -86,8 +86,13 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(item["cost_net"], "8.00")
         self.assertEqual(item["weight_g"], 180)
         self.assertEqual(item["tax_class"], "standard")
-        # 'Gear Ratio' -> feature; 'Unit Height' -> logistika, 'Color' -> axis
-        self.assertEqual(item["features"], [{"code": "gear-ratio", "value": "5.1:1"}])
+        # 'Gear Ratio' -> feature; 'Unit Height' -> ignoruojama.
+        # 'Color'/'Size' ašys su viena reikšme produkte -> demote į feature.
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertEqual(feature_codes, {"gear_ratio", "color", "size"})
+        gear = next(f for f in item["features"] if f["code"] == "gear_ratio")
+        self.assertEqual(gear["value"], "5-1-1")
+        self.assertEqual(gear["value_translations"]["en"], "5.1:1")
         self.assertEqual(item["images"][0]["url"], "https://img.example.com/a.jpg")
 
         translations = item["translations"]
@@ -101,9 +106,9 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(len(variants), 1)
         self.assertEqual(variants[0]["code"], "AAA-1")
         self.assertEqual(variants[0]["ean"], "1111111111111")
-        self.assertEqual(
-            variants[0]["options"], {"size": "Medium", "color": "Black/Grey"}
-        )
+        # Vienintelis variantas -> ašys nevarijuoja -> options tuščios,
+        # reikšmės demote į item.features.
+        self.assertEqual(variants[0]["options"], {})
         self.assertEqual(variants[0]["price_net"], "10.00")
         self.assertEqual(variants[0]["stock"], {"fox": 5})
 

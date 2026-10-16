@@ -333,7 +333,9 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
         product, _ = Product.objects.get_or_create(
             sku=sku,
             defaults={
-                "name": item.name,
+                # Product Description (base_name) = bendras produkto vardas;
+                # Name = varianto vardas (offer.name).
+                "name": offer.base_name or item.name,
                 "ean": item.ean,
                 "source_external_id": item.external_id,
                 "description": item.description,
@@ -359,8 +361,9 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
         product.source_external_id = item.external_id
 
     changed_fields: list[str] = []
-    if item.name and (not product.name or product.name == product.base_name or product.name == item.name):
-        product.name = item.name
+    product_name = offer.base_name or item.name
+    if product_name and product.name != product_name:
+        product.name = product_name
         changed_fields.append("name")
     if item.ean and product.ean != item.ean:
         product.ean = item.ean
@@ -717,9 +720,14 @@ def _upsert_offer(
     # RRP yra tik informacinė rekomenduota kaina – selling_price visada iš taisyklių.
     if not partial_update or created:
         offer.selling_price = compute_selling_price(offer)
-    if is_discontinued:
-        offer.is_available = False
-        offer.stock = 0
+    spare_part = bool((item.attributes or {}).get("spare_part")) or (
+        offer.product_group == "" and offer.supplier.code in ("fox", "ccm")
+    )
+    if is_discontinued or spare_part:
+        offer.is_available = False if is_discontinued else offer.is_available
+        if is_discontinued:
+            offer.stock = 0
+        # Atsarginės dalys / nutrauktos prekės nepublikuojamos.
         offer.is_published = False
     elif offer.category_id and offer.selling_price is not None and offer.images:
         # Prekė be nuotraukų nepublikuojama (neeksportuojama į shop).

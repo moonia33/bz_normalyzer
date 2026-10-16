@@ -66,60 +66,129 @@ def _translation_block(product: Product, base_lang: str) -> dict:
     return texts
 
 
-# Option axes: kanoninis axis -> spec raktų kandidatai (case-insensitive).
-# Vienam axis'ui laimi pirmas rastas raktas.
-OPTION_AXES: dict[str, list[str]] = {
-    "size": ["size", "lure size", "hook size"],
-    "color": ["color", "colour", "decor pattern"],
-    "model": ["model"],
-    "diameter": ["line ø", "ø"],
-    "length": ["line length m", "rod length m", "rod length ft"],
-    "weight": ["weight gram"],
-    "casting_weight": ["casting weight gram", "testcurve", "test curve"],
-    "sections": ["sections"],
-    "volume": ["liquid volume"],
-    "tip": ["feedertips"],
-    "capacity": ["mono line capacity m/mm"],
-}
-AXIS_KEYS = {key for keys in OPTION_AXES.values() for key in keys}
-
-# Logistikos/pakuotės spec'ai – jau yra modelio laukuose, features'e nereikia.
-FEATURE_BLOCKLIST_PREFIXES = ("retail ", "transport ", "unit ", "packaging", "battery")
+from apps.catalog.attributes import (
+    AXIS_PRIORITY,
+    MAX_OPTIONS,
+    classify_label,
+    strip_axis_prefix,
+    value_code,
+)
 
 
-def offer_option_combo(offer) -> dict:
-    """Option combo variantui: size_raw + whitelisted spec axes."""
-    options: dict[str, str] = {}
+def offer_axis_values(offer) -> dict[str, str]:
+    """Žali ašių kandidatai: canonical axis -> reikšmė (display).
+
+    Šaltiniai: attributes['axes'] (kanoniniai kodai), legacy
+    attributes['specs'] (lokalizuoti label'iai -> classify_label),
+    MOSS size_raw -> 'size'.
+    """
+    axes: dict[str, str] = {}
     if offer.size_raw:
-        options["size"] = offer.size_raw
-    specs = (offer.attributes or {}).get("specs")
+        axes["size"] = offer.size_raw.strip()
+    attrs = offer.attributes or {}
+    raw_axes = attrs.get("axes")
+    if isinstance(raw_axes, dict):
+        for code, value in raw_axes.items():
+            value = strip_axis_prefix(str(value))
+            if value:
+                axes.setdefault(str(code), value)
+    specs = attrs.get("specs")
     if isinstance(specs, dict):
-        lowered = {str(k).strip().lower(): v for k, v in specs.items()}
-        for axis, keys in OPTION_AXES.items():
-            if axis in options:
+        for label, value in specs.items():
+            code, kind = classify_label(str(label))
+            if kind != "axis" or not code:
                 continue
-            for key in keys:
-                value = str(lowered.get(key, "")).strip()
-                if value:
-                    options[axis] = value
-                    break
-    return options
+            value = strip_axis_prefix(str(value))
+            if value:
+                axes.setdefault(code, value)
+    return axes
 
 
-def _features(product: Product) -> list[dict]:
-    specs = (product.attributes or {}).get("specs")
-    if not isinstance(specs, dict):
-        return []
-    features = []
-    for key, value in specs.items():
-        if value in (None, ""):
-            continue
-        low = str(key).strip().lower()
-        if low in AXIS_KEYS or low.startswith(FEATURE_BLOCKLIST_PREFIXES):
-            continue
-        code = slugify(str(key))[:64] or low.replace(" ", "_")[:64]
-        if code:
-            features.append({"code": code, "value": str(value)})
+def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]]:
+    """Grupės lygio ašių planas.
+
+    - tip_diameter == line_diameter -> viena ašis (line_diameter)
+    - line_diameter + line_length -> sujungta 'line' ašis ("0,18mm / 300m")
+    - ašis su ta pačia reikšme visame grupėje -> feature (ne option)
+    - max MAX_OPTIONS ašių (pirmenybė: daugiau skirtingų reikšmių, tada
+      registrų prioriteto tvarka)
+    Grąžina ({offer_id: {axis: value_code}}, {axis: value} demoted -> features).
+    """
+    raw = {offer.id: offer_axis_values(offer) for offer in offers}
+    for axes in raw.values():
+        if axes.get("tip_diameter") and axes["tip_diameter"] == axes.get("line_diameter"):
+            del axes["tip_diameter"]
+        ld, ll = axes.get("line_diameter"), axes.get("line_length")
+        if ld and ll:
+            axes["line"] = f"{ld} / {ll}"
+            del axes["line_diameter"], axes["line_length"]
+
+    all_axes = {ax for axes in raw.values() for ax in axes}
+    varying = {
+        ax
+        for ax in all_axes
+        if len({axes[ax] for axes in raw.values() if ax in axes}) > 1
+    }
+    # Nevarijuojančios ašys -> feature reikšmės (bendros visam produktui)
+    demoted: dict[str, str] = {}
+    for ax in all_axes - varying:
+        values = [axes[ax] for axes in raw.values() if ax in axes]
+        if values:
+            demoted[ax] = values[0]
+    # >MAX_OPTIONS: paliekam ašis, geriausiai išskiriančias variantus
+    chosen = sorted(
+        varying,
+        key=lambda a: (
+            -len({axes[a] for axes in raw.values() if a in axes}),
+            AXIS_PRIORITY.get(a, 99),
+        ),
+    )[:MAX_OPTIONS]
+    options = {
+        oid: {ax: value_code(v) for ax, v in axes.items() if ax in chosen}
+        for oid, axes in raw.items()
+    }
+    return options, demoted
+
+
+def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> list[dict]:
+    attrs = product.attributes or {}
+    features: list[dict] = []
+    seen: set[str] = set()
+
+    def add(code: str, value, label: str = ""):
+        value = str(value).strip()
+        if not code or not value or code in seen:
+            return
+        seen.add(code)
+        features.append(
+            {
+                "code": code,
+                "value": value_code(value),
+                "name_translations": {"en": label or code.replace("-", " ").replace("_", " ").title()},
+                "value_translations": {"en": value},
+            }
+        )
+
+    # Kanoniniai features (naujas adapterio formatas)
+    raw_features = attrs.get("features")
+    if isinstance(raw_features, dict):
+        for code, value in raw_features.items():
+            add(str(code), value)
+    # Legacy specs: lokalizuoti label'iai -> classify
+    specs = attrs.get("specs")
+    if isinstance(specs, dict):
+        for label, value in specs.items():
+            code, kind = classify_label(str(label))
+            if kind == "feature":
+                add(code, value, str(label))
+    # Ašys su vienoda reikšme visame produkte -> feature
+    for ax, value in (demoted_axes or {}).items():
+        add(ax, value)
+    # Compliance: Material/Fabric Information -> feature
+    compliance = attrs.get("compliance")
+    if isinstance(compliance, dict):
+        for key in ("material_fabric", "gpsr", "ingredients"):
+            add(key, compliance.get(key))
     return features
 
 
@@ -180,7 +249,7 @@ def _variant_keys(offer: Offer) -> set[str]:
     return keys
 
 
-def _new_variant(offer: Offer) -> dict:
+def _new_variant(offer: Offer, options: dict) -> dict:
     price_net = _net(
         offer.selling_price,
         offer.supplier.selling_price_includes_vat,
@@ -190,7 +259,7 @@ def _new_variant(offer: Offer) -> dict:
         "code": _offer_variant_code(offer),
         "product_group_code": offer.product_group or "",
         "ean": offer.ean or "",
-        "options": offer_option_combo(offer),
+        "options": options,
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": (
             str(offer.purchase_price.quantize(Decimal("0.01")))
@@ -229,7 +298,9 @@ def _merge_variant(dst: dict, src: dict) -> None:
             dst["images"].append(img)
 
 
-def _build_variants(offers: list[Offer]) -> list[dict]:
+def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str]]:
+    """Variantai + demoted axes (bendros reikšmės -> item features)."""
+    options_by_offer, demoted = _plan_variants(offers)
     variants: list[dict] = []
     index: dict[str, dict] = {}
     for offer in offers:
@@ -242,7 +313,7 @@ def _build_variants(offers: list[Offer]) -> list[dict]:
             if found is not None and all(found is not h for h in hits):
                 hits.append(found)
         if not hits:
-            variant = _new_variant(offer)
+            variant = _new_variant(offer, options_by_offer.get(offer.id, {}))
             variants.append(variant)
         else:
             variant = hits.pop(0)
@@ -259,7 +330,7 @@ def _build_variants(offers: list[Offer]) -> list[dict]:
             index[key] = variant
         variant["stock"][warehouse] = int(variant["stock"].get(warehouse, 0)) + int(stock)
         _add_offer_images(variant, offer)
-    return variants
+    return variants, demoted
 
 
 def _item_price_net(product: Product, offers: list[Offer]) -> str | None:
@@ -316,7 +387,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
         if not offers:
             continue
 
-        variants = _build_variants(offers)
+        variants, demoted_axes = _build_variants(offers)
         weight_g = None
         if product.shipping_weight_kg is not None:
             weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
@@ -337,7 +408,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 "width_cm": _to_int_cm(product.shipping_width_cm),
                 "length_cm": _to_int_cm(product.shipping_depth_cm),
                 "translations": _translation_block(product, base_code),
-                "features": _features(product),
+                "features": _features(product, demoted_axes),
                 "images": _images(product),
                 "videos": _videos(product),
                 "variants": variants,
