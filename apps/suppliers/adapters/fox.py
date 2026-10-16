@@ -173,7 +173,6 @@ class FoxAdapter(BaseAdapter):
             combined_full_text = self._text(text_row.get("Combined Full Text"))
 
             axes, features = self._specs_classified(specs_row)
-            shipping_dimensions = self._shipping_dimensions(specs_row)
             compliance = self._compliance_attributes(compliance_row)
             if compliance.get("material_fabric"):
                 features.setdefault("material_fabric", compliance["material_fabric"])
@@ -222,7 +221,6 @@ class FoxAdapter(BaseAdapter):
                     "axes": axes,
                     "features": features,
                     "compliance": compliance,
-                    "shipping_dimensions": shipping_dimensions,
                     # be product_group -> atsarginės dalys, jų nereikia
                     "spare_part": not bool(product_group),
                 },
@@ -413,21 +411,6 @@ class FoxAdapter(BaseAdapter):
                 result.setdefault("ingredients", clean)
         return result
 
-    def _shipping_dimensions(self, specs_row: dict[str, Any]) -> dict[str, Any]:
-        dim_keys = [
-            "Retail Height cm",
-            "Retail Width cm",
-            "Retail Depth cm",
-            "Retail Weight gram",
-        ]
-        result: dict[str, Any] = {}
-        for key in dim_keys:
-            value = self._clean_value(specs_row.get(key))
-            if value in (None, ""):
-                continue
-            result[key] = value
-        return result
-
     def _grams_to_kg(self, value: Any) -> Decimal | None:
         grams = self._to_decimal(value)
         if grams is None:
@@ -437,7 +420,7 @@ class FoxAdapter(BaseAdapter):
     @staticmethod
     def _filter_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
         cleaned = {} if not attributes else {str(key): value for key, value in attributes.items()}
-        allowed = {"axes", "features", "compliance", "shipping_dimensions", "spare_part", "specs"}
+        allowed = {"axes", "features", "compliance", "spare_part", "specs"}
         for key in list(cleaned):
             if key not in allowed:
                 cleaned.pop(key, None)

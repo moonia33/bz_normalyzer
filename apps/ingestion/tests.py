@@ -249,10 +249,12 @@ class ImportPipelineTests(TestCase):
         # Unit Height -> unit_height axis (gaminio matmuo, gali būti variantas)
         self.assertEqual(first.attributes["axes"]["unit_height"], 10)
         self.assertNotIn("Unit Height", first.attributes.get("features", {}))
-        self.assertEqual(first.attributes["shipping_dimensions"]["Retail Width cm"], 29.6)
-        self.assertEqual(first.attributes["shipping_dimensions"]["Retail Height cm"], 2.5)
-        self.assertEqual(first.attributes["shipping_dimensions"]["Retail Depth cm"], 19.8)
-        self.assertEqual(first.attributes["shipping_dimensions"]["Retail Weight gram"], 178)
+        # Retail* matmenys -> kanoniniai Offer modelio laukai (Width/Height/Depth cm, Weight kg)
+        self.assertEqual(first.shipping_width_cm, Decimal("29.6"))
+        self.assertEqual(first.shipping_height_cm, Decimal("2.5"))
+        self.assertEqual(first.shipping_depth_cm, Decimal("19.8"))
+        self.assertEqual(first.shipping_weight_kg, Decimal("0.178"))
+        self.assertNotIn("shipping_dimensions", first.attributes)
         # SPECS klasifikuota: Size -> 'size', Unit Height -> 'unit_height'
         self.assertEqual(
             first.attributes["axes"], {"size": "Medium", "unit_height": 10}

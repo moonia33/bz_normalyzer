@@ -39,9 +39,13 @@ class Command(BaseCommand):
                 raise CommandError("Šaltinis nerastas šiam tiekėjui.") from exc
             feeds = expand_feed_to_group(feed)
         else:
-            feeds = list(supplier.feeds.filter(is_active=True).order_by("feed_group", "name"))
+            feeds = list(supplier.feeds.filter(is_active=True))
             if not feeds:
                 raise CommandError("Tiekėjas neturi aktyvių feed'ų.")
+            # Catalog feed'ai pirmiausia – stock/discontinued tik atnaujina
+            # jau sukurtus offer'ius (role!=catalog -> partial update).
+            role_rank = {"catalog": 0, "stock": 1, "discontinued": 2}
+            feeds.sort(key=lambda f: (role_rank.get(f.role or "catalog", 0), f.name))
             # Grupės išskleidžiame: jei feed'as priklauso grupei – imame visą grupę
             # (bazinė kalba pirmiausia), be pasikartojimų.
             expanded: list[SupplierFeed] = []
