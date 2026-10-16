@@ -111,23 +111,13 @@ def _videos(product: Product) -> list[dict]:
     return result
 
 
-def _global_shared_skus() -> set[str]:
-    """sku (art-no), vartojami >1 tiekėjo tarp publikuojamų offer'ių – jiems reikia prefikso."""
-    usage: dict[str, set] = {}
-    for sku, ext, sup in Offer.objects.filter(is_published=True).values_list(
-        "sku", "external_id", "supplier__code"
-    ):
-        usage.setdefault((sku or "").strip() or ext, set()).add(sup)
-    return {sku for sku, suppliers in usage.items() if len(suppliers) > 1}
+def _offer_variant_code(offer: Offer) -> str:
+    """Variant code = shop Variant.sku = tiekėjo art-no.
 
-
-def _offer_variant_code(offer: Offer, shared: set[str] | None = None) -> str:
-    """Variant code = shop Variant.sku. Tiekėjo art-no; supplier prefiksas
-    tik kai tas pats sku ateina iš kelių tiekėjų (kitaip shop susilietų)."""
-    sku = (offer.sku or "").strip() or offer.external_id
-    if shared is not None and sku in shared:
-        return f"{offer.supplier.code}-{sku}"
-    return sku
+    Tas pats art-no iš skirtingų tiekėjų = ta pati prekė/variantas
+    (likučiai eina per warehouse_code), todėl prefikso nereikia.
+    """
+    return (offer.sku or "").strip() or offer.external_id
 
 
 def _to_int_cm(value) -> int:
@@ -139,60 +129,94 @@ def _to_int_cm(value) -> int:
         return 0
 
 
-def _variant_key(offer: Offer, shared: set[str]) -> str:
-    """Tas pats EAN iš kelių tiekėjų = tas pats variantas (keli sandėliai)."""
+def _variant_keys(offer: Offer) -> set[str]:
+    """Identiteto raktai: EAN ir art-no. Sutapęs bet kuris = tas pats variantas."""
+    keys = {f"sku:{_offer_variant_code(offer).lower()}"}
     if offer.ean:
-        return f"ean:{offer.ean.strip().lower()}"
-    return f"sku:{offer.supplier.code}:{_offer_variant_code(offer, shared)}"
+        keys.add(f"ean:{offer.ean.strip().lower()}")
+    return keys
 
 
-def _build_variants(offers: list[Offer], shared: set[str] | None = None) -> list[dict]:
-    shared = shared if shared is not None else _global_shared_skus()
-    variants: dict[str, dict] = {}
-    order: list[str] = []
+def _new_variant(offer: Offer) -> dict:
+    price_net = _net(
+        offer.selling_price,
+        offer.supplier.selling_price_includes_vat,
+        offer.supplier.vat_rate,
+    )
+    return {
+        "code": _offer_variant_code(offer),
+        "product_group_code": offer.product_group or "",
+        "ean": offer.ean or "",
+        "options": {"size": offer.size_raw} if offer.size_raw else {},
+        "price_net": str(price_net) if price_net is not None else None,
+        "cost_net": (
+            str(offer.purchase_price.quantize(Decimal("0.01")))
+            if offer.purchase_price is not None
+            else None
+        ),
+        "weight_g": _to_int_cm(
+            (offer.shipping_weight_kg * 1000) if offer.shipping_weight_kg else None
+        ),
+        "height_cm": _to_int_cm(offer.shipping_height_cm),
+        "width_cm": _to_int_cm(offer.shipping_width_cm),
+        "length_cm": _to_int_cm(offer.shipping_depth_cm),
+        "stock": {},
+        "images": [],
+    }
+
+
+def _add_offer_images(variant: dict, offer: Offer) -> None:
+    for url in offer.images or []:
+        url = str(url).strip()
+        if url and all(v["url"] != url for v in variant["images"]):
+            variant["images"].append(
+                {"url": url, "alt": offer.name, "sort_order": len(variant["images"])}
+            )
+
+
+def _merge_variant(dst: dict, src: dict) -> None:
+    """Sujungia src variantą į dst (union raktų kolizijos atveju)."""
+    for warehouse, qty in src["stock"].items():
+        dst["stock"][warehouse] = dst["stock"].get(warehouse, 0) + qty
+    if not dst["ean"]:
+        dst["ean"] = src["ean"]
+    for img in src["images"]:
+        if all(v["url"] != img["url"] for v in dst["images"]):
+            img = dict(img, sort_order=len(dst["images"]))
+            dst["images"].append(img)
+
+
+def _build_variants(offers: list[Offer]) -> list[dict]:
+    variants: list[dict] = []
+    index: dict[str, dict] = {}
     for offer in offers:
-        key = _variant_key(offer, shared)
         warehouse = _warehouse_code(offer.supplier)
         stock = max(offer.stock or 0, 0) if offer.is_available else 0
-        existing = variants.get(key)
-        if existing is None:
-            price_net = _net(
-                offer.selling_price,
-                offer.supplier.selling_price_includes_vat,
-                offer.supplier.vat_rate,
-            )
-            options = {"size": offer.size_raw} if offer.size_raw else {}
-            existing = {
-                "code": _offer_variant_code(offer, shared),
-                "product_group_code": offer.product_group or "",
-                "ean": offer.ean or "",
-                "options": options,
-                "price_net": str(price_net) if price_net is not None else None,
-                "cost_net": (
-                    str(offer.purchase_price.quantize(Decimal("0.01")))
-                    if offer.purchase_price is not None
-                    else None
-                ),
-                "weight_g": _to_int_cm(
-                    (offer.shipping_weight_kg * 1000) if offer.shipping_weight_kg else None
-                ),
-                "height_cm": _to_int_cm(offer.shipping_height_cm),
-                "width_cm": _to_int_cm(offer.shipping_width_cm),
-                "length_cm": _to_int_cm(offer.shipping_depth_cm),
-                "stock": {},
-                "images": [],
-            }
-            variants[key] = existing
-            order.append(key)
-        existing["stock"][warehouse] = int(existing["stock"].get(warehouse, 0)) + int(stock)
-        # Variantui priskirtos nuotraukos (dedup pagal URL per tiekėjus).
-        for url in offer.images or []:
-            url = str(url).strip()
-            if url and all(v["url"] != url for v in existing["images"]):
-                existing["images"].append(
-                    {"url": url, "alt": offer.name, "sort_order": len(existing["images"])}
-                )
-    return [variants[key] for key in order]
+        keys = _variant_keys(offer)
+        hits: list[dict] = []
+        for key in keys:
+            found = index.get(key)
+            if found is not None and all(found is not h for h in hits):
+                hits.append(found)
+        if not hits:
+            variant = _new_variant(offer)
+            variants.append(variant)
+        else:
+            variant = hits.pop(0)
+            for other in hits:
+                if other in variants:
+                    variants.remove(other)
+                _merge_variant(variant, other)
+                for idx_key, idx_val in index.items():
+                    if idx_val is other:
+                        index[idx_key] = variant
+        if offer.ean and not variant["ean"]:
+            variant["ean"] = offer.ean
+        for key in keys:
+            index[key] = variant
+        variant["stock"][warehouse] = int(variant["stock"].get(warehouse, 0)) + int(stock)
+        _add_offer_images(variant, offer)
+    return variants
 
 
 def _item_price_net(product: Product, offers: list[Offer]) -> str | None:
@@ -237,7 +261,6 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
     if supplier_code:
         products_qs = products_qs.filter(offers__supplier__code=supplier_code)
 
-    shared = _global_shared_skus()
     items: list[dict] = []
     for product in products_qs.iterator(chunk_size=500):
         offers = [
@@ -250,7 +273,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
         if not offers:
             continue
 
-        variants = _build_variants(offers, shared)
+        variants = _build_variants(offers)
         weight_g = None
         if product.shipping_weight_kg is not None:
             weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
@@ -295,10 +318,9 @@ def build_stock_payload(supplier_code: str) -> dict:
         is_published=True,
         is_discontinued=False,
     )
-    shared = _global_shared_skus()
     items = [
         {
-            "code": _offer_variant_code(offer, shared),
+            "code": _offer_variant_code(offer),
             "qty": max(offer.stock or 0, 0) if offer.is_available else 0,
         }
         for offer in offers.iterator()

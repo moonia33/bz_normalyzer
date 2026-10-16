@@ -206,9 +206,32 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         if product:
             return product
 
+    # art-no (sku) – tas pats iš bet kurio tiekėjo = ta pati prekė.
+    product = Product.objects.filter(sku=item.external_id).order_by("pk").first()
+    if not product:
+        product = Product.objects.filter(
+            source_external_id=item.external_id
+        ).order_by("pk").first()
+    if not product:
+        product = (
+            ProductLink.objects.filter(external_id=item.external_id)
+            .select_related("product")
+            .order_by("product_id")
+            .values_list("product_id", flat=True)
+            .first()
+        )
+        product = Product.objects.filter(pk=product).first() if product else None
+    if product:
+        return product
+
     # Heuristikos tik tarp šio tiekėjo jau susietų prekių –
     # kad skirtingų tiekėjų product_group kodai nesusikirstų.
     supplier_products = Product.objects.filter(supplier_links__supplier=job.supplier)
+
+    # base_name tuščias -> 100% ne variantas (atsarginės dalys ir pan.)
+    # – visada atskiras produktas, neskaitant identiteto raktų aukščiau.
+    if not offer.base_name:
+        return None
 
     candidate_filters: list[Q] = []
 
@@ -262,12 +285,6 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         product = supplier_products.filter(candidate).order_by("pk").first()
         if product:
             return product
-
-    # Fallback be base_name/product_group grupuoja tik kategorinio lygio
-    # laukus – atsarginės dalys be grupės neturi identiteto rakto ir
-    # turi gauti atskirą produktą, ne variantą.
-    if not (offer.base_name or offer.product_group):
-        return None
 
     filters = Q()
     if offer.product_group:
