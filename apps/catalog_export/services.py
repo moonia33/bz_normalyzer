@@ -111,10 +111,23 @@ def _videos(product: Product) -> list[dict]:
     return result
 
 
-def _offer_variant_code(offer: Offer) -> str:
-    """Variant code = shop Variant.sku. Supplier prefiksas – FOX/CCM Art-No. gali dubliuotis."""
+def _global_shared_skus() -> set[str]:
+    """sku (art-no), vartojami >1 tiekėjo tarp publikuojamų offer'ių – jiems reikia prefikso."""
+    usage: dict[str, set] = {}
+    for sku, ext, sup in Offer.objects.filter(is_published=True).values_list(
+        "sku", "external_id", "supplier__code"
+    ):
+        usage.setdefault((sku or "").strip() or ext, set()).add(sup)
+    return {sku for sku, suppliers in usage.items() if len(suppliers) > 1}
+
+
+def _offer_variant_code(offer: Offer, shared: set[str] | None = None) -> str:
+    """Variant code = shop Variant.sku. Tiekėjo art-no; supplier prefiksas
+    tik kai tas pats sku ateina iš kelių tiekėjų (kitaip shop susilietų)."""
     sku = (offer.sku or "").strip() or offer.external_id
-    return f"{offer.supplier.code}-{sku}"
+    if shared is not None and sku in shared:
+        return f"{offer.supplier.code}-{sku}"
+    return sku
 
 
 def _to_int_cm(value) -> int:
@@ -126,18 +139,19 @@ def _to_int_cm(value) -> int:
         return 0
 
 
-def _variant_key(offer: Offer) -> str:
+def _variant_key(offer: Offer, shared: set[str]) -> str:
     """Tas pats EAN iš kelių tiekėjų = tas pats variantas (keli sandėliai)."""
     if offer.ean:
         return f"ean:{offer.ean.strip().lower()}"
-    return f"sku:{offer.supplier.code}:{_offer_variant_code(offer)}"
+    return f"sku:{offer.supplier.code}:{_offer_variant_code(offer, shared)}"
 
 
-def _build_variants(offers: list[Offer]) -> list[dict]:
+def _build_variants(offers: list[Offer], shared: set[str] | None = None) -> list[dict]:
+    shared = shared if shared is not None else _global_shared_skus()
     variants: dict[str, dict] = {}
     order: list[str] = []
     for offer in offers:
-        key = _variant_key(offer)
+        key = _variant_key(offer, shared)
         warehouse = _warehouse_code(offer.supplier)
         stock = max(offer.stock or 0, 0) if offer.is_available else 0
         existing = variants.get(key)
@@ -149,7 +163,7 @@ def _build_variants(offers: list[Offer]) -> list[dict]:
             )
             options = {"size": offer.size_raw} if offer.size_raw else {}
             existing = {
-                "code": _offer_variant_code(offer),
+                "code": _offer_variant_code(offer, shared),
                 "product_group_code": offer.product_group or "",
                 "ean": offer.ean or "",
                 "options": options,
@@ -223,6 +237,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
     if supplier_code:
         products_qs = products_qs.filter(offers__supplier__code=supplier_code)
 
+    shared = _global_shared_skus()
     items: list[dict] = []
     for product in products_qs.iterator(chunk_size=500):
         offers = [
@@ -235,7 +250,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
         if not offers:
             continue
 
-        variants = _build_variants(offers)
+        variants = _build_variants(offers, shared)
         weight_g = None
         if product.shipping_weight_kg is not None:
             weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
@@ -280,9 +295,10 @@ def build_stock_payload(supplier_code: str) -> dict:
         is_published=True,
         is_discontinued=False,
     )
+    shared = _global_shared_skus()
     items = [
         {
-            "code": _offer_variant_code(offer),
+            "code": _offer_variant_code(offer, shared),
             "qty": max(offer.stock or 0, 0) if offer.is_available else 0,
         }
         for offer in offers.iterator()

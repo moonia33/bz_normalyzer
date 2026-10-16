@@ -91,7 +91,7 @@ class ExportPayloadTests(TestCase):
 
         variants = item["variants"]
         self.assertEqual(len(variants), 1)
-        self.assertEqual(variants[0]["code"], "fox-AAA-1")
+        self.assertEqual(variants[0]["code"], "AAA-1")
         self.assertEqual(variants[0]["ean"], "1111111111111")
         self.assertEqual(variants[0]["options"], {"size": "Medium"})
         self.assertEqual(variants[0]["price_net"], "10.00")
@@ -124,7 +124,28 @@ class ExportPayloadTests(TestCase):
     def test_stock_payload(self):
         payload = build_stock_payload("fox")
         self.assertEqual(payload["warehouse_code"], "fox")
-        self.assertEqual(payload["items"], [{"code": "fox-AAA-1", "qty": 5}])
+        self.assertEqual(payload["items"], [{"code": "AAA-1", "qty": 5}])
+
+    def test_shared_art_no_between_suppliers_gets_prefix(self):
+        """Tas pats art-no iš dviejų tiekėjų -> supplier prefiksas (Variant.sku unikalus)."""
+        ccm = Supplier.objects.create(code="ccm", name="CCM")
+        Offer.objects.create(
+            supplier=ccm,
+            external_id="AAA-1",
+            sku="AAA-1",
+            name="Kitoks AAA-1",
+            ean="2222222222222",
+            product=self.product,
+            stock=2,
+            is_published=True,
+            selling_price=Decimal("9.90"),
+        )
+        payload = build_catalog_payload()
+        variants = payload["items"][0]["variants"]
+        codes = sorted(v["code"] for v in variants)
+        self.assertEqual(codes, ["ccm-AAA-1", "fox-AAA-1"])
+        stock = build_stock_payload("ccm")
+        self.assertEqual(stock["items"], [{"code": "ccm-AAA-1", "qty": 2}])
 
     def test_warehouse_override(self):
         self.supplier.export_warehouse_code = "fox-main"

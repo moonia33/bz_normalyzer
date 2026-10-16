@@ -263,6 +263,12 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         if product:
             return product
 
+    # Fallback be base_name/product_group grupuoja tik kategorinio lygio
+    # laukus – atsarginės dalys be grupės neturi identiteto rakto ir
+    # turi gauti atskirą produktą, ne variantą.
+    if not (offer.base_name or offer.product_group):
+        return None
+
     filters = Q()
     if offer.product_group:
         filters &= Q(product_group__iexact=offer.product_group)
@@ -288,7 +294,11 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
     product = _find_matching_product(job, item, offer) or offer.product
     if not product:
-        sku = f"{job.supplier.code}-{item.external_id}"[:64]
+        # SKU = tiekėjo art-no; supplier prefiksas tik kolizijos atveju
+        # (tas pats art-no iš kito tiekėjo jau turi produktą).
+        sku = item.external_id[:64]
+        if Product.objects.filter(sku=sku).exists():
+            sku = f"{job.supplier.code}-{item.external_id}"[:64]
         product, _ = Product.objects.get_or_create(
             sku=sku,
             defaults={
