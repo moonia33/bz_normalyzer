@@ -4,6 +4,7 @@ from django.db.models import Count
 from django.utils.text import slugify
 
 from apps.catalog.models import Product, ProductText
+from apps.catalog_export.services import offer_option_combo
 from apps.ingestion.models import Offer
 from apps.mapping.models import ProductLink
 
@@ -65,6 +66,8 @@ class Command(BaseCommand):
         apply_changes = options["apply"]
         taken_skus = set(Product.objects.values_list("sku", flat=True))
 
+        # (product, [offers_išskaidyti]) – tuščias product_group arba
+        # offer'iai, kurių option combo tuščia/dubliuojasi = ne variantai.
         bad_products = []
         for product in (
             Product.objects.annotate(n=Count("offers"))
@@ -74,6 +77,34 @@ class Command(BaseCommand):
             offers = list(product.offers.all())
             if all(not offer.product_group for offer in offers):
                 bad_products.append((product, offers))
+                continue
+            seen_combos: dict[tuple, object] = {}
+            to_split = []
+            for offer in offers:
+                combo = tuple(sorted(offer_option_combo(offer).items()))
+                if not combo or combo in seen_combos:
+                    to_split.append(offer)
+                else:
+                    seen_combos[combo] = offer
+            # Skirtingas sub_category (reels vs spools ir t.t.) -> ne variantai.
+            # Tik plokščiai sub'ai (be '>'): FOX naudoja plokščią tipų
+            # taksonomiją, o MOSS hierarchinę/marketinginę – ten skirtingi
+            # sub'ai gali būti tas pats produktas (valas keliems žūklės būdams).
+            # Offer'iai be sub_category lieka su didžiausiu klasteriu.
+            sub_clusters: dict[str, list] = {}
+            for offer in offers:
+                if offer in to_split:
+                    continue
+                key = (offer.sub_category_raw or "").strip().lower()
+                if key:
+                    sub_clusters.setdefault(key, []).append(offer)
+            if len(sub_clusters) > 1 and all(">" not in k for k in sub_clusters):
+                keep = max(sub_clusters.values(), key=len)
+                for key, cluster in sub_clusters.items():
+                    if cluster is not keep:
+                        to_split.extend(cluster)
+            if to_split:
+                bad_products.append((product, to_split))
 
         self.stdout.write(f"Produktų išskaidymui: {len(bad_products)}")
         renamed = 0
@@ -117,7 +148,11 @@ class Command(BaseCommand):
                 offer.product = new_product
                 offer.save(update_fields=["product", "updated_at"])
                 split_offers += 1
-            product.delete()
+            # Trinti tik visiškai išskaidytą produktą; dalinio skaldymo
+            # atveju produktas lieka su unikalių kombų offer'iais.
+            product.refresh_from_db()
+            if not product.offers.exists():
+                product.delete()
 
         # 'supplier-' prefiksuoti SKU -> art-no, kai laisva
         supplier_codes = list(

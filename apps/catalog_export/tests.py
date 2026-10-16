@@ -36,7 +36,13 @@ class ExportPayloadTests(TestCase):
             category=self.category,
             description="Base EN description",
             images=["https://img.example.com/a.jpg"],
-            attributes={"specs": {"Unit Height": "10"}},
+            attributes={
+                "specs": {
+                    "Gear Ratio": "5.1:1",
+                    "Unit Height": "10",
+                    "Color": "Black",
+                }
+            },
             shipping_weight_kg=Decimal("0.180"),
             purchase_price=Decimal("8.00"),
         )
@@ -59,6 +65,7 @@ class ExportPayloadTests(TestCase):
             purchase_price=Decimal("8.00"),
             selling_price=Decimal("12.10"),
             size_raw="Medium",
+            attributes={"specs": {"Color": "Black/Grey"}},
         )
 
     def test_catalog_payload_shape_and_vat_math(self):
@@ -79,7 +86,8 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(item["cost_net"], "8.00")
         self.assertEqual(item["weight_g"], 180)
         self.assertEqual(item["tax_class"], "standard")
-        self.assertEqual(item["features"], [{"code": "unit-height", "value": "10"}])
+        # 'Gear Ratio' -> feature; 'Unit Height' -> logistika, 'Color' -> axis
+        self.assertEqual(item["features"], [{"code": "gear-ratio", "value": "5.1:1"}])
         self.assertEqual(item["images"][0]["url"], "https://img.example.com/a.jpg")
 
         translations = item["translations"]
@@ -93,7 +101,9 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(len(variants), 1)
         self.assertEqual(variants[0]["code"], "AAA-1")
         self.assertEqual(variants[0]["ean"], "1111111111111")
-        self.assertEqual(variants[0]["options"], {"size": "Medium"})
+        self.assertEqual(
+            variants[0]["options"], {"size": "Medium", "color": "Black/Grey"}
+        )
         self.assertEqual(variants[0]["price_net"], "10.00")
         self.assertEqual(variants[0]["stock"], {"fox": 5})
 

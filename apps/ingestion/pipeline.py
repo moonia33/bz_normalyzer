@@ -236,21 +236,24 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
     candidate_filters: list[Q] = []
 
     if offer.product_group and offer.base_name:
-        candidate_filters.append(
-            Q(product_group__iexact=offer.product_group)
-            & Q(base_name__iexact=offer.base_name)
-        )
-        if offer.category_id:
-            candidate_filters.append(
-                Q(product_group__iexact=offer.product_group)
-                & Q(base_name__iexact=offer.base_name)
-                & Q(category_id=offer.category_id)
-            )
+        # Kai yra sub_category – reikalaujame sutapti, kad
+        # pvz. reel'ai ir jų spare spool'ai nesusilietų į vieną prekę.
         if offer.sub_category_raw:
             candidate_filters.append(
                 Q(product_group__iexact=offer.product_group)
                 & Q(base_name__iexact=offer.base_name)
                 & Q(sub_category_raw__iexact=offer.sub_category_raw)
+            )
+        else:
+            candidate_filters.append(
+                Q(product_group__iexact=offer.product_group)
+                & Q(base_name__iexact=offer.base_name)
+            )
+        if offer.category_id:
+            candidate_filters.append(
+                Q(product_group__iexact=offer.product_group)
+                & Q(base_name__iexact=offer.base_name)
+                & Q(category_id=offer.category_id)
             )
         if offer.family_raw:
             candidate_filters.append(
@@ -281,9 +284,20 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
     if offer.product_group and not offer.sub_category_raw and not offer.family_raw:
         candidate_filters.append(Q(product_group__iexact=offer.product_group))
 
+    def sub_category_ok(product) -> bool:
+        offer_sub = (offer.sub_category_raw or "").strip().lower()
+        product_sub = (product.sub_category_raw or "").strip().lower()
+        # Taisykli tik plokščioms sub taksonomijoms (FOX): hierarchiniai
+        # '>' sub'ai (MOSS) gali skirtis tame pačiame produkte.
+        if ">" in offer_sub or ">" in product_sub:
+            return True
+        # Jei abu turi sub_category – privalo sutapti (kitaip reel'is
+        # su liestų su spare spool'u ir pan.)
+        return not (offer_sub and product_sub and offer_sub != product_sub)
+
     for candidate in candidate_filters:
         product = supplier_products.filter(candidate).order_by("pk").first()
-        if product:
+        if product and sub_category_ok(product):
             return product
 
     filters = Q()

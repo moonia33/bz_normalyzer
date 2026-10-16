@@ -66,6 +66,46 @@ def _translation_block(product: Product, base_lang: str) -> dict:
     return texts
 
 
+# Option axes: kanoninis axis -> spec raktų kandidatai (case-insensitive).
+# Vienam axis'ui laimi pirmas rastas raktas.
+OPTION_AXES: dict[str, list[str]] = {
+    "size": ["size", "lure size", "hook size"],
+    "color": ["color", "colour", "decor pattern"],
+    "model": ["model"],
+    "diameter": ["line ø", "ø"],
+    "length": ["line length m", "rod length m", "rod length ft"],
+    "weight": ["weight gram"],
+    "casting_weight": ["casting weight gram", "testcurve", "test curve"],
+    "sections": ["sections"],
+    "volume": ["liquid volume"],
+    "tip": ["feedertips"],
+    "capacity": ["mono line capacity m/mm"],
+}
+AXIS_KEYS = {key for keys in OPTION_AXES.values() for key in keys}
+
+# Logistikos/pakuotės spec'ai – jau yra modelio laukuose, features'e nereikia.
+FEATURE_BLOCKLIST_PREFIXES = ("retail ", "transport ", "unit ", "packaging", "battery")
+
+
+def offer_option_combo(offer) -> dict:
+    """Option combo variantui: size_raw + whitelisted spec axes."""
+    options: dict[str, str] = {}
+    if offer.size_raw:
+        options["size"] = offer.size_raw
+    specs = (offer.attributes or {}).get("specs")
+    if isinstance(specs, dict):
+        lowered = {str(k).strip().lower(): v for k, v in specs.items()}
+        for axis, keys in OPTION_AXES.items():
+            if axis in options:
+                continue
+            for key in keys:
+                value = str(lowered.get(key, "")).strip()
+                if value:
+                    options[axis] = value
+                    break
+    return options
+
+
 def _features(product: Product) -> list[dict]:
     specs = (product.attributes or {}).get("specs")
     if not isinstance(specs, dict):
@@ -74,7 +114,10 @@ def _features(product: Product) -> list[dict]:
     for key, value in specs.items():
         if value in (None, ""):
             continue
-        code = slugify(str(key))[:64] or str(key).strip().lower().replace(" ", "_")[:64]
+        low = str(key).strip().lower()
+        if low in AXIS_KEYS or low.startswith(FEATURE_BLOCKLIST_PREFIXES):
+            continue
+        code = slugify(str(key))[:64] or low.replace(" ", "_")[:64]
         if code:
             features.append({"code": code, "value": str(value)})
     return features
@@ -147,7 +190,7 @@ def _new_variant(offer: Offer) -> dict:
         "code": _offer_variant_code(offer),
         "product_group_code": offer.product_group or "",
         "ean": offer.ean or "",
-        "options": {"size": offer.size_raw} if offer.size_raw else {},
+        "options": offer_option_combo(offer),
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": (
             str(offer.purchase_price.quantize(Decimal("0.01")))
@@ -419,8 +462,10 @@ def run_export(
     )
     if push:
         path = CATALOG_PATH if kind == ExportRun.Kind.CATALOG else STOCK_PATH
+        # Pilnas katalogas sinchroniškai apply'inasi ~4min – ilgesnis timeout.
+        timeout = 600 if kind == ExportRun.Kind.CATALOG else 120
         try:
-            run.shop_response = push_to_shop(path, payload)
+            run.shop_response = push_to_shop(path, payload, timeout=timeout)
             run.status = ExportRun.Status.PUSHED
         except Exception as exc:
             logger.exception("Eksporto push nepavyko (run #%s)", run.pk)
