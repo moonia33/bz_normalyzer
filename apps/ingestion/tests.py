@@ -528,7 +528,10 @@ class ImportPipelineTests(TestCase):
         variant_offer = Offer.objects.get(supplier=supplier, external_id="101000001")
 
         self.assertEqual(default_offer.product_id, variant_offer.product_id)
-        self.assertEqual(default_offer.purchase_price, Decimal("32.95"))
+        # Savikaina hipotetinė: PRICE_VAT -30%; pardavimo = PRICE_VAT (RRP, su PVM)
+        self.assertEqual(default_offer.purchase_price, Decimal("23.0600"))
+        self.assertEqual(default_offer.rrp_price, Decimal("32.95"))
+        self.assertEqual(default_offer.selling_price, Decimal("32.95"))
         self.assertTrue(default_offer.is_available)
         self.assertEqual(default_offer.stock, 10)
         self.assertFalse(variant_offer.is_available)

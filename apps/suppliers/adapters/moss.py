@@ -81,6 +81,15 @@ class MossAdapter(BaseAdapter):
             shipping_depth_cm = self._to_decimal(row.get("LENGTH"))
             shipping_weight_kg = self._decimal_to_kg_decimal(self._to_decimal(row.get("WEIGHT")))
             stock = self._to_int(row.get("AVAILABLE"))
+            # PRICE_VAT = pardavimo kaina su PVM (RRP atitikmuo).
+            # Savikainos feed'as neduoda – hipotetinė: pardavimo -30% (su PVM,
+            # pipeline konvertuoja į net per purchase_price_includes_vat).
+            price_vat = self._to_decimal(row.get("PRICE_VAT"))
+            purchase_price = (
+                (price_vat * Decimal("0.70")).quantize(Decimal("0.01"))
+                if price_vat is not None
+                else None
+            )
 
             yield {
                 "external_id": external_id,
@@ -94,7 +103,8 @@ class MossAdapter(BaseAdapter):
                 "images": images,
                 "videos": videos,
                 "stock": stock,
-                "purchase_price": self._to_decimal(row.get("PRICE_VAT")),
+                "purchase_price": purchase_price,
+                "rrp_price": price_vat,
                 "currency": "EUR",
                 "is_available": stock > 0,
                 "attributes": {
@@ -152,6 +162,7 @@ class MossAdapter(BaseAdapter):
             "shipping_weight_kg": self._text(base_extra.get("shipping_weight_kg")),
             "base_name": self._text(row.get("base_name")),
             "main_image_url": self._text(base_extra.get("main_image_url")),
+            "rrp_price": self._text(base_extra.get("rrp_price") or row.get("rrp_price")),
         }
 
         stock = self._to_int(row.get("stock"))
