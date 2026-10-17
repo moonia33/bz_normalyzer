@@ -52,9 +52,12 @@ def apply_rule(rule: PriceRule, current: Decimal) -> Decimal:
 
 
 def compute_selling_price(offer: Offer, rules: list[PriceRule] | None = None) -> Decimal | None:
-    if offer.purchase_price is None:
+    # Pardavimo bazė: RRP (jei yra – pvz. FOX 'RRP EUR' su PVM),
+    # kitaip savikaina + markup taisyklės.
+    base = offer.rrp_price if offer.rrp_price is not None else offer.purchase_price
+    if base is None:
         return None
-    current = offer.purchase_price
+    current = base
     rules = rules if rules is not None else list(PriceRule.objects.filter(is_active=True))
     for rule in rules:
         if rule_matches(rule, offer):

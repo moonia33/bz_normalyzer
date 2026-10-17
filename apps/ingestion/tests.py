@@ -241,7 +241,8 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(first.product.shipping_depth_cm, Decimal("19.8"))
         self.assertEqual(first.product.shipping_weight_kg, Decimal("0.178"))
         self.assertEqual(first.rrp_price, Decimal("20.99"))
-        self.assertEqual(first.selling_price, Decimal("10.50"))
+        # Pardavimo kaina = RRP EUR (su PVM); savikaina = Trade EUR be PVM
+        self.assertEqual(first.selling_price, Decimal("20.99"))
         self.assertEqual(first.category, category)
         self.assertEqual(first.extra["identifiers"]["product_group"], "GRP-1")
         self.assertEqual(first.images, ["https://img.example.com/aaa-1-main.jpg"])
