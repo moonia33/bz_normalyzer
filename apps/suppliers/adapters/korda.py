@@ -263,6 +263,20 @@ class KordaAdapter(BaseAdapter):
                 }
             )
 
+        # Feed'e pasitaiko tų pačių barkodų kelioms prekėms
+        # (pvz. *COMP kompensacinės eilutės). Shop reikalauja unikalumo –
+        # barkodą paliekame pirmam, likusieji -> duplicate_barcode.
+        seen_barcodes: set[str] = set()
+        for item in items:
+            barcode = item.get("barcode") or ""
+            if not barcode:
+                continue
+            if barcode in seen_barcodes:
+                item["duplicate_barcode"] = barcode
+                item["barcode"] = ""
+            else:
+                seen_barcodes.add(barcode)
+
         # Grupavimas: vienoda (brand, base be option) -> variantai
         groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
         for item in items:
@@ -348,6 +362,7 @@ class KordaAdapter(BaseAdapter):
             "sub_category_raw": self._text(row.get("subgroup")),
             "commodity_code": self._text(row.get("commodity_code")),
             "country_of_origin": self._text(row.get("country_of_origin")),
+            "duplicate_barcode": self._text(row.get("duplicate_barcode")),
             "package_raw": self._text(row.get("trade_pack_size_raw")),
             "trade_pack_qty": qty if qty > 1 else None,
             "trade_pack_price": row.get("trade_pack_price"),

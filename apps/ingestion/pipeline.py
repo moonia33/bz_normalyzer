@@ -748,8 +748,12 @@ def _upsert_offer(
             offer.stock = 0
         # Atsarginės dalys / nutrauktos prekės nepublikuojamos.
         offer.is_published = False
-    elif offer.category_id and offer.selling_price is not None and offer.images:
-        # Prekė be nuotraukų nepublikuojama (neeksportuojama į shop).
+    elif offer.category_id and offer.selling_price is not None and (
+        offer.images
+        or (getattr(job.feed, "config", None) or {}).get("publish_without_images")
+    ):
+        # Prekė be nuotraukų nepublikuojama (neeksportuojama į shop),
+        # nebent feed'ui leista config publish_without_images.
         offer.is_published = True
     else:
         offer.is_published = False

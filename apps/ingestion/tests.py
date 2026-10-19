@@ -416,6 +416,13 @@ class ImportPipelineTests(TestCase):
              "5060509810826", "No stock", "Baits", "Boilies",
              "2309905100", "GB", "0.20"]
         )
+        # Barkodo dublikatas (kompensacinė eilutė) – ean nueina tik pirmajai
+        ws.append(
+            ["KORDA", "GF079COMP", "F1 Eyed Hook Size 10 COMP",
+             "0.60", "1.99", "no", "per piece", "",
+             "5060137480001", "In stock", "Hooks", "Kamakura",
+             "9507209000", "JP", "0.02"]
+        )
         # praleidžiama: ne skaitinė RRP
         ws.append(
             ["KORDA", "BAD-1", "Invalid RRP item",
@@ -443,8 +450,8 @@ class ImportPipelineTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, ImportJob.Status.SUCCESS)
 
-        # 6 eilutės -> 4 offer'iai (BAD-1 be RRP, TM-1 Team/Marketing)
-        self.assertEqual(Offer.objects.filter(supplier=supplier).count(), 4)
+        # 7 eilutės -> 5 offer'iai (BAD-1 be RRP, TM-1 Team/Marketing)
+        self.assertEqual(Offer.objects.filter(supplier=supplier).count(), 5)
         self.assertFalse(
             Offer.objects.filter(external_id__in=["BAD-1", "TM-1"]).exists()
         )
@@ -482,6 +489,10 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(boilies.purchase_price, Decimal("0.666"))
         self.assertEqual(boilies.selling_price, Decimal("5.99"))
         self.assertFalse(boilies.is_available)  # 'No stock'
+
+        comp = Offer.objects.get(external_id="GF079COMP")
+        self.assertEqual(comp.ean, "")
+        self.assertEqual(comp.extra["duplicate_barcode"], "5060137480001")
 
     def test_import_feed_command_imports_all_active_feeds_and_preserves_base_data(self):
         supplier = Supplier.objects.create(code="fox", name="FOX")
