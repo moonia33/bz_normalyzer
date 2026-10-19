@@ -66,6 +66,66 @@ _SHADE_MODIFIERS = {
 # Headgroup'ai, kurių neimportuojame
 _SKIP_HEADGROUPS = {"team / marketing"}
 
+# Papildomo produktų-info failo (pvz. carpporter.xlsx) numatytoji kalba
+_INFO_DEFAULT_SHEET = "EN"
+
+
+def _md_description(full: str, features: str) -> str:
+    """Full description (pastraipos) + Key features (md sąrašas)."""
+    parts = [full.strip()] if full and full.strip() else []
+    bullets = [
+        line.strip() for line in re.split(r"\n+", features or "") if line.strip()
+    ]
+    if bullets:
+        parts.append("\n".join(f"- {b}" for b in bullets))
+    return "\n\n".join(parts)
+
+
+def read_product_info(path: Any, sheet_name: str = "") -> dict[str, dict[str, Any]]:
+    """Korda product-info xlsx -> {ref: {name, description, images, nb_image}}.
+
+    Lapai pavadinti kalbos kodais (EN/NL/FR/...). 'Also applies to' stulpelyje
+    išvardyti kodai gauna tą pačią info (tas pats produktas kitame feed'e).
+    """
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    names = workbook.sheetnames
+    sheet = (
+        workbook[sheet_name]
+        if sheet_name and sheet_name in names
+        else workbook[_INFO_DEFAULT_SHEET if _INFO_DEFAULT_SHEET in names else names[0]]
+    )
+    rows = sheet.iter_rows(values_only=True)
+    header = [str(h or "").strip() for h in next(rows, [])]
+    col = {h: i for i, h in enumerate(header)}
+
+    def cell(row: tuple, name: str) -> str:
+        i = col.get(name)
+        return str(row[i]).strip() if i is not None and row[i] is not None else ""
+
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        ref = cell(row, "Product Ref")
+        if not ref:
+            continue
+        pictures = [
+            url.strip() for url in re.split(r"[\s]+", cell(row, "Pictures")) if url.strip()
+        ]
+        record = {
+            "name": cell(row, "Product Name"),
+            "description": _md_description(
+                cell(row, "Full description"), cell(row, "Key features")
+            ),
+            "images": pictures,
+            "nb_image": cell(row, "Nb Image"),
+            "headgroup": cell(row, "Headgroup"),
+            "subgroup": cell(row, "Subgroup"),
+        }
+        out[ref] = record
+        for other in re.split(r"[\s,;/]+", cell(row, "Also applies to") or ""):
+            if other.strip():
+                out.setdefault(other.strip(), record)
+    return out
+
 
 def _pop_color(text: str) -> tuple[str, str]:
     """Uodegos galas iš spalvų žodyno -> ('likutis', 'Dark Olive').
@@ -266,6 +326,15 @@ class KordaAdapter(BaseAdapter):
                 }
             )
 
+        # Papildomas produktų-info failas (config info_file) – description/images.
+        info = self._product_info()
+        for item in items:
+            rec = info.get(item["code"])
+            if rec:
+                item["info_description"] = rec["description"]
+                item["info_images"] = rec["images"]
+                item["info_nb_image"] = rec["nb_image"]
+
         # Feed'e pasitaiko tų pačių barkodų kelioms prekėms
         # (pvz. *COMP kompensacinės eilutės). Shop reikalauja unikalumo –
         # barkodą paliekame pirmam, likusieji -> duplicate_barcode.
@@ -321,6 +390,25 @@ class KordaAdapter(BaseAdapter):
                 member["product_group"] = group_code
                 yield member
 
+    def _product_info(self) -> dict[str, dict[str, Any]]:
+        """config info_file -> {ref: info}; failo gali nebūti – tada {}."""
+        rel = str(self.config.get("info_file") or "").strip()
+        if not rel:
+            return {}
+        from pathlib import Path
+
+        from django.conf import settings
+
+        path = Path(rel)
+        if not path.is_absolute():
+            path = Path(settings.BASE_DIR) / rel
+        if not path.exists():
+            return {}
+        sheet = ""
+        if getattr(self.feed, "language", None) and self.feed.language:
+            sheet = (self.feed.language.code or "").upper()
+        return read_product_info(path, sheet)
+
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = self._text(row.get("code"))
         description = self._text(row.get("description"))
@@ -370,6 +458,8 @@ class KordaAdapter(BaseAdapter):
             "commodity_code": self._text(row.get("commodity_code")),
             "country_of_origin": self._text(row.get("country_of_origin")),
             "duplicate_barcode": self._text(row.get("duplicate_barcode")),
+            "info_nb_image": self._text(row.get("info_nb_image")),
+            "main_image_url": (row.get("info_images") or [""])[0],
             "package_raw": self._text(row.get("trade_pack_size_raw")),
             "trade_pack_qty": qty if qty > 1 else None,
             "trade_pack_price": row.get("trade_pack_price"),
@@ -385,9 +475,9 @@ class KordaAdapter(BaseAdapter):
             ean=self._text(row.get("barcode")),
             brand_name=brand,
             category_path=self._text(row.get("headgroup")),
-            description=name,
+            description=self._text(row.get("info_description")) or name,
             attributes={"axes": axes} if axes else {},
-            images=[],
+            images=list(row.get("info_images") or []),
             stock=stock,
             purchase_price=purchase,
             currency="EUR",

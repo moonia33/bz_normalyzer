@@ -15,5 +15,6 @@ class SuppliersConfig(AppConfig):
             generic_json,
             generic_xml,
             korda,
+            korda_info,
             moss,
         )
