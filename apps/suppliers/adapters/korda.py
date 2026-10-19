@@ -236,6 +236,9 @@ class KordaAdapter(BaseAdapter):
             headgroup = self._text(record.get("Headgroup"))
             if headgroup.lower() in _SKIP_HEADGROUPS:
                 continue
+            # Tuščias Headgroup feed'e – atskiras path, kad būtų ką mapinti
+            if not headgroup:
+                headgroup = "Uncategorized"
             code = self._text(record.get("Code"))
             description = self._text(record.get("Description"))
             if not code or not description:
