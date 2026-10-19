@@ -473,7 +473,8 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(hook.extra["country_of_origin"], "JP")
         self.assertEqual(hook.shipping_weight_kg, Decimal("0.02"))
         self.assertEqual(hook.images, [])
-        self.assertEqual(hook.stock, 0)
+        self.assertEqual(hook.stock, 99)  # 'In stock' -> numatytas kiekis
+        self.assertTrue(hook.is_available)
         self.assertEqual(hook.category_raw, "Hooks")
         self.assertEqual(hook.sub_category_raw, "Kamakura")
 
@@ -489,6 +490,7 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(boilies.purchase_price, Decimal("0.666"))
         self.assertEqual(boilies.selling_price, Decimal("5.99"))
         self.assertFalse(boilies.is_available)  # 'No stock'
+        self.assertEqual(boilies.stock, 0)
 
         comp = Offer.objects.get(external_id="GF079COMP")
         self.assertEqual(comp.ean, "")

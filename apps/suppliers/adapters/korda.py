@@ -350,6 +350,10 @@ class KordaAdapter(BaseAdapter):
         }
 
         stock_text = self._text(row.get("stock_text"))
+        # Kiekio feed'e nėra – 'In stock' -> numatytas kiekis
+        # (feed config 'in_stock_qty', default 99), kiti -> 0.
+        in_stock_qty = int(self.config.get("in_stock_qty") or 99)
+        stock = in_stock_qty if stock_text.strip().lower() == "in stock" else 0
         identifiers = {
             "art_no": code,
             "product_group": row.get("product_group", code),
@@ -384,7 +388,7 @@ class KordaAdapter(BaseAdapter):
             description=name,
             attributes={"axes": axes} if axes else {},
             images=[],
-            stock=0,
+            stock=stock,
             purchase_price=purchase,
             currency="EUR",
             is_available=stock_text.strip().lower() != "no stock",
