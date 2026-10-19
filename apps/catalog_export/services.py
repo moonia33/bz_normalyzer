@@ -111,7 +111,9 @@ def offer_axis_values(offer) -> dict[str, str]:
 _LAST_RESORT_AXES = {"unit_length", "unit_width", "unit_height"}
 
 
-def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str], dict]:
+def _plan_variants(
+    offers: list[Offer],
+) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict]]:
     """Grupės lygio ašių planas – minimalus atskyrimo rinkinys.
 
     - tip_diameter == line_diameter -> viena ašis (line_diameter)
@@ -121,8 +123,10 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
       registrų tvarka -> unit_* paskutiniai
     - reikšmės normalizuojamos (XXL=2xl, '0,08MM'->'0-08mm', White=white)
 
-    Grąžina ({offer_id: {axis: code}}, {axis: label} demoted -> features,
-    {axis: {code: label}} option_labels -> shop OptionValue.label).
+    Grąžina ({offer_id: {axis: code}} options, {axis: label} demoted ->
+    product features, {axis: {code: label}} option_labels ->
+    shop OptionValue.label, {offer_id: {axis: label}} variant_features ->
+    variant.features (varijuojančios, neoption ašys)).
     """
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
     # Žalios reikšmės name-match'ui (prieš normalizavimą: '1.75m' name'e)
@@ -179,25 +183,27 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
         candidates.remove(best)
         chosen.append(best)
 
-    # Nepanaudotos ašys -> features. Nevarijuojančios – viena reikšmė;
-    # varijuojančios, bet nereikalingos atskyrimui – visas reikšmes
-    # sujungiam (kitaip parodytume klaidingą vieną vertę).
+    # Nepanaudotos ašys:
+    # - nevarijuojančios -> product features (viena reikšmė visam produktui)
+    # - varijuojančios -> variant.features (kiekvienas variantas turi SAVO
+    #   reikšmę; variant features backend'e laimi prieš product features).
     demoted: dict[str, str] = {}
+    variant_features: dict[int, dict[str, str]] = {offer.id: {} for offer in offers}
     for ax in all_axes - set(chosen):
-        seen_labels: list[str] = []
-        for axes in raw.values():
+        varying_ax = ax in varying
+        for oid, axes in raw.items():
             if ax not in axes:
                 continue
-            label = labels.get(ax, {}).get(axes[ax], axes[ax])
-            if label and label not in seen_labels:
-                seen_labels.append(label)
-        if seen_labels:
-            demoted[ax] = ", ".join(seen_labels)
+            label = labels.get(ax, {}).get(axes[ax], axes[ax]) or axes[ax]
+            if varying_ax:
+                variant_features[oid][ax] = label
+            else:
+                demoted.setdefault(ax, label)
     options = {
         oid: {ax: axes[ax] for ax in axes if ax in chosen}
         for oid, axes in raw.items()
     }
-    return options, demoted, labels
+    return options, demoted, labels, variant_features
 
 
 def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> list[dict]:
@@ -311,7 +317,7 @@ def _variant_keys(offer: Offer) -> set[str]:
     return keys
 
 
-def _new_variant(offer: Offer, options: dict) -> dict:
+def _new_variant(offer: Offer, options: dict, variant_features: dict | None = None) -> dict:
     price_net = _net(
         offer.selling_price,
         offer.supplier.selling_price_includes_vat,
@@ -348,6 +354,16 @@ def _new_variant(offer: Offer, options: dict) -> dict:
         "product_group_code": offer.product_group or "",
         "ean": offer.ean or offer.pack_barcode or "",
         "options": options,
+        "features": [
+            {
+                "code": ax,
+                "value": value_code(label),
+                "name_translations": {"en": ax.replace("-", " ").replace("_", " ").title()},
+                "value_translations": {"en": label},
+            }
+            for ax, label in (variant_features or {}).items()
+            if label
+        ],
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": str(cost_net) if cost_net is not None else None,
         "pack_unit": offer.pack_unit or "",
@@ -389,11 +405,16 @@ def _merge_variant(dst: dict, src: dict) -> None:
         if all(v["url"] != img["url"] for v in dst["images"]):
             img = dict(img, sort_order=len(dst["images"]))
             dst["images"].append(img)
+    existing = {f["code"]: f for f in dst.get("features", [])}
+    for f in src.get("features", []):
+        existing.setdefault(f["code"], f)
+    if existing:
+        dst["features"] = list(existing.values())
 
 
 def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict]:
     """Variantai + demoted axes + option value label'ai (axis -> code -> label)."""
-    options_by_offer, demoted, option_labels = _plan_variants(offers)
+    options_by_offer, demoted, option_labels, variant_features = _plan_variants(offers)
     variants: list[dict] = []
     index: dict[str, dict] = {}
     for offer in offers:
@@ -406,7 +427,11 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
             if found is not None and all(found is not h for h in hits):
                 hits.append(found)
         if not hits:
-            variant = _new_variant(offer, options_by_offer.get(offer.id, {}))
+            variant = _new_variant(
+                offer,
+                options_by_offer.get(offer.id, {}),
+                variant_features.get(offer.id, {}),
+            )
             variants.append(variant)
         else:
             variant = hits.pop(0)

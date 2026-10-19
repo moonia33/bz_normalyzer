@@ -224,10 +224,17 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(labels["1-75m"], "1,75 m")
         self.assertEqual(labels["1-95m"], "1,95 m")
         feature_codes = {f["code"] for f in item["features"]}
-        for demoted in ("model", "unit_width", "unit_height", "unit_length"):
+        # Nevarijuojančios ašys lieka product features; varijuojanti
+        # unit_length nueina į variant.features (kiekvienas turi savo reikšmę).
+        for demoted in ("model", "unit_width", "unit_height"):
             self.assertIn(demoted, feature_codes)
-        unit_len = next(f for f in item["features"] if f["code"] == "unit_length")
-        self.assertEqual(unit_len["value_translations"]["en"], "175 cm, 195 cm")
+        self.assertNotIn("unit_length", feature_codes)
+        variant_features = {
+            v["code"]: {f["code"]: f["value_translations"]["en"] for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(variant_features["GLU132"].get("unit_length"), "175 cm")
+        self.assertEqual(variant_features["GLU133"].get("unit_length"), "195 cm")
 
     def test_options_extend_only_when_combo_collides(self):
         """Antra ašis pridedama tik jei pirmos neužtenka atskirti."""
@@ -244,8 +251,17 @@ class ExportPayloadTests(TestCase):
         # size nevarijuoja -> feature; vienintelė varijuojanti ašis = color
         self.assertEqual(options["C-1"], {"color": "black"})
         self.assertEqual(options["C-2"], {"color": "red"})
-        feature_codes = {f["code"] for f in payload["items"][0]["features"]}
-        self.assertIn("size", feature_codes)
+        item = payload["items"][0]
+        # AAA-1 offer'is turi size_raw='Medium' -> size varijuoja per
+        # variantus -> eina į variant.features, ne product features.
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertNotIn("size", feature_codes)
+        variant_features = {
+            v["code"]: {f["code"]: f["value_translations"]["en"] for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(variant_features["C-1"].get("size"), "2500")
+        self.assertEqual(variant_features["AAA-1"].get("size"), "M")
 
     def test_second_axis_added_only_when_first_collides(self):
         """Size vien neužtenka (dvi eilutės su ta pačia reikšme) ->
