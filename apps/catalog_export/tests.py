@@ -169,6 +169,187 @@ class ExportPayloadTests(TestCase):
         payload = build_stock_payload("fox")
         self.assertEqual(payload["warehouse_code"], "fox-main")
 
+    def _make_offer(self, external_id, name, attrs, **kwargs):
+        defaults = dict(
+            supplier=self.supplier,
+            sku=external_id,
+            product=self.product,
+            is_published=True,
+            is_available=True,
+            selling_price=Decimal("12.10"),
+            purchase_price=Decimal("8.00"),
+        )
+        defaults.update(kwargs)
+        return Offer.objects.create(
+            external_id=external_id, name=name, attributes=attrs, **defaults
+        )
+
+    def test_minimal_options_prefers_size_and_name_match(self):
+        """Horizon Holdall atvejis: size vienintelis skiria variantus –
+        unit_* ir model nebetampa options, nueina į features."""
+        self._make_offer(
+            "GLU132",
+            "Matrix Horizon 2 Rod Stiff Holdall 1.75m",
+            {
+                "axes": {
+                    "size": "1.75m",
+                    "color": "Black/Lime",
+                    "model": "2 Rod",
+                    "unit_width": "22cm",
+                    "unit_height": "17cm",
+                    "unit_length": "175cm",
+                }
+            },
+        )
+        self._make_offer(
+            "GLU133",
+            "Matrix Horizon 2 Rod Stiff Holdall 1.95m",
+            {
+                "axes": {
+                    "size": "1.95m",
+                    "color": "Black/Lime",
+                    "model": "2 Rod",
+                    "unit_width": "22cm",
+                    "unit_height": "17cm",
+                    "unit_length": "195cm",
+                }
+            },
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["GLU132"], {"size": "1-75m"})
+        self.assertEqual(options["GLU133"], {"size": "1-95m"})
+        labels = item["option_labels"]["size"]
+        self.assertEqual(labels["1-75m"], "1,75 m")
+        self.assertEqual(labels["1-95m"], "1,95 m")
+        feature_codes = {f["code"] for f in item["features"]}
+        for demoted in ("model", "unit_width", "unit_height", "unit_length"):
+            self.assertIn(demoted, feature_codes)
+        unit_len = next(f for f in item["features"] if f["code"] == "unit_length")
+        self.assertEqual(unit_len["value_translations"]["en"], "175 cm, 195 cm")
+
+    def test_options_extend_only_when_combo_collides(self):
+        """Antra ašis pridedama tik jei pirmos neužtenka atskirti."""
+        self._make_offer(
+            "C-1", "Reel 2500 Black",
+            {"axes": {"size": "2500", "color": "Black"}},
+        )
+        self._make_offer(
+            "C-2", "Reel 2500 Red",
+            {"axes": {"size": "2500", "color": "Red"}},
+        )
+        payload = build_catalog_payload()
+        options = {v["code"]: v["options"] for v in payload["items"][0]["variants"]}
+        # size nevarijuoja -> feature; vienintelė varijuojanti ašis = color
+        self.assertEqual(options["C-1"], {"color": "black"})
+        self.assertEqual(options["C-2"], {"color": "red"})
+        feature_codes = {f["code"] for f in payload["items"][0]["features"]}
+        self.assertIn("size", feature_codes)
+
+    def test_second_axis_added_only_when_first_collides(self):
+        """Size vien neužtenka (dvi eilutės su ta pačia reikšme) ->
+        pridedama kita ašis, kuri išspjaudžia kolizijas."""
+        self._make_offer(
+            "D-1", "Chair Camo",
+            {"axes": {"size": "Std", "color": "Camo"}},
+        )
+        self._make_offer(
+            "D-2", "Chair Green",
+            {"axes": {"size": "Std", "color": "Green"}},
+        )
+        self._make_offer(
+            "D-3", "Chair XL Camo",
+            {"axes": {"size": "XL", "color": "Camo"}},
+        )
+        payload = build_catalog_payload()
+        options = {v["code"]: v["options"] for v in payload["items"][0]["variants"]}
+        self.assertEqual(options["D-1"], {"color": "camo", "size": "standard"})
+        self.assertEqual(options["D-2"], {"color": "green", "size": "standard"})
+        self.assertEqual(options["D-3"], {"color": "camo", "size": "xl"})
+
+    def test_empty_none_and_zero_values_ignored(self):
+        """'None'/'0'/tuščios reikšmės netampa nei options, nei features."""
+        self.product.attributes = {
+            "features": {"material_fabric": "None", "sections": "4"},
+            "compliance": {"material_fabric": "none"},
+        }
+        self.product.save(update_fields=["attributes"])
+        self._make_offer(
+            "N-1", "Chair",
+            {"axes": {"size": "None", "unit_height": "0"}},
+        )
+        self._make_offer(
+            "N-2", "Chair XL",
+            {"axes": {"size": "XL", "unit_height": "0"}},
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        # size 'None' dingsta -> N-1 neturi option; N-2 turi 'xl'
+        self.assertEqual(options["N-1"], {})
+        self.assertEqual(options["N-2"], {"size": "xl"})
+        self.assertNotIn("unit_height", item["option_labels"])
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertNotIn("material_fabric", feature_codes)
+        self.assertIn("sections", feature_codes)
+
+    def test_sold_as_pack_variant_uses_pack_prices_and_barcode(self):
+        """'Dėžė kaip prekė': ean=pack barcode, kainos ×trade_pack_qty."""
+        self.offer.delete()
+        self._make_offer(
+            "NZS-1",
+            "Zander Pro Shad 7.5cm UV Perch 60pcs",
+            {},
+            ean="5056212116980",
+            pack_barcode="5056212116980",
+            pack_unit="pcs",
+            trade_pack_qty=60,
+            sold_as_pack=True,
+            purchase_price=Decimal("0.50"),
+            selling_price=Decimal("1.00"),
+        )
+        payload = build_catalog_payload()
+        variant = payload["items"][0]["variants"][0]
+        # 1.00 gross -> 0.83 net (suapvalinta /1.21 = 0.8264..); ×60 -> 49.59? net*sėk
+        # price_net skaičiuojamas iš selling×qty -> 60.00 gross -> 49.59 net
+        self.assertEqual(variant["ean"], "5056212116980")
+        self.assertEqual(variant["sold_as_pack"], True)
+        self.assertEqual(variant["trade_pack_qty"], 60)
+        self.assertEqual(variant["pack_barcode"], "5056212116980")
+        self.assertEqual(variant["pack_price"], "49.59")
+        self.assertEqual(variant["pack_purchase_price"], "30.00")
+        self.assertEqual(variant["price_net"], "49.59")
+        self.assertEqual(variant["cost_net"], "30.00")
+
+    def test_regular_offer_exports_pack_fields(self):
+        self.offer.delete()
+        self._make_offer(
+            "P-1",
+            "Both EAN item",
+            {},
+            ean="1111111111111",
+            pack_barcode="5555555555551",
+            pack_unit="pcs",
+            pack_quantity=2,
+            trade_pack_qty=5,
+            sold_as_pack=False,
+            purchase_price=Decimal("3.50"),
+            selling_price=Decimal("6.99"),
+        )
+        payload = build_catalog_payload()
+        variant = payload["items"][0]["variants"][0]
+        self.assertEqual(variant["ean"], "1111111111111")
+        self.assertEqual(variant["pack_barcode"], "5555555555551")
+        self.assertEqual(variant["pack_unit"], "pcs")
+        self.assertEqual(variant["pack_quantity"], 2)
+        self.assertEqual(variant["trade_pack_qty"], 5)
+        self.assertFalse(variant["sold_as_pack"])
+        # 6.99 gross -> 5.78 net; ×5 -> 28.88; cost 3.50×5=17.50
+        self.assertEqual(variant["price_net"], "5.78")
+        self.assertEqual(variant["pack_price"], "28.88")
+        self.assertEqual(variant["pack_purchase_price"], "17.50")
+
     def test_payload_hash_stable(self):
         p1 = build_catalog_payload()
         p2 = build_catalog_payload()

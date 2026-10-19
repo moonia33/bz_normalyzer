@@ -99,6 +99,19 @@ class Offer(TimeStampedModel):
     shipping_width_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     shipping_depth_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     shipping_weight_kg = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    # Pakuotės / trade-pack informacija (FOX Trade Pack QTY, Pack Unit...)
+    pack_unit = models.CharField(max_length=32, blank=True)
+    pack_quantity = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Vienetų consumer pakuotėje (twin pack ir t.t.)"
+    )
+    trade_pack_qty = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Vienetų transporto dėžėje (Trade Pack QTY)"
+    )
+    pack_barcode = models.CharField(max_length=32, blank=True)
+    sold_as_pack = models.BooleanField(
+        default=False,
+        help_text="Nėra vienetinio EAN – parduodama tik dėžėmis; kaina = vieneto kaina × trade_pack_qty.",
+    )
     currency = models.CharField(max_length=8, default="EUR")
     is_available = models.BooleanField(default=True)
     is_discontinued = models.BooleanField(

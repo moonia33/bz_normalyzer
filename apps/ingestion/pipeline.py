@@ -672,6 +672,25 @@ def _upsert_offer(
         offer.shipping_depth_cm = incoming_shipping_depth_cm
     if incoming_shipping_weight_kg is not None or not partial_update or created:
         offer.shipping_weight_kg = incoming_shipping_weight_kg
+    incoming_pack_unit = _extra_text(item.extra, "pack_unit")
+    incoming_pack_quantity = _extra_int(item.extra, "pack_quantity")
+    incoming_trade_pack_qty = _extra_int(item.extra, "trade_pack_qty")
+    incoming_pack_barcode = _extra_text(item.extra, "pack_barcode")
+    incoming_sold_as_pack = bool(
+        (item.extra or {}).get("sold_as_pack")
+        if isinstance(item.extra, dict)
+        else False
+    )
+    if incoming_pack_unit or not partial_update or created:
+        offer.pack_unit = incoming_pack_unit
+    if incoming_pack_quantity is not None or not partial_update or created:
+        offer.pack_quantity = incoming_pack_quantity
+    if incoming_trade_pack_qty is not None or not partial_update or created:
+        offer.trade_pack_qty = incoming_trade_pack_qty
+    if incoming_pack_barcode or not partial_update or created:
+        offer.pack_barcode = incoming_pack_barcode
+    if not partial_update or created:
+        offer.sold_as_pack = incoming_sold_as_pack
     incoming_family = _extra_text(item.extra, "family_raw")
     if incoming_family or not partial_update or created:
         offer.family_raw = incoming_family
@@ -790,6 +809,16 @@ def _extra_decimal(extra: dict, key: str) -> Decimal | None:
     try:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
+        return None
+
+
+def _extra_int(extra: dict, key: str) -> int | None:
+    value = _extra_decimal(extra, key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
         return None
 
 

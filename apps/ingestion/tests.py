@@ -286,6 +286,89 @@ class ImportPipelineTests(TestCase):
         self.assertNotIn("image_files", second.product.attributes)
         self.assertTrue(Brand.objects.filter(name="Fox Rage").exists())
 
+    def test_fox_adapter_pack_fields_and_ean_fallback(self):
+        """Trade Pack laukai + barkodų fallback.
+
+        - Abu EAN -> ean=single, pack_barcode=tradepack
+        - Tik single -> sold_as_pack=False
+        - Tik tradepack -> ean=pack, sold_as_pack=True ('dėžė kaip prekė')
+        """
+        supplier = Supplier.objects.create(code="fox", name="FOX")
+
+        workbook = Workbook()
+        base_ws = workbook.active
+        base_ws.title = "BASE"
+        base_ws.append(
+            [
+                "Art-No.",
+                "Product Group",
+                "Brand",
+                "Name",
+                "Trade EUR",
+                "RRP EUR",
+                "Barcode Single EAN",
+                "Barcode Tradepack EAN",
+                "Pack Unit",
+                "Pack Quantity",
+                "Trade Pack QTY",
+                "Category",
+            ]
+        )
+        base_ws.append(
+            [
+                "AAA-1", "GRP-1", "Fox Rage", "Both EAN",
+                "3.5", "6.99", "1111111111111", "5555555555551",
+                "pcs", 1, 5, "Accessories",
+            ]
+        )
+        base_ws.append(
+            [
+                "AAA-2", "GRP-1", "Fox Rage", "Single only",
+                "4.11", "8.46", "2222222222222", "",
+                "pcs", 1, 1, "Accessories",
+            ]
+        )
+        base_ws.append(
+            [
+                "NZS-1", "GRP-2", "Fox Rage", "Pack only 60pcs",
+                "0.5", "1.0", "", "5056212116980",
+                "pcs", 1, 60, "Accessories",
+            ]
+        )
+
+        payload = BytesIO()
+        workbook.save(payload)
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="FOX pack demo",
+            kind=SourceKind.EXCEL_UPLOAD,
+            adapter_code="fox",
+        )
+        feed.file.save("fox_pack.xlsx", ContentFile(payload.getvalue()), save=True)
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        run_import(job)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ImportJob.Status.SUCCESS)
+
+        both = Offer.objects.get(supplier=supplier, external_id="AAA-1")
+        self.assertEqual(both.ean, "1111111111111")
+        self.assertEqual(both.pack_barcode, "5555555555551")
+        self.assertEqual(both.pack_unit, "pcs")
+        self.assertEqual(both.pack_quantity, 1)
+        self.assertEqual(both.trade_pack_qty, 5)
+        self.assertFalse(both.sold_as_pack)
+
+        single = Offer.objects.get(supplier=supplier, external_id="AAA-2")
+        self.assertEqual(single.ean, "2222222222222")
+        self.assertEqual(single.pack_barcode, "")
+        self.assertFalse(single.sold_as_pack)
+
+        pack_only = Offer.objects.get(supplier=supplier, external_id="NZS-1")
+        self.assertEqual(pack_only.ean, "5056212116980")
+        self.assertEqual(pack_only.pack_barcode, "5056212116980")
+        self.assertEqual(pack_only.trade_pack_qty, 60)
+        self.assertTrue(pack_only.sold_as_pack)
+
     def test_import_feed_command_imports_all_active_feeds_and_preserves_base_data(self):
         supplier = Supplier.objects.create(code="fox", name="FOX")
         category = Category.objects.create(name="Accessories")

@@ -153,6 +153,47 @@ def strip_axis_prefix(value: str) -> str:
     return text
 
 
+# Reikšmės-be-informacijos: netampa nei option, nei feature reikšmėmis.
+EMPTY_ATTR_VALUES = {
+    "", "none", "n/a", "na", "null", "-", "--", "—", "–", "no",
+    "0", "0.0", "0,0", "0.00", "0,00",
+}
+
+
+def is_meaningful_value(value) -> bool:
+    """Ar atributo reikšmė informatyvi (ne tuščia/'none'/'0' ir t.t.)."""
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    return bool(text) and text not in EMPTY_ATTR_VALUES
+
+
+def value_in_name(axis: str, raw_value, name: str) -> bool:
+    """Ar ašies reikšmė atsiranda varianto pavadinime.
+
+    '1.75m'/'1,75 m' atitinka 'Holdall 1.75m' (sulygiuota ,/. ir tarpai).
+    Grynoms skaitinėms reikšmėms reikalaujama skaitmens ribų abiejose
+    pusėse, kad '200' neatitiktų '1200'.
+    """
+    import re
+
+    flat_value = re.sub(r"[^a-z0-9.]+", "", str(raw_value or "").lower().replace(",", "."))
+    if len(flat_value) < 2:
+        return False
+    flat_name = re.sub(r"[^a-z0-9.]+", "", str(name or "").lower().replace(",", "."))
+    if flat_value not in flat_name:
+        return False
+    for match in re.finditer(re.escape(flat_value), flat_name):
+        before = flat_name[match.start() - 1] if match.start() else ""
+        after = flat_name[match.end()] if match.end() < len(flat_name) else ""
+        if flat_value[0].isdigit() and before.isdigit():
+            continue
+        if after.isdigit():
+            continue
+        return True
+    return False
+
+
 # Vienetai, atpažįstami "skaičius+vienetas" reikšmėse (option value normalizacijai)
 _UNITS = (
     "mm", "cm", "m", "g", "kg", "lbs", "lb", "oz", "ft", "in",
@@ -176,7 +217,7 @@ def normalize_option_value(axis: str, raw) -> tuple[str, str]:
             rf"^(\d+(?:[.,]\d+)?)\s*({'|'.join(_UNITS)})$", re.IGNORECASE
         )
     text = re.sub(r"\s+", " ", str(strip_axis_prefix(raw))).strip()
-    if not text:
+    if not is_meaningful_value(text):
         return "", ""
     norm = text.lower().replace(" ", "")
     # Dydžių aliasai – flat raktas be tarpų/brūkšnelių ('X-Large'->'xl')

@@ -9,7 +9,7 @@ from typing import Any
 import re
 from openpyxl import load_workbook
 
-from apps.catalog.attributes import classify_label
+from apps.catalog.attributes import classify_label, is_meaningful_value
 from apps.ingestion.dto import NormalizedItem
 from apps.suppliers.adapters.base import AdapterError, BaseAdapter
 from apps.suppliers.adapters.registry import register_adapter
@@ -182,11 +182,24 @@ class FoxAdapter(BaseAdapter):
             shipping_depth_cm = self._to_decimal(specs_row.get("Retail Depth cm"))
             shipping_weight_kg = self._grams_to_kg(specs_row.get("Retail Weight gram"))
 
+            single_ean = self._text(base.get("Barcode Single EAN"))
+            pack_ean = self._text(base.get("Barcode Tradepack EAN"))
+            # Trade Pack QTY = vienetų transporto dėžėje; Pack Quantity =
+            # vienetų consumer pakuotėje (twin pack ir t.t.).
+            trade_pack_qty = self._to_int(base.get("Trade Pack QTY"))
+            pack_quantity = self._to_int(base.get("Pack Quantity"))
+            pack_unit = self._text(base.get("Pack Unit"))
+            # Nėra vienetinio EAN -> parduodama tik dėžėmis ("dėžė kaip prekė").
+            sold_as_pack = bool(pack_ean) and not single_ean
             identifiers = {
                 "art_no": art_no,
                 "product_group": product_group,
-                "barcode_single_ean": self._text(base.get("Barcode Single EAN")),
-                "barcode_tradepack_ean": self._text(base.get("Barcode Tradepack EAN")),
+                "barcode_single_ean": single_ean,
+                "barcode_tradepack_ean": pack_ean,
+                "pack_unit": pack_unit,
+                "pack_quantity": pack_quantity,
+                "trade_pack_qty": trade_pack_qty,
+                "sold_as_pack": sold_as_pack,
             }
 
             raw_joined = {
@@ -209,7 +222,7 @@ class FoxAdapter(BaseAdapter):
                 "category_path": category_name,
                 "sub_category_raw": sub_category,
                 "family_raw": family,
-                "ean": identifiers["barcode_single_ean"],
+                "ean": single_ean or pack_ean,
                 "purchase_price": self._to_decimal(base.get("Trade EUR")),
                 "rrp_price": self._to_decimal(base.get("RRP EUR")),
                 "currency": "EUR",
@@ -259,6 +272,23 @@ class FoxAdapter(BaseAdapter):
             "technical_description": self._text(row.get("technical_description")),
             "combined_full_text": self._text(row.get("combined_full_text")),
             "rrp_price": self._to_decimal(row.get("rrp_price")),
+            "pack_unit": self._text(row.get("identifiers", {}).get("pack_unit"))
+            if isinstance(row.get("identifiers"), dict)
+            else "",
+            "pack_quantity": row.get("identifiers", {}).get("pack_quantity")
+            if isinstance(row.get("identifiers"), dict)
+            else None,
+            "trade_pack_qty": row.get("identifiers", {}).get("trade_pack_qty")
+            if isinstance(row.get("identifiers"), dict)
+            else None,
+            "pack_barcode": self._text(row.get("identifiers", {}).get("barcode_tradepack_ean"))
+            if isinstance(row.get("identifiers"), dict)
+            else "",
+            "sold_as_pack": bool(
+                row.get("identifiers", {}).get("sold_as_pack")
+                if isinstance(row.get("identifiers"), dict)
+                else False
+            ),
         }
 
         filtered_attributes = self._filter_attributes(attributes)
@@ -384,7 +414,7 @@ class FoxAdapter(BaseAdapter):
         features: dict[str, Any] = {}
         for label, value in (specs_row or {}).items():
             clean = self._clean_value(value)
-            if clean in (None, ""):
+            if not is_meaningful_value(clean):
                 continue
             code, kind = classify_label(str(label))
             if not code:
@@ -400,7 +430,7 @@ class FoxAdapter(BaseAdapter):
         result: dict[str, Any] = {}
         for label, value in (compliance_row or {}).items():
             clean = self._clean_value(value)
-            if clean in (None, ""):
+            if not is_meaningful_value(clean):
                 continue
             low = str(label).strip().lower()
             if "material" in low or "fabric" in low or "materiał" in low or "materialzusammensetzung" in low:
@@ -410,6 +440,15 @@ class FoxAdapter(BaseAdapter):
             elif "ingredient" in low or "składnik" in low or "inhaltsstoff" in low:
                 result.setdefault("ingredients", clean)
         return result
+
+    def _to_int(self, value: Any) -> int | None:
+        number = self._to_decimal(value)
+        if number is None:
+            return None
+        try:
+            return int(number)
+        except (TypeError, ValueError):
+            return None
 
     def _grams_to_kg(self, value: Any) -> Decimal | None:
         grams = self._to_decimal(value)

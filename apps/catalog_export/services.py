@@ -70,9 +70,11 @@ from apps.catalog.attributes import (
     AXIS_PRIORITY,
     MAX_OPTIONS,
     classify_label,
+    is_meaningful_value,
     normalize_option_value,
     strip_axis_prefix,
     value_code,
+    value_in_name,
 )
 
 
@@ -105,19 +107,27 @@ def offer_axis_values(offer) -> dict[str, str]:
     return axes
 
 
-def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]]:
-    """Grupės lygio ašių planas.
+# Ašys, renkamos tik kai niekas kita neatskiria variantų
+_LAST_RESORT_AXES = {"unit_length", "unit_width", "unit_height"}
+
+
+def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str], dict]:
+    """Grupės lygio ašių planas – minimalus atskyrimo rinkinys.
 
     - tip_diameter == line_diameter -> viena ašis (line_diameter)
     - ašis su ta pačia reikšme visame grupėje -> feature (ne option)
-    - max MAX_OPTIONS ašių (pirmenybė: daugiau skirtingų reikšmių, tada
-      registrų prioriteto tvarka)
+    - greedy: ašis pridedama tik kol variantų kombinacijos dar
+      dubliuojamos; prioritetas: 'size' -> reikšmė randama pavadinime ->
+      registrų tvarka -> unit_* paskutiniai
     - reikšmės normalizuojamos (XXL=2xl, '0,08MM'->'0-08mm', White=white)
 
     Grąžina ({offer_id: {axis: code}}, {axis: label} demoted -> features,
     {axis: {code: label}} option_labels -> shop OptionValue.label).
     """
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
+    # Žalios reikšmės name-match'ui (prieš normalizavimą: '1.75m' name'e)
+    display = {oid: dict(axes) for oid, axes in raw.items()}
+    names = {offer.id: offer.name or "" for offer in offers}
     # Reikšmių normalizavimas prieš varying patikrą: 'White'/'white',
     # 'XXL'/'2XL' yra ta pati reikšmė (ne atskiras variantas).
     labels: dict[str, dict[str, str]] = {}
@@ -138,21 +148,51 @@ def _plan_variants(offers: list[Offer]) -> tuple[dict[int, dict], dict[str, str]
         for ax in all_axes
         if len({axes[ax] for axes in raw.values() if ax in axes}) > 1
     }
-    # Nevarijuojančios ašys -> feature reikšmės (bendros visam produktui)
+
+    def _rank(ax: str) -> tuple:
+        in_name = sum(
+            1
+            for oid, axes in raw.items()
+            if ax in axes
+            and value_in_name(ax, display[oid].get(ax), names[oid])
+        )
+        coverage = sum(1 for axes in raw.values() if axes.get(ax))
+        return (
+            0 if ax == "size" else (2 if ax in _LAST_RESORT_AXES else 1),
+            -in_name,
+            -coverage,
+            AXIS_PRIORITY.get(ax, 99),
+        )
+
+    def _collisions(selected: list[str]) -> int:
+        combos = [tuple(axes.get(ax, "") for ax in selected) for axes in raw.values()]
+        return len(combos) - len(set(combos))
+
+    # Greedy minimalus rinkinys: pridedam ašį tik kol lieka sutapimų.
+    candidates = sorted(varying, key=_rank)
+    chosen: list[str] = []
+    while candidates and len(chosen) < MAX_OPTIONS and _collisions(chosen) > 0:
+        best = min(
+            candidates,
+            key=lambda ax: (_collisions([*chosen, ax]), _rank(ax)),
+        )
+        candidates.remove(best)
+        chosen.append(best)
+
+    # Nepanaudotos ašys -> features. Nevarijuojančios – viena reikšmė;
+    # varijuojančios, bet nereikalingos atskyrimui – visas reikšmes
+    # sujungiam (kitaip parodytume klaidingą vieną vertę).
     demoted: dict[str, str] = {}
-    for ax in all_axes - varying:
+    for ax in all_axes - set(chosen):
+        seen_labels: list[str] = []
         for axes in raw.values():
-            if ax in axes:
-                demoted[ax] = labels.get(ax, {}).get(axes[ax], axes[ax])
-                break
-    # >MAX_OPTIONS: paliekam ašis, geriausiai išskiriančias variantus
-    chosen = sorted(
-        varying,
-        key=lambda a: (
-            -len({axes[a] for axes in raw.values() if a in axes}),
-            AXIS_PRIORITY.get(a, 99),
-        ),
-    )[:MAX_OPTIONS]
+            if ax not in axes:
+                continue
+            label = labels.get(ax, {}).get(axes[ax], axes[ax])
+            if label and label not in seen_labels:
+                seen_labels.append(label)
+        if seen_labels:
+            demoted[ax] = ", ".join(seen_labels)
     options = {
         oid: {ax: axes[ax] for ax in axes if ax in chosen}
         for oid, axes in raw.items()
@@ -167,7 +207,7 @@ def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> l
 
     def add(code: str, value, label: str = ""):
         value = str(value).strip()
-        if not code or not value or code in seen:
+        if not code or not is_meaningful_value(value) or code in seen:
             return
         seen.add(code)
         features.append(
@@ -277,16 +317,47 @@ def _new_variant(offer: Offer, options: dict) -> dict:
         offer.supplier.selling_price_includes_vat,
         offer.supplier.vat_rate,
     )
+    cost_net = (
+        offer.purchase_price.quantize(Decimal("0.01"))
+        if offer.purchase_price is not None
+        else None
+    )
+    # Dėžė kaip prekė: variantas = visa trade-pack pakuotė, kaina
+    # = vieneto kaina × trade_pack_qty. Pack kainos skaičiuojamos iš
+    # gross (selling) prieš net'iškinimą – tiksliau negu net×qty.
+    pack_qty = offer.trade_pack_qty or 0
+    pack_factor = Decimal(pack_qty) if pack_qty > 1 else None
+    pack_price = None
+    pack_purchase_price = None
+    if pack_factor is not None:
+        if offer.selling_price is not None:
+            pack_price = _net(
+                offer.selling_price * pack_factor,
+                offer.supplier.selling_price_includes_vat,
+                offer.supplier.vat_rate,
+            )
+        if offer.purchase_price is not None:
+            pack_purchase_price = (offer.purchase_price * pack_factor).quantize(
+                Decimal("0.01")
+            )
+    if offer.sold_as_pack:
+        price_net = pack_price or price_net
+        cost_net = pack_purchase_price or cost_net
     return {
         "code": _offer_variant_code(offer),
         "product_group_code": offer.product_group or "",
-        "ean": offer.ean or "",
+        "ean": offer.ean or offer.pack_barcode or "",
         "options": options,
         "price_net": str(price_net) if price_net is not None else None,
-        "cost_net": (
-            str(offer.purchase_price.quantize(Decimal("0.01")))
-            if offer.purchase_price is not None
-            else None
+        "cost_net": str(cost_net) if cost_net is not None else None,
+        "pack_unit": offer.pack_unit or "",
+        "pack_quantity": offer.pack_quantity or 0,
+        "trade_pack_qty": pack_qty,
+        "pack_barcode": offer.pack_barcode or "",
+        "sold_as_pack": bool(offer.sold_as_pack),
+        "pack_price": str(pack_price) if pack_price is not None else None,
+        "pack_purchase_price": (
+            str(pack_purchase_price) if pack_purchase_price is not None else None
         ),
         "weight_g": _to_int_cm(
             (offer.shipping_weight_kg * 1000) if offer.shipping_weight_kg else None
