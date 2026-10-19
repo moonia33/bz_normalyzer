@@ -127,7 +127,17 @@ def _parse_description(description: str) -> tuple[str, dict[str, str], str]:
         if color:
             axes["color"] = color
         if leftover:
-            axes.setdefault("variantas", leftover)
+            # '| 14' plikas skaičius – kabliuko/dalys dydis
+            if re.fullmatch(r"\d{1,3}", leftover):
+                axes["size"] = leftover
+            else:
+                axes.setdefault("variantas", leftover)
+        # Skliaustų turinys – jei matavimo šablonas, tai atskira ašis:
+        # 'F1 Pellet Pole Rigs 6" | 14 (0.15mm)' -> size + line_diameter
+        if parens:
+            p_axes, _ = _split_tail(parens)
+            for ax, val in p_axes.items():
+                axes.setdefault(ax, val)
         return head.strip(), axes, parens
     words = clean.split()
     # Žinomos uodegos formos – ilgiausia pirma ('Super Mini 20g' ir pan.)
@@ -142,6 +152,10 @@ def _parse_description(description: str) -> tuple[str, dict[str, str], str]:
                 base, color = _pop_color(base)
                 if color:
                     axes["color"] = color
+                if parens:
+                    p_axes, _ = _split_tail(parens)
+                    for ax, val in p_axes.items():
+                        axes.setdefault(ax, val)
                 return base, axes, parens
     match = _VARIANTAS_TAIL.search(clean)
     if match and match.group(0) != clean:
