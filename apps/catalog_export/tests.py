@@ -89,8 +89,8 @@ class ExportPayloadTests(TestCase):
         # 'Gear Ratio' -> feature; 'Unit Height' -> ignoruojama.
         # 'Color'/'Size' ašys su viena reikšme produkte -> demote į feature.
         feature_codes = {f["code"] for f in item["features"]}
-        self.assertEqual(feature_codes, {"gear_ratio", "color", "size"})
-        gear = next(f for f in item["features"] if f["code"] == "gear_ratio")
+        self.assertEqual(feature_codes, {"gear-ratio", "color", "size"})
+        gear = next(f for f in item["features"] if f["code"] == "gear-ratio")
         self.assertEqual(gear["value"], "5-1-1")
         self.assertEqual(gear["value_translations"]["en"], "5.1:1")
         self.assertEqual(item["images"][0]["url"], "https://img.example.com/a.jpg")
@@ -195,9 +195,9 @@ class ExportPayloadTests(TestCase):
                     "size": "1.75m",
                     "color": "Black/Lime",
                     "model": "2 Rod",
-                    "unit_width": "22cm",
-                    "unit_height": "17cm",
-                    "unit_length": "175cm",
+                    "unit-width": "22cm",
+                    "unit-height": "17cm",
+                    "unit-length": "175cm",
                 }
             },
         )
@@ -209,9 +209,9 @@ class ExportPayloadTests(TestCase):
                     "size": "1.95m",
                     "color": "Black/Lime",
                     "model": "2 Rod",
-                    "unit_width": "22cm",
-                    "unit_height": "17cm",
-                    "unit_length": "195cm",
+                    "unit-width": "22cm",
+                    "unit-height": "17cm",
+                    "unit-length": "195cm",
                 }
             },
         )
@@ -226,15 +226,15 @@ class ExportPayloadTests(TestCase):
         feature_codes = {f["code"] for f in item["features"]}
         # Nevarijuojančios ašys lieka product features; varijuojanti
         # unit_length nueina į variant.features (kiekvienas turi savo reikšmę).
-        for demoted in ("model", "unit_width", "unit_height"):
+        for demoted in ("model", "unit-width", "unit-height"):
             self.assertIn(demoted, feature_codes)
-        self.assertNotIn("unit_length", feature_codes)
+        self.assertNotIn("unit-length", feature_codes)
         variant_features = {
             v["code"]: {f["code"]: f["value_translations"]["en"] for f in v["features"]}
             for v in item["variants"]
         }
-        self.assertEqual(variant_features["GLU132"].get("unit_length"), "175 cm")
-        self.assertEqual(variant_features["GLU133"].get("unit_length"), "195 cm")
+        self.assertEqual(variant_features["GLU132"].get("unit-length"), "175 cm")
+        self.assertEqual(variant_features["GLU133"].get("unit-length"), "195 cm")
 
     def test_options_extend_only_when_combo_collides(self):
         """Antra ašis pridedama tik jei pirmos neužtenka atskirti."""
@@ -287,17 +287,17 @@ class ExportPayloadTests(TestCase):
     def test_empty_none_and_zero_values_ignored(self):
         """'None'/'0'/tuščios reikšmės netampa nei options, nei features."""
         self.product.attributes = {
-            "features": {"material_fabric": "None", "sections": "4"},
-            "compliance": {"material_fabric": "none"},
+            "features": {"material-fabric": "None", "sections": "4"},
+            "compliance": {"material-fabric": "none"},
         }
         self.product.save(update_fields=["attributes"])
         self._make_offer(
             "N-1", "Chair",
-            {"axes": {"size": "None", "unit_height": "0"}},
+            {"axes": {"size": "None", "unit-height": "0"}},
         )
         self._make_offer(
             "N-2", "Chair XL",
-            {"axes": {"size": "XL", "unit_height": "0"}},
+            {"axes": {"size": "XL", "unit-height": "0"}},
         )
         payload = build_catalog_payload()
         item = payload["items"][0]
@@ -305,9 +305,9 @@ class ExportPayloadTests(TestCase):
         # size 'None' dingsta -> N-1 neturi option; N-2 turi 'xl'
         self.assertEqual(options["N-1"], {})
         self.assertEqual(options["N-2"], {"size": "xl"})
-        self.assertNotIn("unit_height", item["option_labels"])
+        self.assertNotIn("unit-height", item["option_labels"])
         feature_codes = {f["code"] for f in item["features"]}
-        self.assertNotIn("material_fabric", feature_codes)
+        self.assertNotIn("material-fabric", feature_codes)
         self.assertIn("sections", feature_codes)
 
     def test_sold_as_pack_variant_uses_pack_prices_and_barcode(self):

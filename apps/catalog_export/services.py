@@ -78,6 +78,16 @@ from apps.catalog.attributes import (
 )
 
 
+def _code(raw: str) -> str:
+    """Kanoninis feature/ašies kodas: 'Unit_Length' -> 'unit-length'.
+
+    Feeds naudoja ir '_' ir '-' separatorius tam pačiam atributui –
+    normalizuojame, kad backend'e nekiltų 'ball_bearings'/'ball-bearings'
+    duplikatų.
+    """
+    return str(raw).strip().lower().replace("_", "-")
+
+
 def offer_axis_values(offer) -> dict[str, str]:
     """Žali ašių kandidatai: canonical axis -> reikšmė (display).
 
@@ -94,7 +104,7 @@ def offer_axis_values(offer) -> dict[str, str]:
         for code, value in raw_axes.items():
             value = strip_axis_prefix(str(value))
             if value:
-                axes.setdefault(str(code), value)
+                axes.setdefault(_code(str(code)), value)
     specs = attrs.get("specs")
     if isinstance(specs, dict):
         for label, value in specs.items():
@@ -103,7 +113,7 @@ def offer_axis_values(offer) -> dict[str, str]:
                 continue
             value = strip_axis_prefix(str(value))
             if value:
-                axes.setdefault(code, value)
+                axes.setdefault(_code(code), value)
     return axes
 
 
@@ -212,6 +222,7 @@ def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> l
     seen: set[str] = set()
 
     def add(code: str, value, label: str = ""):
+        code = _code(code)
         value = str(value).strip()
         if not code or not is_meaningful_value(value) or code in seen:
             return
@@ -220,7 +231,7 @@ def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> l
             {
                 "code": code,
                 "value": value_code(value),
-                "name_translations": {"en": label or code.replace("-", " ").replace("_", " ").title()},
+                "name_translations": {"en": label or code.replace("-", " ").title()},
                 "value_translations": {"en": value},
             }
         )
