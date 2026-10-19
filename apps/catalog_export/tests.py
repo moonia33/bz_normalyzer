@@ -1,12 +1,16 @@
 from decimal import Decimal
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.catalog.models import Brand, Category, Product, ProductText
+from apps.catalog_export.models import ExportRun
 from apps.catalog_export.services import (
+    ShopClient,
     build_catalog_payload,
     build_stock_payload,
     payload_sha256,
+    run_export,
 )
 from apps.corecfg.models import Language
 from apps.ingestion.models import Offer
@@ -372,3 +376,87 @@ class ExportPayloadTests(TestCase):
         p1.pop("generated_at")
         p2.pop("generated_at")
         self.assertEqual(payload_sha256(p1), payload_sha256(p2))
+
+
+class PushAsyncTests(TestCase):
+    PAYLOAD = {"format_version": 1, "items": []}
+
+    def _push(self, post_response, get_responses):
+        with (
+            override_settings(SHOP_API_BASE_URL="http://shop.test"),
+            patch.object(
+                ShopClient, "post", return_value=post_response
+            ) as mock_post,
+            patch.object(
+                ShopClient, "get", side_effect=get_responses
+            ) as mock_get,
+        ):
+            run = run_export(
+                ExportRun.Kind.CATALOG, self.PAYLOAD, push=True
+            )
+        return run, mock_post, mock_get
+
+    def test_post_uses_apply_async(self):
+        run, mock_post, _ = self._push(
+            {"id": 7, "status": "done", "failed_items": 0, "total_items": 0},
+            [],
+        )
+        self.assertIn("apply_async=true", mock_post.call_args[0][0])
+        self.assertEqual(run.status, ExportRun.Status.PUSHED)
+
+    def test_terminal_status_from_post_skips_polling(self):
+        run, _, mock_get = self._push(
+            {"id": 7, "status": "done", "failed_items": 0, "total_items": 5},
+            [],
+        )
+        self.assertEqual(run.status, ExportRun.Status.PUSHED)
+        self.assertEqual(run.shop_response["status"], "done")
+        mock_get.assert_not_called()
+
+    def test_queued_run_is_polled_until_done(self):
+        run, _, mock_get = self._push(
+            {"id": 7, "status": "queued"},
+            [
+                {"id": 7, "status": "applying"},
+                {"id": 7, "status": "done", "failed_items": 0, "total_items": 5},
+            ],
+        )
+        self.assertEqual(run.status, ExportRun.Status.PUSHED)
+        self.assertEqual(run.error_message, "")
+        self.assertEqual(run.shop_response["status"], "done")
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_done_with_errors_keeps_pushed_and_records_message(self):
+        run, _, _ = self._push(
+            {"id": 7, "status": "queued"},
+            [
+                {
+                    "id": 7,
+                    "status": "done_with_errors",
+                    "failed_items": 3,
+                    "total_items": 100,
+                }
+            ],
+        )
+        self.assertEqual(run.status, ExportRun.Status.PUSHED)
+        self.assertEqual(
+            run.error_message, "shop import #7: 3 of 100 items failed"
+        )
+
+    def test_failed_run_marks_export_failed(self):
+        run, _, _ = self._push(
+            {"id": 7, "status": "queued"},
+            [{"id": 7, "status": "failed", "error_message": "Invalid file: x"}],
+        )
+        self.assertEqual(run.status, ExportRun.Status.FAILED)
+        self.assertEqual(run.error_message, "Invalid file: x")
+
+    def test_wait_for_run_timeout(self):
+        with (
+            patch.object(ShopClient, "get", return_value={"status": "applying"}),
+            patch("apps.catalog_export.services.time.sleep"),
+            self.assertRaises(TimeoutError),
+        ):
+            ShopClient("http://shop.test").wait_for_run(
+                1, poll_interval=0, timeout=0
+            )

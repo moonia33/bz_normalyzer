@@ -144,6 +144,9 @@ SHOP_API_BASE_URL = _env("SHOP_API_BASE_URL", "")
 SHOP_API_KEY = _env("SHOP_API_KEY", "")
 SHOP_USER_EMAIL = _env("SHOP_USER_EMAIL", "")
 SHOP_USER_PASSWORD = _env("SHOP_USER_PASSWORD", "")
+# Import run polling po apply_async=true push'o (sekundėmis).
+SHOP_IMPORT_POLL_INTERVAL = _env("SHOP_IMPORT_POLL_INTERVAL", "10")
+SHOP_IMPORT_POLL_TIMEOUT = _env("SHOP_IMPORT_POLL_TIMEOUT", "3600")
 
 # OpenAI Batch API (LT vertimai). Tuščia = vertimų pipeline išjungtas.
 OPENAI_API_KEY = _env("OPENAI_API_KEY", "")

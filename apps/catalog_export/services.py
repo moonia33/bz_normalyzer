@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -640,9 +641,44 @@ class ShopClient:
         response.raise_for_status()
         return response.json()
 
+    TERMINAL_STATUSES = {"done", "done_with_errors", "failed"}
+
+    def wait_for_run(
+        self,
+        run_id: int,
+        *,
+        poll_interval: int | None = None,
+        timeout: int | None = None,
+    ) -> dict:
+        """Poll'ina import run'ą iki terminalaus statuso."""
+        interval = int(
+            poll_interval
+            if poll_interval is not None
+            else getattr(settings, "SHOP_IMPORT_POLL_INTERVAL", 10)
+        )
+        wait_timeout = int(
+            timeout
+            if timeout is not None
+            else getattr(settings, "SHOP_IMPORT_POLL_TIMEOUT", 3600)
+        )
+        deadline = time.monotonic() + wait_timeout
+        last_status = "unknown"
+        while True:
+            data = self.get(f"/api/v1/ops/imports/runs/{run_id}")
+            last_status = str(data.get("status") or "unknown")
+            if last_status in self.TERMINAL_STATUSES:
+                return data
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"shop import run #{run_id} still '{last_status}' "
+                    f"after {wait_timeout}s"
+                )
+            time.sleep(interval)
+
 
 def push_to_shop(path: str, payload: dict, timeout: int = 120) -> dict:
-    return ShopClient().post(path, payload, timeout=timeout)
+    """Push payload'ą su apply_async=true – atsako run'as, apply fone."""
+    return ShopClient().post(f"{path}?apply_async=true", payload, timeout=timeout)
 
 
 def run_export(
@@ -664,14 +700,39 @@ def run_export(
     )
     if push:
         path = CATALOG_PATH if kind == ExportRun.Kind.CATALOG else STOCK_PATH
-        # Pilnas katalogas sinchroniškai apply'inasi ~4min – ilgesnis timeout.
-        timeout = 600 if kind == ExportRun.Kind.CATALOG else 120
         try:
-            run.shop_response = push_to_shop(path, payload, timeout=timeout)
-            run.status = ExportRun.Status.PUSHED
+            response = push_to_shop(path, payload)
+            # Sinchroninis apply (maži feed'ai / senas shop) gali grąžinti
+            # terminalų statusą iš karto – tada pollinti nereikia.
+            if (
+                response.get("id")
+                and response.get("status") not in ShopClient.TERMINAL_STATUSES
+            ):
+                client = ShopClient()
+                response = client.wait_for_run(response["id"])
+            run.shop_response = response
+            _apply_shop_result(run, response)
         except Exception as exc:
             logger.exception("Eksporto push nepavyko (run #%s)", run.pk)
             run.status = ExportRun.Status.FAILED
             run.error_message = str(exc)
     run.save()
     return run
+
+
+def _apply_shop_result(run: ExportRun, response: dict) -> None:
+    """Map'ina shop ImportRun statusą į ExportRun."""
+    status = str(response.get("status") or "")
+    if status == "failed":
+        run.status = ExportRun.Status.FAILED
+        run.error_message = str(
+            response.get("error_message") or "shop import failed"
+        )
+        return
+    run.status = ExportRun.Status.PUSHED
+    if status == "done_with_errors":
+        run.error_message = (
+            f"shop import #{response.get('id')}: "
+            f"{response.get('failed_items')} of "
+            f"{response.get('total_items')} items failed"
+        )
