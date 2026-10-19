@@ -14,5 +14,6 @@ class SuppliersConfig(AppConfig):
             generic_excel,
             generic_json,
             generic_xml,
+            korda,
             moss,
         )

@@ -369,6 +369,120 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(pack_only.trade_pack_qty, 60)
         self.assertTrue(pack_only.sold_as_pack)
 
+    def test_korda_adapter_import(self):
+        """Korda EPOS: RRP filtras, variantų grupavimas, pack kainos, metadata."""
+        supplier = Supplier.objects.create(
+            code="korda",
+            name="Korda",
+            purchase_price_includes_vat=False,
+            selling_price_includes_vat=True,
+        )
+
+        workbook = Workbook()
+        ws = workbook.active
+        ws.title = "Current products"
+        ws.append(
+            [
+                "Brand", "Code", "Description", "Selling price", "RRP",
+                "Net Priced", "Trade Pack Size", "Trade Pack Price",
+                "Barcode", "Stock", "Headgroup", "Subgroup",
+                "Commodity code", "Country of origin", "Weight",
+            ]
+        )
+        # Variantų pora: 'Size N' option, skliaustai ignoruojami
+        ws.append(
+            ["KORDA", "GF079", "F1 Eyed Hook Size 10 (Barbless/Eyed)",
+             "0.60", "1.99", "no", "per piece", "",
+             "5060137480001", "In stock", "Hooks", "Kamakura",
+             "9507209000", "JP", "0.02"]
+        )
+        ws.append(
+            ["KORDA", "GF080", "F1 Eyed Hook Size 12 (Barbless/Eyed)",
+             "0.60", "1.99", "no", "per piece", "",
+             "5060137480002", "In stock", "Hooks", "Kamakura",
+             "9507209000", "JP", "0.02"]
+        )
+        # color + size uodega, 'Dark Olive M'
+        ws.append(
+            ["KORDA", "KC0253", "Compass Tee | Dark Olive M",
+             "18.00", "29.99", "no", "per piece", "",
+             "5060137480010", "In stock", "Clothing", "T-Shirts",
+             "6109902000", "BD", "0.30"]
+        )
+        # Selling tuščias -> Trade Pack Price / qty ('per piece, sold per 5')
+        ws.append(
+            ["MAINLINE", "M01001", "Shelf Life Boilies | Tutti Frutti 10mm 200g",
+             "", "5.99", "no", "per piece, sold per 5", "3.33",
+             "5060509810826", "No stock", "Baits", "Boilies",
+             "2309905100", "GB", "0.20"]
+        )
+        # praleidžiama: ne skaitinė RRP
+        ws.append(
+            ["KORDA", "BAD-1", "Invalid RRP item",
+             "1.00", '"', "no", "per piece", "",
+             "", "In stock", "Hooks", "Kamakura", "", "", ""]
+        )
+        # praleidžiama: Team / Marketing headgroup
+        ws.append(
+            ["KORDA", "TM-1", "Marketing item",
+             "1.00", "9.99", "no", "per piece", "",
+             "", "In stock", "Team / Marketing", "", "", "", ""]
+        )
+
+        payload = BytesIO()
+        workbook.save(payload)
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="Korda demo",
+            kind=SourceKind.EXCEL_UPLOAD,
+            adapter_code="korda",
+        )
+        feed.file.save("korda.xlsx", ContentFile(payload.getvalue()), save=True)
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        run_import(job)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ImportJob.Status.SUCCESS)
+
+        # 6 eilutės -> 4 offer'iai (BAD-1 be RRP, TM-1 Team/Marketing)
+        self.assertEqual(Offer.objects.filter(supplier=supplier).count(), 4)
+        self.assertFalse(
+            Offer.objects.filter(external_id__in=["BAD-1", "TM-1"]).exists()
+        )
+
+        hook = Offer.objects.get(external_id="GF079")
+        hook2 = Offer.objects.get(external_id="GF080")
+        # 'Size N' axis; skliaustų turinys ne option
+        self.assertEqual(hook.attributes["axes"], {"size": "Size 10"})
+        self.assertEqual(hook2.attributes["axes"], {"size": "Size 12"})
+        # abu tame pačiame produkte (variantai)
+        self.assertEqual(hook.product_id, hook2.product_id)
+        self.assertEqual(hook.product.name, "Korda F1 Eyed Hook")
+        # kainos: purchase = Selling price (net), selling = RRP (gross)
+        self.assertEqual(hook.purchase_price, Decimal("0.60"))
+        self.assertEqual(hook.selling_price, Decimal("1.99"))
+        # metadata
+        self.assertEqual(hook.ean, "5060137480001")
+        self.assertEqual(hook.extra["commodity_code"], "9507209000")
+        self.assertEqual(hook.extra["country_of_origin"], "JP")
+        self.assertEqual(hook.shipping_weight_kg, Decimal("0.02"))
+        self.assertEqual(hook.images, [])
+        self.assertEqual(hook.stock, 0)
+        self.assertEqual(hook.category_raw, "Hooks")
+        self.assertEqual(hook.sub_category_raw, "Kamakura")
+
+        tee = Offer.objects.get(external_id="KC0253")
+        self.assertEqual(
+            tee.attributes["axes"], {"size": "M", "color": "Dark Olive"}
+        )
+        self.assertEqual(tee.base_name, "Korda Compass Tee")
+
+        boilies = Offer.objects.get(external_id="M01001")
+        # 'per piece, sold per 5' -> qty 5; purchase = 3.33/5
+        self.assertEqual(boilies.trade_pack_qty, 5)
+        self.assertEqual(boilies.purchase_price, Decimal("0.666"))
+        self.assertEqual(boilies.selling_price, Decimal("5.99"))
+        self.assertFalse(boilies.is_available)  # 'No stock'
+
     def test_import_feed_command_imports_all_active_feeds_and_preserves_base_data(self):
         supplier = Supplier.objects.create(code="fox", name="FOX")
         category = Category.objects.create(name="Accessories")
