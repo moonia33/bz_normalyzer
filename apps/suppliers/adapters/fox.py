@@ -238,6 +238,7 @@ class FoxAdapter(BaseAdapter):
                     "spare_part": not bool(product_group),
                 },
                 "identifiers": identifiers,
+                "package_raw": self._text(base.get("Packaging Type")),
                 "size_raw": size_raw,
                 "shipping_height_cm": shipping_height_cm,
                 "shipping_width_cm": shipping_width_cm,
@@ -272,6 +273,7 @@ class FoxAdapter(BaseAdapter):
             "technical_description": self._text(row.get("technical_description")),
             "combined_full_text": self._text(row.get("combined_full_text")),
             "rrp_price": self._to_decimal(row.get("rrp_price")),
+            "package_raw": self._text(row.get("package_raw")),
             "pack_unit": self._text(row.get("identifiers", {}).get("pack_unit"))
             if isinstance(row.get("identifiers"), dict)
             else "",
