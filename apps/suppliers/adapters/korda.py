@@ -391,23 +391,32 @@ class KordaAdapter(BaseAdapter):
                 yield member
 
     def _product_info(self) -> dict[str, dict[str, Any]]:
-        """config info_file -> {ref: info}; failo gali nebūti – tada {}."""
-        rel = str(self.config.get("info_file") or "").strip()
-        if not rel:
-            return {}
+        """config info_file / info_files -> {ref: info}; failų gali nebūti – tada {}."""
+        rels = self.config.get("info_files")
+        if not rels:
+            single = str(self.config.get("info_file") or "").strip()
+            rels = [single] if single else []
+        if isinstance(rels, str):
+            rels = [rels]
         from pathlib import Path
 
         from django.conf import settings
 
-        path = Path(rel)
-        if not path.is_absolute():
-            path = Path(settings.BASE_DIR) / rel
-        if not path.exists():
-            return {}
         sheet = ""
         if getattr(self.feed, "language", None) and self.feed.language:
             sheet = (self.feed.language.code or "").upper()
-        return read_product_info(path, sheet)
+        info: dict[str, dict[str, Any]] = {}
+        for rel in rels:
+            rel = str(rel).strip()
+            if not rel:
+                continue
+            path = Path(rel)
+            if not path.is_absolute():
+                path = Path(settings.BASE_DIR) / rel
+            if not path.exists():
+                continue
+            info.update(read_product_info(path, sheet))
+        return info
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = self._text(row.get("code"))
