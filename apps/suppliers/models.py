@@ -50,6 +50,12 @@ class Supplier(TimeStampedModel):
         blank=True,
         help_text="Shop'o warehouse_code, į kurį rašomi šio tiekėjo likučiai. Tuščia = supplier.code.",
     )
+    sku_prefix = models.CharField(
+        max_length=16,
+        blank=True,
+        help_text="Prefiksas eksportuojamiems variantų kodams (pvz. 'korda-'), "
+                  "kad skirtingų tiekėjų sutampantys art-no nesikirstų shop'e.",
+    )
 
     class Meta:
         ordering = ["name"]

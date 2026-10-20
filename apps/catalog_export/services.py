@@ -304,12 +304,15 @@ def _videos(product: Product) -> list[dict]:
 
 
 def _offer_variant_code(offer: Offer) -> str:
-    """Variant code = shop Variant.sku = tiekėjo art-no.
+    """Variant code = shop Variant.sku – unikalus globaliai.
 
-    Tas pats art-no iš skirtingų tiekėjų = ta pati prekė/variantas
-    (likučiai eina per warehouse_code), todėl prefikso nereikia.
+    Skirtingi tiekėjai gali turėti sutampančius art-no (FOX 'GRD198' =
+    Matrix, Korda 'GRD198' = Guru), todėl tiekėjas gali nurodyti
+    sku_prefix – tikrasis art-no lieka 'supplier_code' lauke.
     """
-    return (offer.sku or "").strip() or offer.external_id
+    base = (offer.sku or "").strip() or offer.external_id
+    prefix = (offer.supplier.sku_prefix or "").strip()
+    return f"{prefix}{base}" if prefix else base
 
 
 def _to_int_cm(value) -> int:
@@ -363,6 +366,7 @@ def _new_variant(offer: Offer, options: dict, variant_features: dict | None = No
         cost_net = pack_purchase_price or cost_net
     return {
         "code": _offer_variant_code(offer),
+        "supplier_code": offer.external_id,
         "product_group_code": offer.product_group or "",
         "ean": offer.ean or offer.pack_barcode or "",
         "options": options,

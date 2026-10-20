@@ -206,27 +206,20 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         if product:
             return product
 
-    # art-no (sku) – tas pats iš bet kurio tiekėjo = ta pati prekė.
-    product = Product.objects.filter(sku=item.external_id).order_by("pk").first()
+    # art-no (sku) – tas pats tik TO PATIES tiekėjo ribose. Skirtingi
+    # tiekėjai gali turėti sutampančius kodus (pvz. FOX 'GRD198' = Matrix,
+    # Korda 'GRD198' = Guru) – kryžminis sujungimas lieka per EAN.
+    supplier_products = Product.objects.filter(supplier_links__supplier=job.supplier)
+    product = supplier_products.filter(sku=item.external_id).order_by("pk").first()
     if not product:
-        product = Product.objects.filter(
+        product = supplier_products.filter(
             source_external_id=item.external_id
         ).order_by("pk").first()
-    if not product:
-        product = (
-            ProductLink.objects.filter(external_id=item.external_id)
-            .select_related("product")
-            .order_by("product_id")
-            .values_list("product_id", flat=True)
-            .first()
-        )
-        product = Product.objects.filter(pk=product).first() if product else None
     if product:
         return product
 
     # Heuristikos tik tarp šio tiekėjo jau susietų prekių –
     # kad skirtingų tiekėjų product_group kodai nesusikirstų.
-    supplier_products = Product.objects.filter(supplier_links__supplier=job.supplier)
 
     # base_name tuščias -> 100% ne variantas (atsarginės dalys ir pan.)
     # – visada atskiras produktas, neskaitant identiteto raktų aukščiau.
@@ -325,11 +318,12 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
     product = _find_matching_product(job, item, offer) or offer.product
     if not product:
-        # SKU = tiekėjo art-no; supplier prefiksas tik kolizijos atveju
+        # SKU = tiekėjo art-no; supplier sku_prefix tik kolizijos atveju
         # (tas pats art-no iš kito tiekėjo jau turi produktą).
         sku = item.external_id[:64]
         if Product.objects.filter(sku=sku).exists():
-            sku = f"{job.supplier.code}-{item.external_id}"[:64]
+            prefix = (job.supplier.sku_prefix or "").strip() or f"{job.supplier.code}-"
+            sku = f"{prefix}{item.external_id}"[:64]
         product, _ = Product.objects.get_or_create(
             sku=sku,
             defaults={
