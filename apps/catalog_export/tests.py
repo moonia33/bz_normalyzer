@@ -3,7 +3,9 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
-from apps.catalog.models import Brand, Category, Product, ProductText
+from apps.catalog.models import (
+    Brand, Category, Product, ProductText, UnmappedAttribute,
+)
 from apps.catalog_export.models import ExportRun
 from apps.catalog_export.services import (
     ShopClient,
@@ -74,7 +76,7 @@ class ExportPayloadTests(TestCase):
 
     def test_catalog_payload_shape_and_vat_math(self):
         payload = build_catalog_payload()
-        self.assertEqual(payload["format_version"], 1)
+        self.assertEqual(payload["format_version"], 2)
         self.assertEqual(payload["source"], "normalyzer")
         self.assertEqual(payload["mode"], "upsert")
         self.assertEqual(len(payload["items"]), 1)
@@ -460,3 +462,81 @@ class PushAsyncTests(TestCase):
             ShopClient("http://shop.test").wait_for_run(
                 1, poll_interval=0, timeout=0
             )
+
+
+class AttributeGateTests(TestCase):
+    """F1: registry vartai – nežinomi kodai metami + report'inami."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="fox", name="FOX", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+        self.product = Product.objects.create(
+            sku="fox-G-1", name="Rod", is_active=True,
+        )
+
+    def _offer(self, attrs):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id="G-1", sku="G-1",
+            name="Rod", product=self.product, is_published=True,
+            is_available=True, selling_price=Decimal("10.00"),
+            attributes=attrs,
+        )
+
+    def test_gate_alias_and_unmapped(self):
+        self._offer(
+            {"axes": {"strength_lb": "20lb", "foo": "x"}}
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        codes = {f["code"] for f in item["features"]}
+        self.assertIn("line-strength", codes)
+        self.assertNotIn("foo", codes)
+        ua = UnmappedAttribute.objects.get(code="foo", kind="unmapped_code")
+        self.assertEqual(ua.count, 1)
+        self.assertEqual(ua.sample_values, ["x"])
+        feature = next(f for f in item["features"] if f["code"] == "line-strength")
+        self.assertEqual(feature["unit"], "kg")
+        self.assertEqual(feature["datatype"], "number")
+        self.assertEqual(feature["value_num"], "9.07")
+
+    def test_variantas_becomes_variant_name(self):
+        self._offer(
+            {"axes": {"variantas": "12cm Red", "size": "M"}}
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        variant = item["variants"][0]
+        self.assertEqual(variant["name"], "12cm Red")
+        codes = {f["code"] for f in item["features"]}
+        self.assertNotIn("variantas", codes)
+        self.assertNotIn("variantas", variant.get("options", {}))
+        self.assertFalse(
+            UnmappedAttribute.objects.filter(code="variantas").exists()
+        )
+
+    def test_option_value_meta_for_numeric_axis(self):
+        self._offer({"axes": {"casting_weight": "10-40g"}})
+        Offer.objects.create(
+            supplier=self.supplier, external_id="G-2", sku="G-2",
+            name="Rod 2", product=self.product, is_published=True,
+            is_available=True, selling_price=Decimal("10.00"),
+            attributes={"axes": {"casting_weight": "50-80g"}},
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        meta = item["option_value_meta"].get("casting-weight")
+        self.assertIsNotNone(meta)
+        self.assertIn("10-40-g", meta)
+        self.assertEqual(meta["10-40-g"]["num"], "10")
+        self.assertEqual(meta["10-40-g"]["num_max"], "40")
+        self.assertEqual(meta["10-40-g"]["unit"], "g")
+        # Variant features turi value_num/unit
+        variant = next(
+            v for v in item["variants"] if v["options"].get("casting-weight") == "10-40-g"
+        )
+        for f in variant.get("features", []):
+            self.assertIn("value_num", f)
+            self.assertIn("unit", f)

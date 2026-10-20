@@ -3,7 +3,13 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from apps.ingestion.models import Offer
-from apps.catalog.models import Brand, Category, Product, ProductText
+from apps.catalog.models import (
+    Brand,
+    Category,
+    Product,
+    ProductText,
+    UnmappedAttribute,
+)
 
 
 def _effective_image_urls(obj):
@@ -136,6 +142,30 @@ class ProductTextAdmin(admin.ModelAdmin):
     @admin.display(description="Turi aprašymą", boolean=True)
     def has_description(self, obj):
         return bool(obj.description)
+
+
+@admin.register(UnmappedAttribute)
+class UnmappedAttributeAdmin(admin.ModelAdmin):
+    list_display = [
+        "code",
+        "kind",
+        "supplier",
+        "category_raw",
+        "count",
+        "last_seen",
+    ]
+    list_filter = ["kind", "supplier"]
+    search_fields = ["code", "label"]
+    ordering = ["-count"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Product)

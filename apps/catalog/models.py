@@ -110,6 +110,44 @@ class Product(TimeStampedModel):
         return f"{self.sku} {self.name}"
 
 
+class UnmappedAttribute(TimeStampedModel):
+    """Eksporto metu atmestas tiekėjo atributas – 'ką dar sumapinti' ataskaita.
+
+    Pildomas per apps.catalog.unmapped kolektorių; kiekvienas eksportas
+    yra pilnas snapshot'as (count/sample_values perrašomi).
+    """
+
+    class Kind(models.TextChoices):
+        UNMAPPED_CODE = "unmapped_code", "Nežinomas kodas"
+        UNPARSED_VALUE = "unparsed_value", "Neišparsinta reikšmė"
+        SUSPICIOUS_VALUE = "suspicious_value", "Įtartina reikšmė"
+
+    supplier = models.ForeignKey(
+        "suppliers.Supplier", null=True, blank=True, on_delete=models.CASCADE
+    )
+    code = models.CharField(max_length=120, db_index=True)
+    label = models.CharField(max_length=200, blank=True)
+    kind = models.CharField(max_length=24, choices=Kind.choices, db_index=True)
+    category_raw = models.CharField(max_length=500, blank=True)
+    sample_values = models.JSONField(default=list, blank=True)
+    count = models.IntegerField(default=0)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-count"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["supplier", "code", "kind", "category_raw"],
+                name="uniq_unmapped_attribute",
+            )
+        ]
+        verbose_name = "nesumapintas atributas"
+        verbose_name_plural = "nesumapinti atributai"
+
+    def __str__(self) -> str:
+        return f"{self.supplier_id or '-'}:{self.code} ({self.kind}) x{self.count}"
+
+
 class ProductText(TimeStampedModel):
     """Produkto tekstinė informacija konkrečia kalba (vertimas).
 

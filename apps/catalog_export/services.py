@@ -11,7 +11,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.text import slugify
 
-from apps.catalog.models import Product
+from apps.catalog.models import Category, Product
 from apps.corecfg.models import Language, get_config
 from apps.ingestion.models import Offer
 from apps.suppliers.models import Supplier
@@ -20,7 +20,7 @@ from .models import ExportRun
 
 logger = logging.getLogger(__name__)
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 CATALOG_PATH = "/api/v1/ops/imports/catalog"
 STOCK_PATH = "/api/v1/ops/imports/stock"
 DEFAULT_TAX_CLASS = "standard"
@@ -68,15 +68,19 @@ def _translation_block(product: Product, base_lang: str) -> dict:
 
 
 from apps.catalog.attributes import (
+    ATTRIBUTE_META,
     AXIS_PRIORITY,
     MAX_OPTIONS,
+    VARIANT_LABEL_CODE,
     classify_label,
     is_meaningful_value,
-    normalize_option_value,
+    resolve_code,
     strip_axis_prefix,
     value_code,
     value_in_name,
 )
+from apps.catalog.unmapped import collect, report
+from apps.catalog.values import parse_value
 
 
 def _code(raw: str) -> str:
@@ -89,13 +93,70 @@ def _code(raw: str) -> str:
     return str(raw).strip().lower().replace("_", "-")
 
 
+# Kategorijų vardai (id -> (name, parent_id)) – užkraunami vieną kartą
+# per build_catalog_payload, kad kontekstas neiti per parent FK DB'e
+# kiekvienam offer'iui. Išvalomas eksportui pasibaigus.
+_CATEGORY_NAMES: dict[int, tuple[str, int | None]] = {}
+
+
+def _load_category_names() -> None:
+    _CATEGORY_NAMES.update(
+        {
+            row[0]: (row[1] or "", row[2])
+            for row in Category.objects.values_list("id", "name", "parent_id")
+        }
+    )
+
+
+def _category_context(category_id) -> str:
+    parts: list[str] = []
+    seen: set[int] = set()
+    node_id = category_id
+    while node_id and node_id not in seen:
+        seen.add(node_id)
+        name, parent_id = _CATEGORY_NAMES.get(node_id, ("", None))
+        parts.append(name)
+        node_id = parent_id
+    return " ".join(parts)
+
+
+def _product_context(product) -> str:
+    """Produkto lygio kontekstas kontekstinėms taisyklėms (_features)."""
+    parts = [_category_context(product.category_id)]
+    parts.append(product.category_raw or "")
+    parts.append(product.sub_category_raw or "")
+    return " ".join(parts).lower()
+
+
+def _offer_context(offer) -> str:
+    """Kontekstas kontekstinėms taisyklėms: kategorijos (su parent'ais)
+    + žalie tiekėjo laukai, viskas lowercase."""
+    category_id = offer.category_id or (
+        offer.product.category_id if offer.product_id else None
+    )
+    parts = [_category_context(category_id)]
+    parts.append(offer.category_raw or "")
+    parts.append(offer.sub_category_raw or "")
+    if offer.product_id:
+        parts.append(offer.product.category_raw or "")
+        parts.append(offer.product.sub_category_raw or "")
+    return " ".join(parts).lower()
+
+
 def offer_axis_values(offer) -> dict[str, str]:
     """Žali ašių kandidatai: canonical axis -> reikšmė (display).
 
     Šaltiniai: attributes['axes'] (kanoniniai kodai), legacy
     attributes['specs'] (lokalizuoti label'iai -> classify_label),
-    MOSS size_raw -> 'size'.
+    MOSS size_raw -> 'size'. Kodai eina per `resolve_code` – kodas
+    ne registre praleidžiamas ir fiksuojamas UnmappedAttribute.
+    'variantas' nėra ašis – liekana eina į variants[].name
+    (offer_variant_label).
     """
+    context = _offer_context(offer)
+    supplier_code = offer.supplier.code if offer.supplier_id else ""
+    category_raw = offer.category_raw or ""
+
     axes: dict[str, str] = {}
     if offer.size_raw:
         axes["size"] = offer.size_raw.strip()
@@ -104,27 +165,90 @@ def offer_axis_values(offer) -> dict[str, str]:
     if isinstance(raw_axes, dict):
         for code, value in raw_axes.items():
             value = strip_axis_prefix(str(value))
-            if value:
-                axes.setdefault(_code(str(code)), value)
+            if not value:
+                continue
+            canonical = resolve_code(str(code), context)
+            if canonical is None:
+                if str(code).strip().lower() == VARIANT_LABEL_CODE:
+                    continue  # -> variant_label, ne atributas
+                report(
+                    supplier=supplier_code, code=code, label=code,
+                    kind="unmapped_code", category_raw=category_raw,
+                    value=value,
+                )
+                continue
+            if ATTRIBUTE_META[canonical]["kind"] != "axis":
+                continue
+            axes.setdefault(_code(canonical), value)
     specs = attrs.get("specs")
     if isinstance(specs, dict):
         for label, value in specs.items():
+            if str(label).strip().lower() == VARIANT_LABEL_CODE:
+                continue
             code, kind = classify_label(str(label))
             if kind != "axis" or not code:
                 continue
             value = strip_axis_prefix(str(value))
-            if value:
-                axes.setdefault(_code(code), value)
+            if not value:
+                continue
+            canonical = resolve_code(code, context)
+            if canonical is None:
+                report(
+                    supplier=supplier_code, code=code, label=label,
+                    kind="unmapped_code", category_raw=category_raw,
+                    value=value,
+                )
+                continue
+            if ATTRIBUTE_META[canonical]["kind"] != "axis":
+                continue
+            axes.setdefault(_code(canonical), value)
     return axes
 
 
+def offer_variant_label(offer) -> str:
+    """'variantas' liekana -> varianto pavadinimo dalis (ne atributas)."""
+    attrs = offer.attributes or {}
+    raw_axes = attrs.get("axes")
+    if isinstance(raw_axes, dict):
+        for code, value in raw_axes.items():
+            if str(code).strip().lower() == VARIANT_LABEL_CODE:
+                return str(value).strip()
+    specs = attrs.get("specs")
+    if isinstance(specs, dict):
+        for label, value in specs.items():
+            if str(label).strip().lower() == VARIANT_LABEL_CODE:
+                return str(value).strip()
+    return ""
+
+
 # Ašys, renkamos tik kai niekas kita neatskiria variantų
-_LAST_RESORT_AXES = {"unit_length", "unit_width", "unit_height"}
+_LAST_RESORT_AXES = {"unit-length", "unit-width", "unit-height"}
+
+
+def _variant_meta(axis: str, value, supplier: str = "") -> dict:
+    """parse_value meta vienai ašies reikšmei: code/label + num/unit."""
+    meta = ATTRIBUTE_META.get(_norm_axis(axis)) or {}
+    parsed = parse_value(
+        value, meta.get("datatype", "text"), meta.get("unit", ""),
+        axis=axis, supplier=supplier,
+    )
+    return {
+        "code": parsed.code,
+        "label": parsed.display,
+        "num": parsed.num,
+        "num_max": parsed.num_max,
+        "unit": parsed.unit,
+        "datatype": meta.get("datatype", "text"),
+    }
+
+
+def _norm_axis(axis: str) -> str:
+    return str(axis or "").strip().lower().replace("-", "_")
 
 
 def _plan_variants(
     offers: list[Offer],
-) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict]]:
+) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict], dict]:
     """Grupės lygio ašių planas – minimalus atskyrimo rinkinys.
 
     - tip_diameter == line_diameter -> viena ašis (line_diameter)
@@ -136,26 +260,43 @@ def _plan_variants(
 
     Grąžina ({offer_id: {axis: code}} options, {axis: label} demoted ->
     product features, {axis: {code: label}} option_labels ->
-    shop OptionValue.label, {offer_id: {axis: label}} variant_features ->
-    variant.features (varijuojančios, neoption ašys)).
+    shop OptionValue.label, {offer_id: {axis: meta}} variant_features ->
+    variant.features (varijuojančios, neoption ašys),
+    {axis: {code: {num,num_max,unit}}} option_value_meta ->
+    shop OptionValue skaitiniai laukai.
     """
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
+    suppliers = {
+        offer.id: (offer.supplier.code if offer.supplier_id else "")
+        for offer in offers
+    }
     # Žalios reikšmės name-match'ui (prieš normalizavimą: '1.75m' name'e)
     display = {oid: dict(axes) for oid, axes in raw.items()}
     names = {offer.id: offer.name or "" for offer in offers}
     # Reikšmių normalizavimas prieš varying patikrą: 'White'/'white',
     # 'XXL'/'2XL' yra ta pati reikšmė (ne atskiras variantas).
     labels: dict[str, dict[str, str]] = {}
-    for axes in raw.values():
+    option_value_meta: dict[str, dict[str, dict]] = {}
+    meta_by_offer: dict[int, dict[str, dict]] = {}
+    for oid, axes in raw.items():
+        meta_by_offer[oid] = {}
         if axes.get("tip_diameter") and axes["tip_diameter"] == axes.get("line_diameter"):
             del axes["tip_diameter"]
         for ax in list(axes):
-            code, label = normalize_option_value(ax, axes[ax])
+            meta = _variant_meta(ax, axes[ax], supplier=suppliers.get(oid, ""))
+            meta_by_offer[oid][ax] = meta
+            code, label = meta["code"], meta["label"]
             if not code:
                 del axes[ax]
                 continue
             axes[ax] = code
             labels.setdefault(ax, {}).setdefault(code, label)
+            if meta["num"] is not None:
+                option_value_meta.setdefault(ax, {})[code] = {
+                    "num": _num_str(meta["num"]),
+                    "num_max": _num_str(meta["num_max"]),
+                    "unit": meta["unit"],
+                }
 
     all_axes = {ax for axes in raw.values() for ax in axes}
     varying = {
@@ -199,41 +340,74 @@ def _plan_variants(
     # - varijuojančios -> variant.features (kiekvienas variantas turi SAVO
     #   reikšmę; variant features backend'e laimi prieš product features).
     demoted: dict[str, str] = {}
-    variant_features: dict[int, dict[str, str]] = {offer.id: {} for offer in offers}
+    variant_features: dict[int, dict[str, dict]] = {offer.id: {} for offer in offers}
     for ax in all_axes - set(chosen):
         varying_ax = ax in varying
         for oid, axes in raw.items():
             if ax not in axes:
                 continue
-            label = labels.get(ax, {}).get(axes[ax], axes[ax]) or axes[ax]
+            meta = meta_by_offer[oid].get(ax) or {}
+            label = meta.get("label") or labels.get(ax, {}).get(axes[ax], axes[ax]) or axes[ax]
             if varying_ax:
-                variant_features[oid][ax] = label
+                variant_features[oid][ax] = meta
             else:
-                demoted.setdefault(ax, label)
+                # Žalia reikšmė (ne label'is) – _features pats parsuoja
+                # -> value_num/unit ir kanoninis display.
+                demoted.setdefault(ax, display[oid].get(ax, label))
     options = {
         oid: {ax: axes[ax] for ax in axes if ax in chosen}
         for oid, axes in raw.items()
     }
-    return options, demoted, labels, variant_features
+    return options, demoted, labels, variant_features, option_value_meta
 
 
-def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> list[dict]:
+def _num_str(value) -> str | None:
+    return format(value.normalize(), "f") if value is not None else None
+
+
+def _features(
+    product: Product,
+    demoted_axes: dict[str, str] | None = None,
+    *,
+    context: str = "",
+    supplier: str = "",
+) -> list[dict]:
     attrs = product.attributes or {}
+    category_raw = product.category_raw or ""
     features: list[dict] = []
     seen: set[str] = set()
 
-    def add(code: str, value, label: str = ""):
-        code = _code(code)
+    def add(raw_code, value, raw_label: str = ""):
+        resolved = resolve_code(str(raw_code), context)
+        if resolved is None:
+            report(
+                supplier=supplier, code=raw_code,
+                label=raw_label or str(raw_code),
+                kind="unmapped_code", category_raw=category_raw, value=value,
+            )
+            return
+        meta = ATTRIBUTE_META.get(resolved) or {}
+        code = _code(resolved)
         value = str(value).strip()
-        if not code or not is_meaningful_value(value) or code in seen:
+        if not is_meaningful_value(value) or code in seen:
             return
         seen.add(code)
+        parsed = parse_value(
+            value, meta.get("datatype", "text"), meta.get("unit", ""),
+            axis=resolved, supplier=supplier,
+        )
         features.append(
             {
                 "code": code,
-                "value": value_code(value),
-                "name_translations": {"en": label or code.replace("-", " ").title()},
-                "value_translations": {"en": value},
+                "value": parsed.code or value_code(value),
+                "name_translations": {
+                    "en": meta.get("label") or resolved.replace("_", " ").title()
+                },
+                "value_translations": {"en": parsed.display or value},
+                "value_num": _num_str(parsed.num),
+                "value_num_max": _num_str(parsed.num_max),
+                "unit": parsed.unit,
+                "datatype": meta.get("datatype", "text"),
             }
         )
 
@@ -247,8 +421,8 @@ def _features(product: Product, demoted_axes: dict[str, str] | None = None) -> l
     if isinstance(specs, dict):
         for label, value in specs.items():
             code, kind = classify_label(str(label))
-            if kind == "feature":
-                add(code, value, str(label))
+            if kind == "feature" and code:
+                add(code, value, raw_label=str(label))
     # Ašys su vienoda reikšme visame produkte -> feature
     for ax, value in (demoted_axes or {}).items():
         add(ax, value)
@@ -332,7 +506,12 @@ def _variant_keys(offer: Offer) -> set[str]:
     return keys
 
 
-def _new_variant(offer: Offer, options: dict, variant_features: dict | None = None) -> dict:
+def _new_variant(
+    offer: Offer,
+    options: dict,
+    variant_features: dict | None = None,
+    name: str = "",
+) -> dict:
     price_net = _net(
         offer.selling_price,
         offer.supplier.selling_price_includes_vat,
@@ -366,6 +545,7 @@ def _new_variant(offer: Offer, options: dict, variant_features: dict | None = No
         cost_net = pack_purchase_price or cost_net
     return {
         "code": _offer_variant_code(offer),
+        "name": name,
         "supplier_code": offer.external_id,
         "product_group_code": offer.product_group or "",
         "ean": offer.ean or offer.pack_barcode or "",
@@ -373,12 +553,19 @@ def _new_variant(offer: Offer, options: dict, variant_features: dict | None = No
         "features": [
             {
                 "code": ax,
-                "value": value_code(label),
-                "name_translations": {"en": ax.replace("-", " ").replace("_", " ").title()},
-                "value_translations": {"en": label},
+                "value": m.get("code") or value_code(m.get("label") or ""),
+                "name_translations": {
+                    "en": (ATTRIBUTE_META.get(_norm_axis(ax)) or {}).get("label")
+                    or ax.replace("-", " ").replace("_", " ").title()
+                },
+                "value_translations": {"en": m.get("label") or ""},
+                "value_num": _num_str(m.get("num")),
+                "value_num_max": _num_str(m.get("num_max")),
+                "unit": m.get("unit") or "",
+                "datatype": m.get("datatype") or "text",
             }
-            for ax, label in (variant_features or {}).items()
-            if label
+            for ax, m in (variant_features or {}).items()
+            if m.get("label")
         ],
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": str(cost_net) if cost_net is not None else None,
@@ -413,6 +600,8 @@ def _add_offer_images(variant: dict, offer: Offer) -> None:
 
 def _merge_variant(dst: dict, src: dict) -> None:
     """Sujungia src variantą į dst (union raktų kolizijos atveju)."""
+    if not dst.get("name"):
+        dst["name"] = src.get("name") or ""
     for warehouse, qty in src["stock"].items():
         dst["stock"][warehouse] = dst["stock"].get(warehouse, 0) + qty
     if not dst["ean"]:
@@ -428,9 +617,11 @@ def _merge_variant(dst: dict, src: dict) -> None:
         dst["features"] = list(existing.values())
 
 
-def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict]:
-    """Variantai + demoted axes + option value label'ai (axis -> code -> label)."""
-    options_by_offer, demoted, option_labels, variant_features = _plan_variants(offers)
+def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict, dict]:
+    """Variantai + demoted axes + option labels + option_value_meta."""
+    options_by_offer, demoted, option_labels, variant_features, option_value_meta = (
+        _plan_variants(offers)
+    )
     variants: list[dict] = []
     index: dict[str, dict] = {}
     for offer in offers:
@@ -447,6 +638,7 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
                 offer,
                 options_by_offer.get(offer.id, {}),
                 variant_features.get(offer.id, {}),
+                name=offer_variant_label(offer),
             )
             variants.append(variant)
         else:
@@ -464,7 +656,7 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
             index[key] = variant
         variant["stock"][warehouse] = int(variant["stock"].get(warehouse, 0)) + int(stock)
         _add_offer_images(variant, offer)
-    return variants, demoted, option_labels
+    return variants, demoted, option_labels, option_value_meta
 
 
 def _item_price_net(product: Product, offers: list[Offer]) -> str | None:
@@ -510,47 +702,59 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
         products_qs = products_qs.filter(offers__supplier__code=supplier_code)
 
     items: list[dict] = []
-    for product in products_qs.iterator(chunk_size=500):
-        offers = [
-            offer
-            for offer in product.offers.all()
-            if offer.is_published and not offer.is_discontinued
-        ]
-        if supplier_code:
-            offers = [o for o in offers if o.supplier.code == supplier_code]
-        if not offers:
-            continue
+    _load_category_names()
+    try:
+        with collect():
+            for product in products_qs.iterator(chunk_size=500):
+                offers = [
+                    offer
+                    for offer in product.offers.all()
+                    if offer.is_published and not offer.is_discontinued
+                ]
+                if supplier_code:
+                    offers = [o for o in offers if o.supplier.code == supplier_code]
+                if not offers:
+                    continue
 
-        variants, demoted_axes, option_labels = _build_variants(offers)
-        weight_g = None
-        if product.shipping_weight_kg is not None:
-            weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
+                variants, demoted_axes, option_labels, option_value_meta = (
+                    _build_variants(offers)
+                )
+                supplier = offers[0].supplier.code if offers[0].supplier_id else ""
+                context = _product_context(product)
+                weight_g = None
+                if product.shipping_weight_kg is not None:
+                    weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())
 
-        items.append(
-            {
-                "code": product.sku,
-                "product_group_code": product.product_group or "",
-                "ean": product.ean or "",
-                "brand_code": product.brand.slug if product.brand_id else "",
-                "category": product.category.slug if product.category_id else "",
-                "tax_class": tax_class,
-                "is_active": product.is_active,
-                "price_net": _item_price_net(product, offers),
-                "cost_net": _item_cost_net(product, offers),
-                "weight_g": weight_g or 0,
-                "height_cm": _to_int_cm(product.shipping_height_cm),
-                "width_cm": _to_int_cm(product.shipping_width_cm),
-                "length_cm": _to_int_cm(product.shipping_depth_cm),
-                "translations": _translation_block(product, base_code),
-                "features": _features(product, demoted_axes),
-                "additional_info": _additional_info(product),
-                "option_labels": option_labels,
-                "images": _images(product),
-                "videos": _videos(product),
-                "variants": variants,
-            }
-        )
+                items.append(
+                    {
+                        "code": product.sku,
+                        "product_group_code": product.product_group or "",
+                        "ean": product.ean or "",
+                        "brand_code": product.brand.slug if product.brand_id else "",
+                        "category": product.category.slug if product.category_id else "",
+                        "tax_class": tax_class,
+                        "is_active": product.is_active,
+                        "price_net": _item_price_net(product, offers),
+                        "cost_net": _item_cost_net(product, offers),
+                        "weight_g": weight_g or 0,
+                        "height_cm": _to_int_cm(product.shipping_height_cm),
+                        "width_cm": _to_int_cm(product.shipping_width_cm),
+                        "length_cm": _to_int_cm(product.shipping_depth_cm),
+                        "translations": _translation_block(product, base_code),
+                        "features": _features(
+                            product, demoted_axes, context=context, supplier=supplier
+                        ),
+                        "additional_info": _additional_info(product),
+                        "option_labels": option_labels,
+                        "option_value_meta": option_value_meta,
+                        "images": _images(product),
+                        "videos": _videos(product),
+                        "variants": variants,
+                    }
+                )
 
+    finally:
+        _CATEGORY_NAMES.clear()
     return {
         "format_version": FORMAT_VERSION,
         "source": "normalyzer",
