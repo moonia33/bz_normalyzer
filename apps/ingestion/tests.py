@@ -496,6 +496,110 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(comp.ean, "")
         self.assertEqual(comp.extra["duplicate_barcode"], "5060137480001")
 
+    def test_shimano_adapter_import(self):
+        """Shimano ArtExp txt: ';' CSV, desc2 -> option ašys, parts variantless."""
+        supplier = Supplier.objects.create(
+            code="shimano",
+            name="Shimano",
+            purchase_price_includes_vat=False,
+            selling_price_includes_vat=True,
+        )
+        header = (
+            "ShortItemNo    ;Shimanoitem              ;3rd item nr              "
+            ";barcode/ean  ;description line 1            ;description line 2    "
+            "                  ;T;  Price;SalesPr;Retail ;CNV;S;Itemgroup       "
+            "              ;Brand          ;Filename picture                     "
+            "                   ;SaQ;A;"
+        )
+        rows = [
+            header,
+            # Voblerio variantai: size + color (008 kodas lieka color)
+            "0001;Z3M85ZE008 ;Z3M85ZE008 ;0199805703381;Bantam Facer 85+ SF     "
+            "  ;85mm 008 St Sexy Shad           ;2;12.07;21.95;21.95;002;Y;.   "
+            "                             ;Shimano        ;20260701_Z3M85ZE008.jpg"
+            "                       ;001;Y;",
+            "0002;Z3M85ZE007 ;Z3M85ZE007 ;0199805703382;Bantam Facer 85+ SF     "
+            "  ;85mm 007 St Chiayu              ;2;12.07;21.95;21.95;002;Y;.   "
+            "                             ;Shimano        ;20260701_Z3M85ZE007.jpg"
+            "                       ;001;Y;",
+            # Meškerės variantai: rod_type + length + casting_weight + sections
+            "0003;YASBBAXPIC23XH;YASBBAXPIC23XH;0199805703400;Rod Yasei BB Pike"
+            " XH                 ;Cast 2.30m 30-90g 2pc          ;2;100.00;199."
+            "00;199.00;001;N;.                             ;Shimano        ;   "
+            "                                               ;001;Y;",
+            "0004;YASBBAXPI25XH ;YASBBAXPI25XH ;0199805703401;Rod Yasei BB Pike"
+            " XH                 ;Spin 2.50m 30-90g 2pc          ;2;100.00;199."
+            "00;199.00;001;N;.                             ;Shimano        ;   "
+            "                                               ;001;Y;",
+            # Ritės: reel_size + gear_ratio
+            "0005;VQC5000XGC  ;VQC5000XGC  ;0199805703500;Reel Vanquish FC      "
+            "  ;C5000 XG                        ;2;500.00;999.00;999.00;001;Y;F"
+            "ront drag reels              ;Shimano        ;img.jpg             "
+            "                       ;001;Y;",
+            "0006;VQC3000MHGC ;VQC3000MHGC ;0199805703501;Reel Vanquish FC      "
+            "  ;C3000M HG                       ;2;500.00;999.00;999.00;001;Y;F"
+            "ront drag reels              ;Shimano        ;img.jpg             "
+            "                       ;001;Y;",
+            # Atsarginė dalis – variantless
+            "0007;14E8X       ;14E8X       ;0199805703600;Screw                 "
+            "  ;                                ;2;3.88;7.06;7.06;001;N;Reel p"
+            "arts                       ;Shimano        ;                      "
+            "                       ;001;Y;",
+            "0008;14E8W       ;14E8W       ;0199805703601;Screw                 "
+            "  ;                                ;2;2.13;3.88;3.88;001;N;Reel p"
+            "arts                       ;Shimano        ;                      "
+            "                       ;001;Y;",
+        ]
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="Shimano demo",
+            kind=SourceKind.CSV_UPLOAD,
+            adapter_code="shimano",
+        )
+        feed.file.save(
+            "ArtExpPLNF_Baltic.txt",
+            ContentFile("\r\n".join(rows).encode("utf-8")),
+            save=True,
+        )
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        run_import(job)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ImportJob.Status.SUCCESS)
+        self.assertEqual(Offer.objects.filter(supplier=supplier).count(), 8)
+
+        lure = Offer.objects.get(external_id="Z3M85ZE008")
+        lure2 = Offer.objects.get(external_id="Z3M85ZE007")
+        self.assertEqual(
+            lure.attributes["axes"], {"size": "85mm", "color": "008 St Sexy Shad"}
+        )
+        self.assertEqual(lure.product_id, lure2.product_id)
+        self.assertEqual(lure.ean, "0199805703381")
+        self.assertEqual(lure.purchase_price, Decimal("12.07"))
+        self.assertEqual(lure.selling_price, Decimal("21.95"))
+        self.assertEqual(lure.stock, 99)  # 'Y' -> in_stock_qty
+        self.assertEqual(
+            lure.images, ["http://www.shimanoshop-eu.com/Shop/Artikel_KenmerkOptie/20260701_Z3M85ZE008.jpg"]
+        )
+
+        rod = Offer.objects.get(external_id="YASBBAXPIC23XH")
+        rod2 = Offer.objects.get(external_id="YASBBAXPI25XH")
+        self.assertEqual(rod.product_id, rod2.product_id)
+        self.assertEqual(rod.attributes["axes"]["rod_type"], "Cast")
+        self.assertEqual(rod2.attributes["axes"]["rod_type"], "Spin")
+        self.assertEqual(rod.stock, 0)  # 'N'
+        self.assertFalse(rod.is_available)
+
+        reel = Offer.objects.get(external_id="VQC5000XGC")
+        self.assertEqual(
+            reel.attributes["axes"], {"reel_size": "C5000", "gear_ratio": "XG"}
+        )
+
+        screw = Offer.objects.get(external_id="14E8X")
+        screw2 = Offer.objects.get(external_id="14E8W")
+        # Parts – variantless produktai
+        self.assertEqual(screw.product_group, "")
+        self.assertNotEqual(screw.product_id, screw2.product_id)
+
     def test_import_feed_command_imports_all_active_feeds_and_preserves_base_data(self):
         supplier = Supplier.objects.create(code="fox", name="FOX")
         category = Category.objects.create(name="Accessories")

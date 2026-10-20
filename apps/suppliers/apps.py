@@ -17,4 +17,5 @@ class SuppliersConfig(AppConfig):
             korda,
             korda_info,
             moss,
+            shimano,
         )
