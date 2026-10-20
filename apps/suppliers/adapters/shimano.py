@@ -263,7 +263,7 @@ class ShimanoAdapter(BaseAdapter):
             raise AdapterError(f"Shimano: trūksta kodo: {repr(row)[:200]}")
         desc1 = self._text(row.get("desc1"))
         desc2 = self._text(row.get("desc2"))
-        name = f"{desc1} {desc2}".strip()
+        name = f"{desc1} {desc2}".strip() or code
         brand = self._text(row.get("brand")) or "Shimano"
         base_desc1 = self._text(row.get("base_desc1")) or desc1
         product_group = self._text(row.get("product_group"))
