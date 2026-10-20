@@ -64,6 +64,7 @@ _COLOR_WORDS = {
     "chartreuse", "ghost", "clown", "mirror", "clear", "ayu", "chiayu",
     "sexy", "sunny", "smelt", "wakasagi", "sardine", "anchovy", "mackerel",
     "pearl", "neon", "fire", "tiger", "zebra", "rainbow", "luminous",
+    "multi",
 }
 
 _SPARE_ITEMGROUPS = {
@@ -80,12 +81,30 @@ _SPARE_ITEMGROUPS = {
 }
 
 
-def _parse_desc2(desc2: str) -> dict[str, str]:
+def _parse_desc2(desc2: str, code: str = "") -> tuple[dict[str, str], str]:
     """'85mm 008 St Sexy Shad' -> {size, color}; 'Spin 2.70m 12-28g 2pc' ->
-    {rod_type, length, casting_weight, sections}. Liekana -> color/variantas."""
+    {rod_type, length, casting_weight, sections}. Liekana -> color/variantas.
+    Prekės kodas desc2 viduje ('59VZNM70T08 AYU') pašalinamas.
+    Grąžina (ašys, desc2-be-kodo)."""
     axes: dict[str, str] = {}
     leftover: list[str] = []
-    for token in desc2.split():
+    kept: list[str] = []
+    code_l = code.lower()
+    tokens = desc2.split()
+    # Multi-token '8-16 lbs': sujungiama prieš match'inimą
+    merged: list[str] = []
+    for token in tokens:
+        if merged and re.fullmatch(r"lbs?\.?", token, re.I) and re.fullmatch(
+            _MEAS + r"(?:-" + _MEAS + r")?", merged[-1]
+        ):
+            merged[-1] = merged[-1] + "lb"
+            continue
+        merged.append(token)
+    for token in merged:
+        if code_l and token.lower() == code_l:
+            continue
+        kept.append(token)
+    for token in kept:
         matched = False
         for pattern, axis in _TOKEN_PATTERNS:
             m = pattern.match(token)
@@ -117,15 +136,33 @@ def _parse_desc2(desc2: str) -> dict[str, str]:
             axes.setdefault("color", rest)
         else:
             axes.setdefault("variantas", rest)
-    return axes
+    return axes, " ".join(kept)
 
 
-def _clean_desc1(desc1: str) -> tuple[str, str]:
-    """'YASPIC26 section 1' -> ('YASPIC26', '1'). Kitaip -> (desc1, '')."""
-    m = _SECTION_RE.match(desc1.strip())
+# Galinis 3-skaitmenis varianto/spalvos indeksas: 'Flügel Flat 70 012' ->
+# 'Flügel Flat 70'. 2-skaitmenis modelio nr ('Flat 70') lieka.
+_INDEX_RE = re.compile(r"^(.*?)\s+\d{3}$")
+
+
+def _clean_desc1(desc1: str, desc2: str = "") -> tuple[str, str]:
+    """'YASPIC26 section 1' -> ('YASPIC26', '1').
+    'Flügel Flat 70 012' -> ('Flügel Flat 70', '') kai desc2 ne tuščias."""
+    d1 = desc1.strip()
+    m = _SECTION_RE.match(d1)
     if m:
         return m.group(1).strip(), m.group(2)
-    return desc1.strip(), ""
+    if desc2.strip():
+        mi = _INDEX_RE.match(d1)
+        if mi:
+            return mi.group(1).strip(), ""
+    return d1, ""
+
+
+def _code_stem(code: str) -> str:
+    """'Z3922ZE006' -> 'Z3922ZE'; '59VZNM70T08' -> '59VZNM70T';
+    'SHMLKMBY' (be galinių skaitmenų) -> ''."""
+    stem = re.sub(r"\d+$", "", code.strip())
+    return stem if stem != code.strip() and len(stem) >= 4 else ""
 
 
 @register_adapter
@@ -181,8 +218,8 @@ class ShimanoAdapter(BaseAdapter):
             brand = cells[13] or "Shimano"
             picture = cells[14]
             itemgroup = cells[12]
-            base_desc1, section = _clean_desc1(desc1)
-            axes = _parse_desc2(desc2) if desc2 else {}
+            base_desc1, section = _clean_desc1(desc1, desc2)
+            axes, desc2_clean = _parse_desc2(desc2, code) if desc2 else ({}, desc2)
             if section:
                 axes["section"] = section
             items.append(
@@ -191,9 +228,10 @@ class ShimanoAdapter(BaseAdapter):
                     "code": code,
                     "ean": ean,
                     "desc1": desc1,
-                    "desc2": desc2,
+                    "desc2": desc2_clean,
                     "base_desc1": base_desc1,
                     "section": section,
+                    "product_group": "",
                     "axes": axes,
                     "price": self._to_decimal(cells[7]),
                     "sales_price": self._to_decimal(cells[8]),
@@ -216,27 +254,40 @@ class ShimanoAdapter(BaseAdapter):
             elif ean:
                 seen_eans.add(ean)
 
-        # Grupavimas (brand, base_desc1) — tik kai desc2/ar section
-        # duoda atskiriamas ašis. Parts (desc2 tuščias, itemgroup dalys)
-        # -> variantless (product_group='').
-        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        # Grupavimas dviejuose etapuose:
+        # 1) kodų stem'as (be galinių skaitmenų): 'Z3922ZE006'+'Z3922ZE005'
+        #    -> 'Z3922ZE'. Tai Shimano šeimos konvencija.
+        # 2) fallback (brand, base_desc1) — kodams be bendro stem'o
+        #    (pvz. akiniai 'SHMLKMBY'/'SHMMCMBBM').
+        # Parts (be ašių / spare itemgroup) -> variantless.
+        stem_groups: dict[str, list[dict[str, Any]]] = {}
         for item in items:
-            key = (item["brand"].lower(), item["base_desc1"].lower())
-            groups.setdefault(key, []).append(item)
-        for (brand_l, base_l), members in groups.items():
-            multi = len(members) > 1
+            stem = _code_stem(item["code"])
+            if stem:
+                stem_groups.setdefault(stem.lower(), []).append(item)
+        desc_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for stem_l, members in stem_groups.items():
+            if len(members) == 1:
+                m = members[0]
+                key = (m["brand"].lower(), m["base_desc1"].lower())
+                desc_groups.setdefault(key, []).append(m)
+        for item in items:
+            if not _code_stem(item["code"]):
+                key = (item["brand"].lower(), item["base_desc1"].lower())
+                desc_groups.setdefault(key, []).append(item)
+        groups = [m for m in stem_groups.values() if len(m) > 1]
+        groups += [m for m in desc_groups.values() if len(m) > 1]
+        for members in groups:
             has_axes = any(m["axes"] for m in members)
             is_spare = (
                 members[0]["itemgroup"].lower() in _SPARE_ITEMGROUPS
                 or not has_axes
             )
-            if multi and has_axes and not is_spare:
-                group_code = _group_code([m["code"] for m in members])
-            elif multi and has_axes and members[0]["section"]:
-                # Rod sections: grupuoti pagal bazę ('YASPIC26')
-                group_code = _group_code([m["code"] for m in members])
-            else:
-                group_code = ""
+            group_code = (
+                _group_code([m["code"] for m in members])
+                if has_axes and not is_spare
+                else ""
+            )
             if group_code:
                 combos: dict[tuple, list[dict[str, Any]]] = {}
                 for m in members:
@@ -249,7 +300,7 @@ class ShimanoAdapter(BaseAdapter):
                             m["axes"]["variantas"] = m["code"]
             for m in members:
                 m["product_group"] = group_code
-            yield from members
+        yield from items
 
     @staticmethod
     def _text(value: Any) -> str:
