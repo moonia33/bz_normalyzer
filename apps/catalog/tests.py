@@ -299,12 +299,14 @@ class SplitCompositeTests(SimpleTestCase):
         self.assertEqual(leftover, "BARB Sting 5mm")
         produced, leftover = self._split("rigs", "20 cm / 17lbs / #4")
         self.assertEqual(produced["line_length"], "20 cm")
+        self.assertEqual(produced["line_strength"], "17lbs")
         self.assertEqual(produced["hook_size"], "#4")
-        self.assertEqual(leftover, "17lbs")
+        self.assertEqual(leftover, "")
         produced, leftover = self._split("rigs", "1m/#1/0/0,26mm/5szt")
         self.assertEqual(produced["hook_size"], "#1/0")
         self.assertEqual(produced["line_diameter"], "0,26mm")
-        self.assertEqual(leftover, "1m 5szt")
+        self.assertEqual(produced["line_length"], "1m")
+        self.assertEqual(leftover, "5szt")
 
     def test_unprofiled_no_split(self):
         from apps.catalog.profiles import split_composite
@@ -314,8 +316,11 @@ class SplitCompositeTests(SimpleTestCase):
         )
         self.assertEqual(produced, {})
         self.assertEqual(leftover, "0,08 mm / 1,2 kg / 100 m")
-        produced, _ = split_composite("10/0 FLAT-O", self.profiles["hooks"])
-        self.assertEqual(produced, {})
+        # hooks profilis turi taisykles (džigo galvutės '10g-1/0'):
+        # '10/0' -> hook_size, modelio žymuo lieka.
+        produced, leftover = split_composite("10/0 FLAT-O", self.profiles["hooks"])
+        self.assertEqual(produced, {"hook_size": "10/0"})
+        self.assertEqual(leftover, "FLAT-O")
 
 
 class IsPartTests(TestCase):

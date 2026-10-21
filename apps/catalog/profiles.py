@@ -63,8 +63,16 @@ PROFILES: list[CategoryProfile] = [
     ),
     CategoryProfile(
         "hooks",
-        r"kabliuk|hooks?\b|haken|haczyk",
-        ("hook_size", "size", "model"),
+        # 'hook lines' (MOSS pavadėlinių valų grupė) nėra kabliukai –
+        # turi kristi į lines profilį (mm/kg/m).
+        r"kabliuk|hooks?\b(?!\s+lines?\b)|haken|haczyk",
+        ("hook_size", "weight", "size", "model"),
+        # Džigo galvutės (MOSS 'Jigs and hooks' -> 'Galvakabliai',
+        # kuriose 'kabliuk'): '10g-1/0' -> weight + hook_size.
+        composite_rules=(
+            (r"g\b|gr\b", "weight"),
+            (r"#\s*\d+|roz\.?\s*\d+|\d+(?:/0)?(?![\d.,/a-zA-Z]|\s+[a-zA-Z])", "hook_size"),
+        ),
     ),
     # Prieš bait: 'baitcasting' ritės/meškerės nėra jaukas.
     CategoryProfile(
@@ -92,7 +100,11 @@ PROFILES: list[CategoryProfile] = [
         composite_rules=(
             (r"#\d+|size\s*\d+|\d+(?:/0)?(?![\d.,/a-zA-Z]|\s+[a-zA-Z])", "hook_size"),
             (r"mm", "line_diameter"),
-            (r"cm|inch|in\b", "line_length"),
+            # MOSS pavadėlių/sistemėlių ROZMER: '0,26mm 9kg 10m',
+            # '#2/0 / 14cm / 20 kg'.
+            (r"kg|lb", "line_strength"),
+            (r"cm|inch|in\b|m\b", "line_length"),
+            (r"g\b", "weight"),
         ),
     ),
     CategoryProfile(
@@ -123,7 +135,9 @@ PROFILES: list[CategoryProfile] = [
         _RODS_CTX,
         ("rod_length_m", "rod_length_ft", "testcurve", "casting_weight", "sections", "model"),
         composite_rules=(
-            (r"skład|sklad|sekcj|sections?|pcs?|pieces?|cz[ęe]ś|\+\s*\d", "sections"),
+            # sekcijos visomis feed kalbomis: PL '2 składy'/'1 część',
+            # EN '2/3 parts'/'2pcs', DE '2 Teile', '+2T' (tip sekcijos).
+            (r"skład|sklad|sekcj|sections?|pcs?|pieces?|parts?|teile|cz[ęe]ś|\+\s*\d", "sections"),
             (r"lbs?\b", "testcurve"),
             (r"g\b", "casting_weight"),
             (r"cm|m\b|ft", "rod_length_m"),

@@ -39,10 +39,11 @@ _RANGE_RE = re.compile(
     rf"^({_NUM})\s*({_UNIT_RE})?\s*[-–—]\s*({_NUM})\s*({_UNIT_RE})?$",
     re.IGNORECASE,
 )
-# '2pc', '3 pcs', '2 sk', '3-tlg', '2 sections', '2-piece', '4pc+tips'
+# '2pc', '3 pcs', '2 sk', '3-tlg', '2 sections', '2-piece',
+# '3 parts'/'3parts' (MOSS), '4pc+tips'
 _COUNT_SUFFIX = (
     "pcs?", "sk", "składy", "sklady", "tlg", "teile",
-    "sections?", "pieces?", "vnt", "dalių", "dalies",
+    "sections?", "pieces?", "parts?", "vnt", "dalių", "dalies",
 )
 _COUNT_RE = re.compile(
     rf"^({_NUM})\s*-?\s*({'|'.join(_COUNT_SUFFIX)})(?:\s*\+\s*.+)?$",
