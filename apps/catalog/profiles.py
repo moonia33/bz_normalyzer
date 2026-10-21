@@ -35,6 +35,11 @@ class CategoryProfile:
     # (token_regex_fragment, canonical_code) – eilės tvarka; "" kodas
     # pažymi token'ą kaip 'liekaną' (nekanonizuojamą) sąmoningai.
     composite_rules: tuple[tuple[str, str], ...] = ()
+    # Kur patenka kompozitinės generic 'size' reikšmės liekana vietoj
+    # 'size' (lures -> 'color': PERCHY/BN/natural perch yra spalvos;
+    # bait -> 'flavour': Corn-Ananas; rigs -> 'model'). None -> 'model'
+    # kai liekana akivaizdžiai nėra dydis, kitaip lieka 'size'.
+    leftover_axis: str | None = None
 
 
 PROFILES: list[CategoryProfile] = [
@@ -92,6 +97,7 @@ PROFILES: list[CategoryProfile] = [
             # '1/0', '4', '#8', 'roz.3' – kabliuko/spinnerio dydis.
             (r"#\d+|roz\.?\s*\d+|\d+(?:/0)?(?![\d.,/a-zA-Z]|\s+[a-zA-Z])", "hook_size"),
         ),
+        leftover_axis="color",
     ),
     CategoryProfile(
         "rigs",
@@ -106,11 +112,13 @@ PROFILES: list[CategoryProfile] = [
             (r"cm|inch|in\b|m\b", "line_length"),
             (r"g\b", "weight"),
         ),
+        leftover_axis="model",
     ),
     CategoryProfile(
         "bait",
         r"boil|pellet|jauk|groundbait|\bbaits?\b|liquid|\bdip\b|pop.?up|wafter",
         ("size", "weight", "volume", "flavour"),
+        leftover_axis="flavour",
     ),
     CategoryProfile(
         "nets",
@@ -161,6 +169,12 @@ for _p in [*PROFILES, DEFAULT_PROFILE]:
             assert _meta and _meta.get("kind") == "axis", (
                 f"profile '{_p.code}': composite '{_c}' nėra axis tipo registre"
             )
+    if _p.leftover_axis:
+        _meta = ATTRIBUTE_META.get(_p.leftover_axis)
+        assert _meta and _meta.get("kind") == "axis", (
+            f"profile '{_p.code}': leftover_axis '{_p.leftover_axis}' "
+            "nėra axis tipo registre"
+        )
 
 
 def profile_for(context: str) -> CategoryProfile:
@@ -181,6 +195,13 @@ _SEP_RE = re.compile(r"[/·|]")
 # o dešinė – grynas skaičius (kabliuko dydis). '0.20mm-0.35mm' ir
 # '10-40g' lieka neskilti (dešinėje vienetas), 'X-Small' – žodis.
 _DASH_SPLIT_RE = re.compile(r"^(.*?[a-zA-ZµłŁ])\s*-\s*(\d+(?:/\d+)?)$")
+# '2740m0,15mm' -> '2740m' + '0,15mm': skilimas vienetas->skaitmuo
+# riboje (Shimano '2740m0,15mm Aqua Green' color lauke). Vienetas
+# po vieneto neskyla – 'Super8'/'PE2'/'V2' lieka vienija.
+_UNIT_DIGIT_BOUNDARY_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?\s*(?:mm|cm|kg|lbs?|gr|oz|ft|in|[mg]))(?=\d)",
+    re.IGNORECASE,
+)
 # Gryni skyrybos ženklai token'uose – nėra reikšmė (ne į liekaną).
 _PUNCT_TOKEN_RE = re.compile(r"[+x×\-–·.,/]+")
 # Imperial vienetai token'e – dublikate pralaimi metriniam ('12ft/360cm').
@@ -232,7 +253,12 @@ def _tokenize_segment(segment: str) -> list[str]:
         if m:
             out.extend((m.group(1), m.group(2)))
         else:
-            out.append(tok)
+            # '\x00' skirtukas – .split() ant tarpo sulaužytų sulietus
+            # token'us ('0,08 mm' -> '0,08','mm').
+            pieces = _UNIT_DIGIT_BOUNDARY_RE.sub(
+                lambda m: m.group(0) + "\x00", tok
+            )
+            out.extend(part for part in pieces.split("\x00") if part)
     return out
 
 

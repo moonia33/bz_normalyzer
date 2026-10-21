@@ -230,15 +230,23 @@ def strip_axis_prefix(value: str) -> str:
 EMPTY_ATTR_VALUES = {
     "", "none", "n/a", "na", "null", "-", "--", "—", "–", "no",
     "0", "0.0", "0,0", "0.00", "0,00",
+    # Pliki vienetai be skaičiaus (Korda 'size: m' ir pan.).
+    "m", "cm", "mm", "kg", "g", "lb", "m.",
 }
+# Vienetų įrašai EMPTY_ATTR_VALUES lyginami CASE-SENSITIVE: 'M' yra
+# dydis (clothing), 'm' – metras be skaičiaus.
+_CASE_SENSITIVE_EMPTY = {"m", "cm", "mm", "kg", "g", "lb", "m."}
+_EMPTY_LOWER = EMPTY_ATTR_VALUES - _CASE_SENSITIVE_EMPTY
 
 
 def is_meaningful_value(value) -> bool:
-    """Ar atributo reikšmė informatyvi (ne tuščia/'none'/'0' ir t.t.)."""
+    """Ar atributo reikšmė informatyvi (ne tuščia/'none'/'0'/'m'...)."""
     if value is None:
         return False
-    text = str(value).strip().lower()
-    return bool(text) and text not in EMPTY_ATTR_VALUES
+    text = str(value).strip()
+    if not text or text in _CASE_SENSITIVE_EMPTY:
+        return False
+    return text.lower() not in _EMPTY_LOWER
 
 
 def value_in_name(axis: str, raw_value, name: str) -> bool:

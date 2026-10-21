@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 from decimal import Decimal, InvalidOperation
 
@@ -257,7 +258,37 @@ def offer_axis_values(offer) -> dict[str, str]:
             if ATTRIBUTE_META[canonical]["kind"] != "axis":
                 continue
             axes.setdefault(_code(canonical), value)
+    # Lines profilis: mm/m/lb dažnai tik pavadinime (Korda 'Apex
+    # Braided Mainline 50lb 1200 m' su axes {size:'m'}, Guru 'Pulse 9
+    # Braid (0.08mm) 150m' su {variantas:'150m'}). Tik 'lines' – rods
+    # 'lb' yra testcurve dviprasmybė.
+    if profile_for(context).code == "lines":
+        _fill_line_axes_from_name(offer, axes)
     return axes
+
+
+# (canonical_axis, regex) – 'mm' prieš 'm', 'lb(s)' strength'ui.
+# Reikšmė pildoma tik kai ašies dar nėra (esama ašis laimi).
+_LINE_NAME_RES = (
+    ("line_diameter", re.compile(r"\d+(?:[.,]\d+)?\s*mm", re.IGNORECASE)),
+    ("line_length", re.compile(r"\d+\s*m\b(?!\w)", re.IGNORECASE)),
+    ("line_strength", re.compile(r"\d+(?:[.,]\d+)?\s*lbs?\b", re.IGNORECASE)),
+)
+
+
+def _fill_line_axes_from_name(offer, axes: dict[str, str]) -> None:
+    """mm/m/lb iš offer+product vardo -> lines ašys (setdefault)."""
+    parts = [offer.name or ""]
+    if offer.product_id:
+        parts.append(offer.product.name or "")
+    text = " ".join(parts)
+    for code, rx in _LINE_NAME_RES:
+        key = _code(code)
+        if key in axes:
+            continue
+        match = rx.search(text)
+        if match:
+            axes[key] = match.group(0)
 
 
 def offer_variant_label(offer) -> str:
@@ -307,7 +338,8 @@ _COMPOSITE_SEPS = ("/", "·", "|")
 def _composite_gate(value: str, produced: dict) -> bool:
     """Ar reikšmė 'atrodo kompozitinė': skirtukas '/'/'·'/'|' arba
     >=2 skirtingi composite-rule token'ai (vieno token'o neskaldom –
-    '0,10mm' tiesiog yra 'size' reikšmė)."""
+    '0,10mm' tiesiog yra 'size' reikšmė; 'Black/Grey' nieko neduoda
+    -> nepaliesta)."""
     if not produced:
         return False
     if any(sep in value for sep in _COMPOSITE_SEPS):
@@ -315,45 +347,114 @@ def _composite_gate(value: str, produced: dict) -> bool:
     return len(produced) >= 2
 
 
-def _split_composite_axes(axes: dict[str, str], profile) -> list[str]:
-    """Generic 'size' ašies kompozitinė reikšmė -> kanoninės ašys (F3).
+# Tekstinės 'size' reikšmės, kurios NĖRA liekana į leftover_axis:
+# 'M'/'XL'/'maxi' lieka 'size' ašyje; 'PERCHY'/'Corn-Ananas' – ne.
+_SIZE_WORDS = {
+    "2xs", "xxs", "xs", "xsmall", "s", "small", "m", "medium", "l",
+    "large", "xl", "xlarge", "2xl", "xxl", "xxlarge", "3xl", "xxxl",
+    "onesize", "standart", "standard", "std", "maxi", "mini", "free",
+    "uni",
+}
 
-    '170cm/150g/2 składy' (rods) -> rod_length_m + casting_weight +
-    sections; 'X-Small 20g' (feeders) -> size + weight. Išskaldyti kodai
-    jungiami setdefault (esama ašis laimi). Nesuvalgyta dalis lieka
-    pradinėje ašyje IR grąžinama varianto vardui; tuščia liekana ->
-    ašis sunaikinama ('generic axis consumed only when fully split').
+
+def _is_size_word(text: str) -> bool:
+    """'X-Small'/'one size'/'MAXI' -> True; lyginama be tarpų/brūkšnių."""
+    flat = re.sub(r"[\s\-_.+]+", "", str(text or "").lower())
+    return flat in _SIZE_WORDS
+
+
+def _leftover_target(leftover: str, profile) -> str | None:
+    """Kur padėti generic 'size' liekaną (B): profilio leftover_axis
+    (lures->color, bait->flavour, rigs->model), arba 'model' kai liekana
+    akivaizdžiai nėra dydis (be skaitmenų, ne dydžio žodis). None ->
+    lieka 'size' ašyje (ir varianto varde)."""
+    if _is_size_word(leftover):
+        return None
+    if profile.leftover_axis:
+        return profile.leftover_axis
+    if not any(ch.isdigit() for ch in leftover):
+        return "model"
+    return None
+
+
+def _split_composite_axes(axes: dict[str, str], profile) -> list[str]:
+    """Kompozitinės ašių reikšmės -> kanoninės ašys (F3 + per-ašis split).
+
+    Split'inamos VISOS ašys, ne tik generic 'size': Shimano deda
+    '2740m0,15mm Aqua Green' į 'color'. Ne-generic ašies liekana lieka
+    TOJE pačioje ašyje ('color' = 'Aqua Green').
+
+    Generic 'size' liekana -> `profile.leftover_axis` (lures->color,
+    bait->flavour, rigs->model) arba 'model' ne-dydžio tekstui; kitaip
+    lieka 'size' IR grąžinama varianto vardui. Tuščia liekana -> ašis
+    sunaikinama ('generic axis consumed only when fully split').
+
+    Bait/lures: VISA 'size' reikšmė, kuri nėra kompozitinė IR nėra
+    dydis (be skaitmenų, ne dydžio žodis – 'Corn-Ananas', 'PERCHY'),
+    -> leftover_axis. 'M'/'maxi'/'150cm' lieka 'size'.
     """
     leftovers: list[str] = []
     for ax in list(axes):
-        if _norm_axis(ax) not in _GENERIC_AXES:
-            continue
         value = axes[ax]
         produced, leftover = split_composite(value, profile)
-        if not _composite_gate(value, produced):
+        is_generic = _norm_axis(ax) in _GENERIC_AXES
+        # Vienintelis 'produced' kodas = pati ašis ('lure-size'
+        # '12cm/4.75in') – split nieko neduoda; dual-unit reikšmę
+        # parsuoja parse_value, liekana '4.75in' neprilimpa atgal.
+        if produced and {_code(c) for c in produced} == {ax}:
             continue
-        # Pradinę kompozitinę reikšmę pirmiausia išmetam – ji nėra
-        # 'existing axis' (pvz. 'size: X-Small 20g' -> size:'X-Small').
-        del axes[ax]
-        for code, val in produced.items():
-            axes.setdefault(_code(code), val)
-        if leftover:
-            axes[ax] = leftover
-            leftovers.append(leftover)
+        if _composite_gate(value, produced):
+            # Pradinę kompozitinę reikšmę pirmiausia išmetam – ji nėra
+            # 'existing axis' ('size: X-Small 20g' -> size:'X-Small').
+            del axes[ax]
+            for code, val in produced.items():
+                axes.setdefault(_code(code), val)
+            if not leftover:
+                continue
+            if ax in axes:
+                # produced grąžino tą pačią ašį – liekanos nebejungiame
+                # atgal ('lure-size' '11cm/10g/Red' -> '11cm' + 'Red'
+                # į varianto vardą, ne 'lure-size'='11cm Red').
+                leftovers.append(leftover)
+            elif is_generic:
+                target = _leftover_target(leftover, profile)
+                if target and _code(target) not in axes:
+                    axes[_code(target)] = leftover
+                else:
+                    axes[ax] = leftover
+                leftovers.append(leftover)
+            else:
+                axes[ax] = leftover
+            continue
+        # Bait/lures: visa 'size' reikšmė nėra kompozitinė/dydis ->
+        # leftover_axis ('PERCHY' -> color, 'Corn-Ananas' -> flavour).
+        if (
+            is_generic
+            and profile.code in ("bait", "lures")
+            and profile.leftover_axis
+            and _code(profile.leftover_axis) not in axes
+            and not any(ch.isdigit() for ch in value)
+            and not _is_size_word(value)
+        ):
+            del axes[ax]
+            axes[_code(profile.leftover_axis)] = value
+            leftovers.append(value)
     return leftovers
 
 
 def _apply_composite_axes(
     offers: list[Offer], raw: dict[int, dict], profile
 ) -> tuple[dict[int, str], set[int]]:
-    """Split'ina generic ašis IR 'variantas' label'us (rods/lines/
-    lures/feeders/rigs profiliams) prieš normalizavimą.
+    """Split'ina ašis IR 'variantas' label'us (rods/lines/lures/
+    feeders/rigs/hooks profiliams) prieš normalizavimą. Profiliams be
+    composite_rules su leftover_axis (bait) bėga tik 'size' -> leftover
+    perkėlimas (split_composite nieko neskaldo).
 
     Grąžina ({offer_id: liekana_vardui}, {offer_id su sunaikintu
     'variantas' label'u})."""
     name_parts: dict[int, str] = {}
     consumed_labels: set[int] = set()
-    if not profile.composite_rules:
+    if not profile.composite_rules and not profile.leftover_axis:
         return name_parts, consumed_labels
     for offer in offers:
         axes = raw[offer.id]
@@ -370,6 +471,28 @@ def _apply_composite_axes(
         if parts:
             name_parts[offer.id] = " ".join(parts)
     return name_parts, consumed_labels
+
+
+# Produkto vardo spec-dalies nukirtimas (merge_variant_products):
+# skliaustai '(0.08mm)'/'[150m]' + uodegos '50lb 1200 m' tokenai.
+_NAME_BRACKET_RE = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
+_NAME_TAIL_SPEC_RE = re.compile(
+    r"(?:\s+\d+(?:[.,]\d+)?\s*(?:mm|cm|m|lbs?|kg|gr?|oz)\b\.?)+\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_name_spec(name) -> str:
+    """'Guru Pulse 9 Braid (0.08mm) 150m' -> 'Guru Pulse 9 Braid'.
+
+    Nukerpa skliaustuose esančias spec'as IR uodegos 'skaičius+vienetas'
+    tokenus (mm/cm/m/lb/kg/g/oz) – variantų skirtumai vardo gale, o ne
+    baziniame produkto pavadinime.
+    """
+    text = re.sub(r"\s+", " ", str(name or "")).strip()
+    text = _NAME_BRACKET_RE.sub(" ", text)
+    text = _NAME_TAIL_SPEC_RE.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _plan_variants(

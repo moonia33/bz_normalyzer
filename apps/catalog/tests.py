@@ -390,3 +390,46 @@ class IsPartTests(TestCase):
         self.assertTrue(product_is_part([part, part, reel]))
         self.assertFalse(product_is_part([part, reel, reel]))
         self.assertFalse(product_is_part([]))
+
+
+class StripNameSpecTests(SimpleTestCase):
+    """merge_variant_products vardo normalizavimas: '(0.08mm)' ir
+    uodegos '50lb 1200 m' -> tas pats bazinis vardas."""
+
+    def _strip(self, name):
+        from apps.catalog_export.services import strip_name_spec
+
+        return strip_name_spec(name)
+
+    def test_parenthesized_and_trailing_specs(self):
+        self.assertEqual(
+            self._strip("Guru Pulse 9 Braid (0.08mm) 150m"),
+            "Guru Pulse 9 Braid",
+        )
+        self.assertEqual(
+            self._strip("Korda Apex Braided Mainline 50lb 1200 m"),
+            "Korda Apex Braided Mainline",
+        )
+        self.assertEqual(
+            self._strip("Guru Pulse 9 Braid [150m]"),
+            "Guru Pulse 9 Braid",
+        )
+
+    def test_base_words_kept(self):
+        # '9'/'PowerPro'/'V2' – be vieneto, nėra spec-uodega.
+        self.assertEqual(
+            self._strip("Guru Pulse 9 Braid"), "Guru Pulse 9 Braid"
+        )
+        self.assertEqual(
+            self._strip("PowerPro Super 8 Slick V2"),
+            "PowerPro Super 8 Slick V2",
+        )
+
+    def test_merged_variants_same_base(self):
+        base = self._strip("Guru Pulse 9 Braid (0.08mm) 150m")
+        self.assertEqual(
+            base, self._strip("Guru Pulse 9 Braid (0.10mm) 150m")
+        )
+        self.assertEqual(
+            base, self._strip("Guru Pulse 9 Braid (0.12mm) 150m")
+        )

@@ -1050,3 +1050,80 @@ class EanMatchingTests(TestCase):
 
         offer = Offer.objects.get(supplier=moss, external_id="M-1")
         self.assertEqual(offer.product_id, product.id)
+
+
+class MergeVariantProductsTests(TestCase):
+    """merge_variant_products: produktai su tuo pačiu normalizuotu
+    baziniu vardu (supplier+base+category, 'lines' profilis) ->
+    vienas produktas su variantų offer'iais."""
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(code="korda", name="Korda")
+        self.category = Category.objects.create(name="Braided lines")
+
+    def _product(self, eid, name, offer_name=None):
+        product = Product.objects.create(
+            sku=eid, name=name, is_active=True, category=self.category,
+            product_group=eid,
+        )
+        Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid,
+            name=offer_name or name, product=product, is_published=True,
+            selling_price=Decimal("10.00"), product_group=eid,
+        )
+        return product
+
+    def test_apply_merges_into_lowest_id(self):
+        self._product("GP901", "Guru Pulse 9 Braid (0.08mm)")
+        self._product("GP902", "Guru Pulse 9 Braid (0.10mm)")
+        self._product("GP903", "Guru Pulse 9 Braid (0.12mm)")
+        self._product("APEXB50", "Korda Apex Braided Mainline 50lb 1200 m")
+        call_command("merge_variant_products", apply=True)
+        self.assertEqual(Product.objects.count(), 2)
+        canonical = Product.objects.get(sku="GP901")
+        self.assertEqual(canonical.offers.count(), 3)
+        self.assertEqual(canonical.product_group, "GP901")
+        # Kitas base vardas – lieka atskiras.
+        apex = Product.objects.get(sku="APEXB50")
+        self.assertEqual(apex.offers.count(), 1)
+
+    def test_dry_run_changes_nothing(self):
+        self._product("GP901", "Guru Pulse 9 Braid (0.08mm)")
+        self._product("GP902", "Guru Pulse 9 Braid (0.10mm)")
+        call_command("merge_variant_products")
+        self.assertEqual(Product.objects.count(), 2)
+        self.assertEqual(
+            Offer.objects.filter(product__sku="GP901").count(), 1
+        )
+
+    def test_different_category_not_merged(self):
+        other_cat = Category.objects.create(name="Hooks")
+        self._product("GP901", "Guru Pulse 9 Braid (0.08mm)")
+        product = Product.objects.create(
+            sku="GP902", name="Guru Pulse 9 Braid (0.10mm)",
+            is_active=True, category=other_cat,
+        )
+        Offer.objects.create(
+            supplier=self.supplier, external_id="GP902", sku="GP902",
+            name="Guru Pulse 9 Braid (0.10mm) 150m", product=product,
+            is_published=True, selling_price=Decimal("10.00"),
+        )
+        call_command("merge_variant_products", apply=True)
+        self.assertEqual(Product.objects.count(), 2)
+
+    def test_non_lines_profile_not_merged(self):
+        category = Category.objects.create(name="Hooks")
+        for eid, name in (
+            ("K-1", "Guru Hook (size 8)"),
+            ("K-2", "Guru Hook (size 10)"),
+        ):
+            product = Product.objects.create(
+                sku=eid, name=name, is_active=True, category=category,
+            )
+            Offer.objects.create(
+                supplier=self.supplier, external_id=eid, sku=eid,
+                name=name, product=product, is_published=True,
+                selling_price=Decimal("10.00"),
+            )
+        call_command("merge_variant_products", apply=True)
+        self.assertEqual(Product.objects.count(), 2)

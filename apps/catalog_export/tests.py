@@ -769,14 +769,15 @@ class CompositeAxisTests(TestCase):
         # Liekana -> varianto vardas (color-ish, ne feature).
         self.assertEqual(names["C-1"], "PERCHY")
         self.assertEqual(names["C-2"], "MIRROR")
-        # generic ašis nesunaikinta – liekana lieka 'size' (varijuoja ->
-        # option: 'perchy'/'mirror').
+        # Liekana nukreipiama per leftover_axis: lures -> 'color'
+        # (PERCHY/MIRROR yra spalvų/pattern'ų vardai, ne 'size').
         options = {v["code"]: v["options"] for v in item["variants"]}
-        self.assertEqual(options["C-1"], {"size": "perchy"})
-        self.assertEqual(options["C-2"], {"size": "mirror"})
+        self.assertEqual(options["C-1"], {"color": "perchy"})
+        self.assertEqual(options["C-2"], {"color": "mirror"})
         # lure_size vienoda -> demoted į product features.
         feature_codes = {f["code"] for f in item["features"]}
         self.assertIn("lure-size", feature_codes)
+        self.assertNotIn("size", feature_codes)
 
     def test_single_token_value_is_not_composite(self):
         product = self._product("Braided lines")
@@ -864,3 +865,264 @@ class InferredContextTests(TestCase):
         offer = self._offer("I-1", {"axes": {
             "size": "85mm", "color": "red"}})
         self.assertEqual(profile_for(_offer_context(offer)).code, "generic")
+
+
+class NonGenericCompositeTests(TestCase):
+    """A: kompozitinė reikšmė NE-generic ašyje – Shimano
+    'color: 2740m0,15mm Aqua Green' -> line_length + line_diameter,
+    liekana 'Aqua Green' lieka 'color' ašyje."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="shimano", name="Shimano", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+        self.category = Category.objects.create(
+            name="Braided lines", slug="braided-lines-ng"
+        )
+        self.product = Product.objects.create(
+            sku="sh-PP-1", name="PowerPro Super 8 Slick", is_active=True,
+            category=self.category,
+        )
+
+    def _offer(self, eid, attrs):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid,
+            name=f"PowerPro {eid}", product=self.product,
+            is_published=True, is_available=True,
+            selling_price=Decimal("10.00"), attributes=attrs,
+        )
+
+    def test_composite_color_splits_and_keeps_leftover(self):
+        self._offer("V-1", {"axes": {
+            "color": "2740m0,15mm Aqua Green", "strength": "10kg"}})
+        self._offer("V-2", {"axes": {
+            "color": "2740m0,19mm Aqua Green", "strength": "15kg"}})
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["V-1"], {"line-diameter": "0-15-mm"})
+        self.assertEqual(options["V-2"], {"line-diameter": "0-19-mm"})
+        # 'color' liekana yra tik 'Aqua Green' – be '2740m0,15mm'.
+        feature_map = {
+            f["code"]: f["value_translations"]["en"] for f in item["features"]
+        }
+        self.assertEqual(feature_map["color"], "Aqua Green")
+        self.assertEqual(feature_map["line-length"], "2740 m")
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(vf["V-1"].get("line-strength"), "10 kg")
+        self.assertEqual(vf["V-2"].get("line-strength"), "15 kg")
+
+    def test_plain_color_not_split(self):
+        # 'Black/Grey' – produced tuščias -> gate nepraleidžia.
+        self._offer("V-1", {"axes": {
+            "color": "Black/Grey", "strength": "10kg"}})
+        self._offer("V-2", {"axes": {
+            "color": "Black/Green", "strength": "15kg"}})
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["V-1"], {"color": "black-grey"})
+        self.assertEqual(options["V-2"], {"color": "black-green"})
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertNotIn("line-diameter", feature_codes)
+
+
+class LeftoverRoutingTests(TestCase):
+    """B: generic 'size' liekanų/neskaldytų reikšmių nukreipimas per
+    profile.leftover_axis (lures->color, bait->flavour, kita->model)."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="moss", name="MOSS", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+
+    def _product(self, category_name):
+        category = Category.objects.create(
+            name=category_name, slug=category_name.lower().replace(" ", "-")
+        )
+        return Product.objects.create(
+            sku=f"moss-{category.slug}", name="Item", is_active=True,
+            category=category,
+        )
+
+    def _offer(self, product, eid, name, size_raw="", attrs=None):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid, name=name,
+            product=product, is_published=True, is_available=True,
+            selling_price=Decimal("10.00"), size_raw=size_raw,
+            attributes=attrs or {},
+        )
+
+    def test_lures_whole_size_goes_to_color(self):
+        product = self._product("Lures")
+        self._offer(product, "W-1", "Worm A", size_raw="PERCHY")
+        self._offer(product, "W-2", "Worm B", size_raw="BN")
+        payload = build_catalog_payload()
+        options = {
+            v["code"]: v["options"] for v in payload["items"][0]["variants"]
+        }
+        self.assertEqual(options["W-1"], {"color": "perchy"})
+        self.assertEqual(options["W-2"], {"color": "bn"})
+
+    def test_lures_size_word_stays_size(self):
+        product = self._product("Lures")
+        self._offer(product, "W-1", "Worm A", size_raw="M")
+        self._offer(product, "W-2", "Worm B", size_raw="XL")
+        payload = build_catalog_payload()
+        options = {
+            v["code"]: v["options"] for v in payload["items"][0]["variants"]
+        }
+        self.assertEqual(options["W-1"], {"size": "m"})
+        self.assertEqual(options["W-2"], {"size": "xl"})
+
+    def test_bait_whole_size_goes_to_flavour(self):
+        product = self._product("Boilies")
+        self._offer(product, "B-1", "Boilie A", size_raw="Corn-Ananas")
+        self._offer(product, "B-2", "Boilie B", size_raw="Honey-Peach")
+        payload = build_catalog_payload()
+        options = {
+            v["code"]: v["options"] for v in payload["items"][0]["variants"]
+        }
+        self.assertEqual(options["B-1"], {"flavour": "corn-ananas"})
+        self.assertEqual(options["B-2"], {"flavour": "honey-peach"})
+
+    def test_other_profile_non_size_leftover_to_model(self):
+        product = self._product("Braided lines")
+        self._offer(product, "L-1", "Line A", size_raw="0,10mm/PowerPro")
+        self._offer(product, "L-2", "Line B", size_raw="0,12mm/PowerPro")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["L-1"], {"line-diameter": "0-1-mm"})
+        self.assertEqual(options["L-2"], {"line-diameter": "0-12-mm"})
+        # 'PowerPro' – liekana be skaitmenų ir ne dydžio žodis -> 'model'
+        # (vienoda visame produkte -> product feature, ne 'size').
+        feature_map = {
+            f["code"]: f["value_translations"]["en"] for f in item["features"]
+        }
+        self.assertEqual(feature_map.get("model"), "PowerPro")
+        self.assertNotIn("size", feature_map)
+
+    def test_digit_leftover_stays_size(self):
+        product = self._product("Braided lines")
+        self._offer(product, "L-1", "Line A", size_raw="0,10mm/PE4")
+        self._offer(product, "L-2", "Line B", size_raw="0,12mm/PE8")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        # 'PE4'/'PE8' turi skaitmenis -> lieka 'size' -> variant features.
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(vf["L-1"].get("size"), "PE4")
+        self.assertNotIn("model", vf["L-1"])
+
+
+class LineNameAxesTests(TestCase):
+    """C: mm/m/lb iš offer+product pavadinimo -> lines ašys; pliki
+    vienetai ('m') – tuščios reikšmės."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="korda", name="Korda", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+        self.category = Category.objects.create(
+            name="Braided lines", slug="braided-lines-c"
+        )
+        self.product = Product.objects.create(
+            sku="korda-line", name="Line product", is_active=True,
+            category=self.category,
+        )
+
+    def _offer(self, eid, name, attrs):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid, name=name,
+            product=self.product, is_published=True, is_available=True,
+            selling_price=Decimal("10.00"), attributes=attrs,
+        )
+
+    def test_apex_strength_length_from_name(self):
+        self._offer(
+            "APEXB50", "Korda Apex Braided Mainline 50lb 1200 m",
+            {"axes": {"size": "m"}},
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        feature_map = {
+            f["code"]: f["value_translations"]["en"] for f in item["features"]
+        }
+        # 'm' – plikas vienetas -> 'size' dingsta; mm/lb iš vardo.
+        self.assertNotIn("size", feature_map)
+        self.assertEqual(feature_map["line-strength"], "22,68 kg (50 lb)")
+        self.assertEqual(feature_map["line-length"], "1200 m")
+
+    def test_guru_pulse_diameter_from_name(self):
+        self._offer(
+            "GP901", "Guru Pulse 9 Braid (0.08mm) 150m",
+            {"axes": {"variantas": "150m"}},
+        )
+        self._offer(
+            "GP902", "Guru Pulse 9 Braid (0.10mm) 150m",
+            {"axes": {"variantas": "150m"}},
+        )
+        self._offer(
+            "GP903", "Guru Pulse 9 Braid (0.12mm) 150m",
+            {"axes": {"variantas": "150m"}},
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["GP901"], {"line-diameter": "0-08-mm"})
+        self.assertEqual(options["GP902"], {"line-diameter": "0-1-mm"})
+        self.assertEqual(options["GP903"], {"line-diameter": "0-12-mm"})
+        names = {v["code"]: v["name"] for v in item["variants"]}
+        # 'variantas: 150m' – ne kompozitinė -> lieka varianto vardas.
+        self.assertEqual(names["GP901"], "150m")
+
+    def test_existing_axis_wins_over_name(self):
+        self._offer(
+            "X-1", "Guru Pulse 9 Braid (0.08mm) 150m",
+            {"axes": {"line_diameter": "0.30mm"}},
+        )
+        self._offer(
+            "X-2", "Guru Pulse 9 Braid (0.10mm) 150m",
+            {"axes": {"line_diameter": "0.35mm"}},
+        )
+        payload = build_catalog_payload()
+        options = {
+            v["code"]: v["options"] for v in payload["items"][0]["variants"]
+        }
+        # Esama ašis laimi prieš vardo ištraukimą.
+        self.assertEqual(options["X-1"], {"line-diameter": "0-3-mm"})
+        self.assertEqual(options["X-2"], {"line-diameter": "0-35-mm"})
+
+    def test_clothing_size_m_not_dropped(self):
+        # 'M' (uppercase) yra dydis – tik plikas 'm' vienetas tuščias.
+        category = Category.objects.create(name="Hoodies", slug="hoodies")
+        product = Product.objects.create(
+            sku="korda-hoodie", name="Hoodie", is_active=True,
+            category=category,
+        )
+        for eid, size in (("H-1", "M"), ("H-2", "L")):
+            Offer.objects.create(
+                supplier=self.supplier, external_id=eid, sku=eid,
+                name="Team Hoodie", product=product, is_published=True,
+                is_available=True, selling_price=Decimal("10.00"),
+                attributes={"axes": {"size": size}},
+            )
+        payload = build_catalog_payload()
+        item = next(i for i in payload["items"] if i["code"] == "korda-hoodie")
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["H-1"], {"size": "m"})
+        self.assertEqual(options["H-2"], {"size": "l"})
