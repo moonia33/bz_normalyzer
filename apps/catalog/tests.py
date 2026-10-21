@@ -58,6 +58,12 @@ class ParseValueTests(TestCase):
             self.assertEqual(pv.code, "0-26-mm", raw)
             self.assertEqual(pv.display, "0,26 mm", raw)
 
+    def test_source_precision_is_kept_without_conversion(self):
+        # 0.15 g ir 0.2 g plūdės – skirtingi variantai, ne vienas kodas.
+        self.assertEqual(parse_value("0.15g", "number", "g").code, "0-15-g")
+        self.assertEqual(parse_value("0.2g", "number", "g").code, "0-2-g")
+        self.assertEqual(parse_value("0.1234", "number", "mm").num, Decimal("0.1234"))
+
     def test_lb_to_kg(self):
         pv = parse_value("20lb", "number", "kg")
         self.assertEqual(pv.num, Decimal("9.07"))

@@ -130,8 +130,13 @@ def _unit_group_of(unit: str) -> int | None:
     return None
 
 
-def _round(value: Decimal, unit: str) -> Decimal:
+def _round(value: Decimal, unit: str, source: Decimal | None = None) -> Decimal:
+    """Apvalina konversijos liekanas (9.0718474 -> 9.07), bet niekada
+    nenumeta šaltinyje buvusių skaitmenų: 0.15 g lieka 0.15, ne 0.2
+    (`source` – nekonvertuota reikšmė; be konversijos source == value)."""
     places = _ROUNDING.get(unit, 2)
+    if source is not None:
+        places = max(places, -source.normalize().as_tuple().exponent)
     quantum = Decimal(1) if places == 0 else Decimal(1).scaleb(-places)
     try:
         return value.quantize(quantum).normalize()
@@ -327,9 +332,12 @@ def parse_value(
             num=None, num_max=None, unit=canonical_unit,
             display=raw, code=value_code(raw),
         )
-    num = _round(converted, canonical_unit)
+    unconverted = not detected_unit or detected_unit == canonical_unit
+    num = _round(converted, canonical_unit, num if unconverted else None)
     if converted_max is not None:
-        num_max = _round(converted_max, canonical_unit)
+        num_max = _round(
+            converted_max, canonical_unit, num_max if unconverted else None
+        )
         if num_max < num:
             num, num_max = num_max, num
 

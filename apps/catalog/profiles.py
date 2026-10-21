@@ -41,7 +41,7 @@ PROFILES: list[CategoryProfile] = [
     CategoryProfile(
         "floats",
         r"plūd|plud|float|waggler|\bposen?\b",
-        ("weight", "size"),
+        ("weight", "size", "color"),
     ),
     CategoryProfile(
         "hooks",
@@ -54,9 +54,21 @@ PROFILES: list[CategoryProfile] = [
         r"rit[ėe]s|ritė|reel|rolle|kołowrot|kolowrot",
         ("reel_size", "size", "model", "color"),
     ),
+    # Prieš bait: 'Soft Baits' / 'Hard Baits' yra masalai, ne jaukas.
+    CategoryProfile(
+        "lures",
+        r"vobler|wobbler|masal|guminuk|blizg|lures?\b|\bjig|shad|frog|spinner|"
+        r"crank|popper|twister|(soft|hard|swim) ?baits?\b",
+        ("size", "lure_size", "weight", "hook_size", "color", "pattern"),
+    ),
+    CategoryProfile(
+        "rigs",
+        r"sistemėl|sistemel|\brigs?\b|przypon|vorfach|hair ?rig|chod",
+        ("hook_size", "size", "line_diameter", "line_strength", "model"),
+    ),
     CategoryProfile(
         "bait",
-        r"boil|pellet|jauk|groundbait|\bbait(?!cast)|liquid|\bdip\b|pop.?up|wafter",
+        r"boil|pellet|jauk|groundbait|\bbaits?\b|liquid|\bdip\b|pop.?up|wafter",
         ("size", "weight", "volume", "flavour"),
     ),
     CategoryProfile(
@@ -70,15 +82,9 @@ PROFILES: list[CategoryProfile] = [
         ("line_diameter", "color", "line_length"),
     ),
     CategoryProfile(
-        "lures",
-        r"vobler|wobbler|masal|guminuk|blizg|lures?\b|\bjig|shad|frog|spinner|"
-        r"crank|popper|twister|softbait|hardbait",
-        ("size", "lure_size", "weight", "color", "pattern"),
-    ),
-    CategoryProfile(
         "rods",
         _RODS_CTX,
-        ("rod_length_m", "testcurve", "casting_weight", "sections", "model"),
+        ("rod_length_m", "rod_length_ft", "testcurve", "casting_weight", "sections", "model"),
     ),
 ]
 
