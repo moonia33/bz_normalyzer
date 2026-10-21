@@ -71,6 +71,7 @@ from apps.catalog.attributes import (
     ATTRIBUTE_META,
     MAX_OPTIONS,
     VARIANT_LABEL_CODE,
+    _norm_code,
     classify_label,
     is_meaningful_value,
     resolve_code,
@@ -120,17 +121,64 @@ def _category_context(category_id) -> str:
     return " ".join(parts)
 
 
-def _product_context(product) -> str:
-    """Produkto lygio kontekstas kontekstinėms taisyklėms (_features)."""
+# Ašys, kurių buvimas 'Uncategorized' offer'yje išduoda kategoriją
+# (pvz. Shimano 1682 offer'iai be kategorijos). Lines/lures NEinferinam
+# – per daug dviprasmiška.
+_INFER_ROD_AXES = {
+    "sections", "section", "casting_weight", "length_imperial",
+    "rod_type", "action", "testcurve", "rod_length_m", "rod_length_ft",
+}
+_INFER_REEL_AXES = {"reel_size", "gear_ratio"}
+
+
+def _inferred_context_tokens(axes_keys) -> str:
+    """Ašių kodai -> konteksto tokenai ('rods', 'reels'), kuriuos
+    match'ina _RODS_CTX / reels profilio regex'ai."""
+    codes = {_norm_code(k) for k in axes_keys}
+    tokens: list[str] = []
+    if codes & _INFER_ROD_AXES:
+        tokens.append("rods")
+    if codes & _INFER_REEL_AXES:
+        tokens.append("reels")
+    return " ".join(tokens)
+
+
+def _attrs_axis_keys(attrs: dict) -> list[str]:
+    """Axes kodai + specs label'ai -> klasifikuoti kodai."""
+    keys: list[str] = []
+    if not isinstance(attrs, dict):
+        return keys
+    raw_axes = attrs.get("axes")
+    if isinstance(raw_axes, dict):
+        keys.extend(str(k) for k in raw_axes)
+    specs = attrs.get("specs")
+    if isinstance(specs, dict):
+        for label in specs:
+            code, kind = classify_label(str(label))
+            if code:
+                keys.append(code)
+    return keys
+
+
+def _product_context(product, offers=()) -> str:
+    """Produkto lygio kontekstas kontekstinėms taisyklėms (_features).
+    `offers` – jau užkrauti grupės offer'iai (be papildomų užklausų)."""
     parts = [_category_context(product.category_id)]
     parts.append(product.category_raw or "")
     parts.append(product.sub_category_raw or "")
+    keys: list[str] = []
+    attrs = getattr(product, "attributes", None)
+    if isinstance(attrs, dict):
+        keys.extend(_attrs_axis_keys(attrs))
+    for offer in offers:
+        keys.extend(_attrs_axis_keys(offer.attributes))
+    parts.append(_inferred_context_tokens(keys))
     return " ".join(parts).lower()
 
 
 def _offer_context(offer) -> str:
     """Kontekstas kontekstinėms taisyklėms: kategorijos (su parent'ais)
-    + žalie tiekėjo laukai, viskas lowercase."""
+    + žalie tiekėjo laukai + iš ašių inferuoti tokenai, viskas lowercase."""
     category_id = offer.category_id or (
         offer.product.category_id if offer.product_id else None
     )
@@ -140,6 +188,7 @@ def _offer_context(offer) -> str:
     if offer.product_id:
         parts.append(offer.product.category_raw or "")
         parts.append(offer.product.sub_category_raw or "")
+    parts.append(_inferred_context_tokens(_attrs_axis_keys(offer.attributes)))
     return " ".join(parts).lower()
 
 
@@ -745,7 +794,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                     _build_variants(offers)
                 )
                 supplier = offers[0].supplier.code if offers[0].supplier_id else ""
-                context = _product_context(product)
+                context = _product_context(product, offers)
                 weight_g = None
                 if product.shipping_weight_kg is not None:
                     weight_g = int((product.shipping_weight_kg * 1000).to_integral_value())

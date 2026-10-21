@@ -9,6 +9,7 @@ from apps.catalog.models import (
 from apps.catalog_export.models import ExportRun
 from apps.catalog_export.services import (
     ShopClient,
+    _offer_context,
     build_catalog_payload,
     build_stock_payload,
     payload_sha256,
@@ -609,3 +610,55 @@ class ProfileAxesTests(TestCase):
         # Profilio tvarka: casting_weight prieš sections
         self.assertEqual(names["P-1"], "10-40 g · 2")
         self.assertEqual(names["P-2"], "50-80 g · 3")
+
+
+class InferredContextTests(TestCase):
+    """Ašys-inferuota kategorija: 'Uncategorized' offer'iai su
+    rod/reel ašimis gauna profilį iš ašių, ne iš kategorijos."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="shimano", name="Shimano", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+        self.product = Product.objects.create(
+            sku="sh-I-1", name="Rod", is_active=True,
+        )
+
+    def _offer(self, eid, attrs):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid,
+            name=eid, product=self.product, is_published=True,
+            is_available=True, selling_price=Decimal("10.00"),
+            category_raw="Uncategorized", attributes=attrs,
+        )
+
+    def test_rod_axes_infer_rods_profile(self):
+        from apps.catalog.profiles import profile_for
+
+        offer = self._offer("I-1", {"axes": {
+            "length": "3.0m", "sections": "3", "casting_weight": "10-30g"}})
+        self.assertEqual(profile_for(_offer_context(offer)).code, "rods")
+        # 'length' suinferuotame rods kontekste -> rod-length-m option
+        self._offer("I-2", {"axes": {
+            "length": "3.6m", "sections": "3", "casting_weight": "10-30g"}})
+        payload = build_catalog_payload()
+        options = {v["code"]: v["options"]
+                   for v in payload["items"][0]["variants"]}
+        self.assertEqual(options["I-1"], {"rod-length-m": "3-m"})
+        self.assertEqual(options["I-2"], {"rod-length-m": "3-6-m"})
+
+    def test_reel_axes_infer_reels_profile(self):
+        from apps.catalog.profiles import profile_for
+
+        offer = self._offer("I-1", {"axes": {
+            "reel_size": "4000", "gear_ratio": "5.1:1"}})
+        self.assertEqual(profile_for(_offer_context(offer)).code, "reels")
+
+    def test_no_false_inference(self):
+        from apps.catalog.profiles import profile_for
+
+        offer = self._offer("I-1", {"axes": {
+            "size": "85mm", "color": "red"}})
+        self.assertEqual(profile_for(_offer_context(offer)).code, "generic")
