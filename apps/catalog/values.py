@@ -31,7 +31,7 @@ _UNIT_TOKENS = (
     "yd", "yds", "ml", "l", "m",
 )
 _UNIT_RE = (
-    "|".join(re.escape(t) for t in _UNIT_TOKENS) + r"|gr\.|'|''|\""
+    "|".join(re.escape(t) for t in _UNIT_TOKENS) + r"|gr\.|g\.|'|''|\""
 )
 
 _SINGLE_RE = re.compile(rf"^({_NUM})\s*({_UNIT_RE})?$", re.IGNORECASE)
@@ -48,13 +48,20 @@ _COUNT_RE = re.compile(
     rf"^({_NUM})\s*-?\s*({'|'.join(_COUNT_SUFFIX)})(?:\s*\+\s*.+)?$",
     re.IGNORECASE,
 )
+# '1+1pc', '2+2', '2+1' – sekcijos+antgalis -> dalių suma (tik sections
+# ašiai; '9+1' be konteksto lieka neparsinta – gali būti guoliai).
+_SECTIONS_SUM_RE = re.compile(
+    rf"^(\d+(?:\s*\+\s*\d+)+)\s*({'|'.join(_COUNT_SUFFIX)}|tips?)?"
+    rf"(?:\s*\+\s*.+)?$",
+    re.IGNORECASE,
+)
 _FT_IN_RE = re.compile(rf"^({_NUM})\s*'\s*({_NUM})?\s*(?:\"|'')?$")
 _NUM_ONLY_RE = re.compile(rf"^{_NUM}$")
 
 # Vieneto normalizavimas -> kanoninis tokenas
 _UNIT_NORM = {
     "lbs": "lb", "yds": "yd", "'": "ft", "''": "in", '"': "in",
-    "gr": "g", "gr.": "g", "gram": "g", "grams": "g",
+    "gr": "g", "gr.": "g", "g.": "g", "gram": "g", "grams": "g",
     "mtr": "m", "meter": "m", "metres": "m",
     "inch": "in", "inches": "in",
     "pc": "", "pcs": "",
@@ -275,6 +282,14 @@ def parse_value(
             if mc:
                 num = _to_decimal(mc.group(1))
                 detected_unit = ""
+            elif _axis_key(axis) == "sections":
+                # '1+1pc' = 1 dalis + antgalis -> 2; '2+2' -> 4.
+                ms = _SECTIONS_SUM_RE.match(raw)
+                if ms:
+                    num = sum(
+                        Decimal(p) for p in re.findall(r"\d+", ms.group(1))
+                    )
+                    detected_unit = ""
         if num is None and "/" in raw:
             # Dual-unit '11cm/4.25"', '8oz / 224 gr.', '2.70m / 9'':
             # abi pusės turi turėti vienetą iš TO PATIES vieneto grupės;
@@ -299,6 +314,16 @@ def parse_value(
                         if picked is not None:
                             num, detected_unit = picked
                             # be '(originalas)' sufikso – orig_display lieka ""
+                else:
+                    # '0.8/1.5m' – plikas skaičius + skaičius su vienetu
+                    # -> intervalas tame vienetų. '1/0' (kabliukas) ir
+                    # '10g-1/0' čia nepagaunami (nėra vienetų abiejose).
+                    na = _to_decimal(halves[0].strip())
+                    nb = _to_decimal(halves[1].strip())
+                    if na is not None and b is not None:
+                        num, num_max, detected_unit = na, b[0], b[1]
+                    elif nb is not None and a is not None:
+                        num, num_max, detected_unit = a[0], nb, a[1]
         if m and detected_unit and num is not None:
             orig = num if num_max is None else None
             if orig is not None:

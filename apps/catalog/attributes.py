@@ -29,7 +29,9 @@ _CANONICAL: list[tuple[str, str, list[str], str, str]] = [
     ("sections", "axis", ["Sections", "Teile", "Sekcje"], "number", ""),
     ("casting_weight", "axis", ["Casting Weight gram", "Casting Weight", "Wurfgewicht g", "Ciężar wyrzutowy g"], "range", "g"),
     ("tip_diameter", "axis", ["Tip Ø", "Ø Spitze", "Ø szczytówki", "Tip Diameter"], "number", "mm"),
-    ("size", "axis", ["Size", "Größe", "Rozmiar"], "text", ""),
+    # 'rozmer'/'dydis'/'wymiar' – generic dydžio laukai (MOSS <ROZMER>);
+    # kompozitinės reikšmės -> apps.catalog.profiles.split_composite.
+    ("size", "axis", ["Size", "Größe", "Rozmiar", "Rozmer", "Dydis", "Wymiar"], "text", ""),
     ("hook_size", "axis", ["Hook size", "Hook Size", "Hakengröße", "Rozmiar haka"], "text", ""),
     ("pattern", "axis", ["Decor Pattern", "Dekor", "Dekoracja", "Pattern"], "text", ""),
     ("lure_size", "axis", ["Lure Size", "Ködergröße", "Rozmiar przynęty"], "number", "cm"),

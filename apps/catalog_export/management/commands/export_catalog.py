@@ -19,7 +19,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         payload = build_catalog_payload(supplier_code=options.get("supplier"))
         count = len(payload["items"])
+        part_count = sum(1 for item in payload["items"] if item.get("is_part"))
         self.stdout.write(f"Items: {count}")
+        self.stdout.write(f"Part items: {part_count}")
 
         if options["dry_run"]:
             self.stdout.write(json.dumps(payload["items"][:2], indent=2, ensure_ascii=False, default=str))

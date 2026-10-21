@@ -64,7 +64,7 @@ class Command(BaseCommand):
 
                 profile = profile_for(_offer_context(offers[0]))
                 allowed = {_code(ax) for ax in profile.axes}
-                options_by_offer, _d, _l, variant_features, _m = (
+                options_by_offer, _d, _l, variant_features, _m, _c = (
                     _plan_variants(offers, profile)
                 )
                 varying = set()

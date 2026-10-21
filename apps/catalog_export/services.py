@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.catalog.models import Category, Product
+from apps.catalog.parts import product_is_part
 from apps.corecfg.models import Language, get_config
 from apps.ingestion.models import Offer
 from apps.suppliers.models import Supplier
@@ -79,7 +80,12 @@ from apps.catalog.attributes import (
     value_code,
     value_in_name,
 )
-from apps.catalog.profiles import DEFAULT_PROFILE, CategoryProfile, profile_for
+from apps.catalog.profiles import (
+    DEFAULT_PROFILE,
+    CategoryProfile,
+    profile_for,
+    split_composite,
+)
 from apps.catalog.unmapped import collect, report
 from apps.catalog.values import parse_value
 
@@ -291,10 +297,85 @@ def _norm_axis(axis: str) -> str:
     return str(axis or "").strip().lower().replace("-", "_")
 
 
+# F3: generic ašys, kurių reikšmė gali būti kompozitinė – 'size' ir
+# 'variantas'-giminiai žalieji laukai ('rozmer'/'dydis'/'size_raw' ->
+# 'size' per LABEL_MAP; 'variantas' einantis per variant_label kelią).
+_GENERIC_AXES = {"size", "rozmer", "dydis", "wymiar", "size_raw"}
+_COMPOSITE_SEPS = ("/", "·", "|")
+
+
+def _composite_gate(value: str, produced: dict) -> bool:
+    """Ar reikšmė 'atrodo kompozitinė': skirtukas '/'/'·'/'|' arba
+    >=2 skirtingi composite-rule token'ai (vieno token'o neskaldom –
+    '0,10mm' tiesiog yra 'size' reikšmė)."""
+    if not produced:
+        return False
+    if any(sep in value for sep in _COMPOSITE_SEPS):
+        return True
+    return len(produced) >= 2
+
+
+def _split_composite_axes(axes: dict[str, str], profile) -> list[str]:
+    """Generic 'size' ašies kompozitinė reikšmė -> kanoninės ašys (F3).
+
+    '170cm/150g/2 składy' (rods) -> rod_length_m + casting_weight +
+    sections; 'X-Small 20g' (feeders) -> size + weight. Išskaldyti kodai
+    jungiami setdefault (esama ašis laimi). Nesuvalgyta dalis lieka
+    pradinėje ašyje IR grąžinama varianto vardui; tuščia liekana ->
+    ašis sunaikinama ('generic axis consumed only when fully split').
+    """
+    leftovers: list[str] = []
+    for ax in list(axes):
+        if _norm_axis(ax) not in _GENERIC_AXES:
+            continue
+        value = axes[ax]
+        produced, leftover = split_composite(value, profile)
+        if not _composite_gate(value, produced):
+            continue
+        # Pradinę kompozitinę reikšmę pirmiausia išmetam – ji nėra
+        # 'existing axis' (pvz. 'size: X-Small 20g' -> size:'X-Small').
+        del axes[ax]
+        for code, val in produced.items():
+            axes.setdefault(_code(code), val)
+        if leftover:
+            axes[ax] = leftover
+            leftovers.append(leftover)
+    return leftovers
+
+
+def _apply_composite_axes(
+    offers: list[Offer], raw: dict[int, dict], profile
+) -> tuple[dict[int, str], set[int]]:
+    """Split'ina generic ašis IR 'variantas' label'us (rods/lines/
+    lures/feeders/rigs profiliams) prieš normalizavimą.
+
+    Grąžina ({offer_id: liekana_vardui}, {offer_id su sunaikintu
+    'variantas' label'u})."""
+    name_parts: dict[int, str] = {}
+    consumed_labels: set[int] = set()
+    if not profile.composite_rules:
+        return name_parts, consumed_labels
+    for offer in offers:
+        axes = raw[offer.id]
+        parts = _split_composite_axes(axes, profile)
+        label = offer_variant_label(offer)
+        if label:
+            produced, leftover = split_composite(label, profile)
+            if _composite_gate(label, produced):
+                for code, val in produced.items():
+                    axes.setdefault(_code(code), val)
+                consumed_labels.add(offer.id)
+                if leftover:
+                    parts.append(leftover)
+        if parts:
+            name_parts[offer.id] = " ".join(parts)
+    return name_parts, consumed_labels
+
+
 def _plan_variants(
     offers: list[Offer],
     profile: "CategoryProfile | None" = None,
-) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict], dict]:
+) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict], dict, dict]:
     """Grupės lygio ašių planas – deklaratyvus option rinkinys.
 
     - Option kandidatai = varijuojančios ašys ∩ `profile.axes`
@@ -310,11 +391,23 @@ def _plan_variants(
     Grąžina ({offer_id: {axis: code}} options, {axis: label} demoted ->
     product features, {axis: {code: label}} option_labels ->
     shop OptionValue.label, {offer_id: {axis: meta}} variant_features ->
-    variant.features, {axis: {code: {num,num_max,unit}}} option_value_meta.
+    variant.features, {axis: {code: {num,num_max,unit}}} option_value_meta,
+    {offer_id: {leftover, label_consumed}} composite_names ->
+    varianto vardo dalis iš kompozitinių reikšmių (F3).
     """
     if profile is None:
         profile = DEFAULT_PROFILE
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
+    # F3: kompozitinės 'size'/'variantas' reikšmės -> kanoninės ašys
+    # (prieš normalizavimą, kad nauji kodai gautų num/unit meta).
+    name_parts, consumed_labels = _apply_composite_axes(offers, raw, profile)
+    composite_names = {
+        oid: {
+            "leftover": name_parts.get(oid, ""),
+            "label_consumed": oid in consumed_labels,
+        }
+        for oid in set(name_parts) | consumed_labels
+    }
     suppliers = {
         offer.id: (offer.supplier.code if offer.supplier_id else "")
         for offer in offers
@@ -409,7 +502,10 @@ def _plan_variants(
         oid: {ax: axes[ax] for ax in axes if ax in chosen}
         for oid, axes in raw.items()
     }
-    return options, demoted, labels, variant_features, option_value_meta
+    return (
+        options, demoted, labels, variant_features, option_value_meta,
+        composite_names,
+    )
 
 
 def _num_str(value) -> str | None:
@@ -692,9 +788,14 @@ def _generated_variant_name(
 def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict, dict]:
     """Variantai + demoted axes + option labels + option_value_meta."""
     profile = profile_for(_offer_context(offers[0])) if offers else DEFAULT_PROFILE
-    options_by_offer, demoted, option_labels, variant_features, option_value_meta = (
-        _plan_variants(offers, profile)
-    )
+    (
+        options_by_offer,
+        demoted,
+        option_labels,
+        variant_features,
+        option_value_meta,
+        composite_names,
+    ) = _plan_variants(offers, profile)
     variants: list[dict] = []
     index: dict[str, dict] = {}
     for offer in offers:
@@ -707,12 +808,22 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
             if found is not None and all(found is not h for h in hits):
                 hits.append(found)
         if not hits:
+            # F3: kompozitinės ašies liekana -> vardas; 'variantas'
+            # label'is, paverstas kanoninėmis ašimis, nebekartojamas.
+            extra = composite_names.get(offer.id) or {}
+            base_label = (
+                ""
+                if extra.get("label_consumed")
+                else offer_variant_label(offer)
+            )
+            name = " · ".join(
+                p for p in (base_label, extra.get("leftover", "")) if p
+            ) or _generated_variant_name(offer, offers, variant_features, profile)
             variant = _new_variant(
                 offer,
                 options_by_offer.get(offer.id, {}),
                 variant_features.get(offer.id, {}),
-                name=offer_variant_label(offer)
-                or _generated_variant_name(offer, offers, variant_features, profile),
+                name=name,
             )
             variants.append(variant)
         else:
@@ -808,6 +919,10 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                         "category": product.category.slug if product.category_id else "",
                         "tax_class": tax_class,
                         "is_active": product.is_active,
+                        # Atsarginės dalys: True kai >=50% offer'ių yra dalys
+                        # (žr. apps.catalog.parts). Shop permeta tokią prekę į
+                        # 'atsargines-dalys' kategoriją (list template).
+                        "is_part": product_is_part(offers),
                         "price_net": _item_price_net(product, offers),
                         "cost_net": _item_cost_net(product, offers),
                         "weight_g": weight_g or 0,

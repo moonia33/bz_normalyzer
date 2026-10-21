@@ -373,6 +373,46 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(variant["pack_price"], "28.88")
         self.assertEqual(variant["pack_purchase_price"], "17.50")
 
+    def test_is_part_flag_from_offer_category(self):
+        self.offer.category_raw = "Reel parts"
+        self.offer.save(update_fields=["category_raw"])
+        payload = build_catalog_payload()
+        self.assertTrue(payload["items"][0]["is_part"])
+
+    def test_is_part_flag_false_for_normal_product(self):
+        payload = build_catalog_payload()
+        self.assertFalse(payload["items"][0]["is_part"])
+
+    def test_is_part_majority_rule(self):
+        # Vienas iš dviejų offer'ių dalis -> lygiai 50% -> True.
+        Offer.objects.create(
+            supplier=self.supplier,
+            external_id="AAA-2",
+            sku="AAA-2",
+            name="Variant Two spare",
+            product=self.product,
+            category_raw="Reel parts",
+            stock=1,
+            is_published=True,
+            selling_price=Decimal("5.00"),
+        )
+        payload = build_catalog_payload()
+        self.assertTrue(payload["items"][0]["is_part"])
+        # Dar vienas ne-dalis -> 1/3 -> False.
+        Offer.objects.create(
+            supplier=self.supplier,
+            external_id="AAA-3",
+            sku="AAA-3",
+            name="Variant Three",
+            product=self.product,
+            category_raw="Reels",
+            stock=1,
+            is_published=True,
+            selling_price=Decimal("5.00"),
+        )
+        payload = build_catalog_payload()
+        self.assertFalse(payload["items"][0]["is_part"])
+
     def test_payload_hash_stable(self):
         p1 = build_catalog_payload()
         p2 = build_catalog_payload()
@@ -610,6 +650,168 @@ class ProfileAxesTests(TestCase):
         # Profilio tvarka: casting_weight prieš sections
         self.assertEqual(names["P-1"], "10-40 g · 2")
         self.assertEqual(names["P-2"], "50-80 g · 3")
+
+
+class CompositeAxisTests(TestCase):
+    """F3: kompozitinės 'size'/'variantas' reikšmės -> kanoninės ašys,
+    liekana -> varianto vardas."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="moss", name="MOSS", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+
+    def _product(self, category_name):
+        category = Category.objects.create(
+            name=category_name, slug=category_name.lower().replace(" ", "-")
+        )
+        return Product.objects.create(
+            sku=f"moss-{category.slug}", name="Item", is_active=True,
+            category=category,
+        )
+
+    def _offer(self, product, eid, name, size_raw="", attrs=None):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid, name=name,
+            product=product, is_published=True, is_available=True,
+            selling_price=Decimal("10.00"), size_raw=size_raw,
+            attributes=attrs or {},
+        )
+
+    def test_lines_rozmer_splits_to_canonical_axes(self):
+        product = self._product("Braided lines")
+        self._offer(product, "L-1", "Line A", size_raw="0,10mm 6,8kg 130m")
+        self._offer(product, "L-2", "Line B", size_raw="0,12mm 8,7kg 150m")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        # Profilio lines ašys: line_diameter pirma – ji atskiria.
+        self.assertEqual(options["L-1"], {"line-diameter": "0-1-mm"})
+        self.assertEqual(options["L-2"], {"line-diameter": "0-12-mm"})
+        # strength/length – variant.features (ne profile.axes option).
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(vf["L-1"].get("line-strength"), "6,8 kg")
+        self.assertEqual(vf["L-1"].get("line-length"), "130 m")
+        self.assertEqual(vf["L-2"].get("line-strength"), "8,7 kg")
+        # generic 'size' pilnai suskaldyta – jokio 'size' atributo.
+        self.assertNotIn("size", vf["L-1"])
+        self.assertNotIn("size", item["option_labels"])
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertNotIn("size", feature_codes)
+
+    def test_rods_length_cast_sections(self):
+        product = self._product("Spinning rods")
+        self._offer(product, "R-1", "Rod A", size_raw="170cm/150g/2 składy")
+        self._offer(product, "R-2", "Rod B", size_raw="180cm/10-30g/3 składy")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["R-1"], {"rod-length-m": "1-7-m"})
+        self.assertEqual(options["R-2"], {"rod-length-m": "1-8-m"})
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(vf["R-1"].get("casting-weight"), "150 g")
+        self.assertEqual(vf["R-1"].get("sections"), "2")
+        self.assertEqual(vf["R-2"].get("casting-weight"), "10-30 g")
+        self.assertEqual(vf["R-2"].get("sections"), "3")
+
+    def test_feeder_xsmall_20g_gives_size_and_weight_options(self):
+        product = self._product("Feeder cages")
+        self._offer(product, "F-1", "Feeder A", size_raw="X-Small 20g")
+        self._offer(product, "F-2", "Feeder B", size_raw="X-Small 30g")
+        self._offer(product, "F-3", "Feeder C", size_raw="Small 20g")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(
+            options["F-1"], {"size": "xs", "weight": "20-g"}
+        )
+        self.assertEqual(
+            options["F-2"], {"size": "xs", "weight": "30-g"}
+        )
+        self.assertEqual(
+            options["F-3"], {"size": "s", "weight": "20-g"}
+        )
+
+    def test_lures_weight_and_hook_size(self):
+        product = self._product("Lures")
+        self._offer(product, "J-1", "Jig A", size_raw="10g-1/0")
+        self._offer(product, "J-2", "Jig B", size_raw="12g-2/0")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["J-1"], {"weight": "10-g"})
+        self.assertEqual(options["J-2"], {"weight": "12-g"})
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        self.assertEqual(vf["J-1"].get("hook-size"), "1/0")
+        self.assertEqual(vf["J-2"].get("hook-size"), "2/0")
+
+    def test_lure_leftover_goes_to_variant_name_and_size(self):
+        product = self._product("Lures")
+        self._offer(product, "C-1", "Worm A", size_raw="10,5 cm/PERCHY")
+        self._offer(product, "C-2", "Worm B", size_raw="10,5 cm/MIRROR")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        names = {v["code"]: v["name"] for v in item["variants"]}
+        # Liekana -> varianto vardas (color-ish, ne feature).
+        self.assertEqual(names["C-1"], "PERCHY")
+        self.assertEqual(names["C-2"], "MIRROR")
+        # generic ašis nesunaikinta – liekana lieka 'size' (varijuoja ->
+        # option: 'perchy'/'mirror').
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["C-1"], {"size": "perchy"})
+        self.assertEqual(options["C-2"], {"size": "mirror"})
+        # lure_size vienoda -> demoted į product features.
+        feature_codes = {f["code"] for f in item["features"]}
+        self.assertIn("lure-size", feature_codes)
+
+    def test_single_token_value_is_not_composite(self):
+        product = self._product("Braided lines")
+        self._offer(product, "S-1", "Line A", size_raw="0,10mm")
+        self._offer(product, "S-2", "Line B", size_raw="0,12mm")
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        vf = {
+            v["code"]: {f["code"]: f["value_translations"]["en"]
+                        for f in v["features"]}
+            for v in item["variants"]
+        }
+        # '0,10mm' vienas token'as -> neskaldoma, lieka 'size' ašis.
+        self.assertEqual(vf["S-1"].get("size"), "0,10 mm")
+        self.assertNotIn("line-diameter", vf["S-1"])
+
+    def test_variantas_label_composite_becomes_axes(self):
+        product = self._product("Braided lines")
+        self._offer(
+            product, "V-1", "Line A",
+            attrs={"axes": {"variantas": "0,7mm 7m"}},
+        )
+        self._offer(
+            product, "V-2", "Line B",
+            attrs={"axes": {"variantas": "0,8mm 10m"}},
+        )
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["V-1"], {"line-diameter": "0-7-mm"})
+        self.assertEqual(options["V-2"], {"line-diameter": "0-8-mm"})
+        names = {v["code"]: v["name"] for v in item["variants"]}
+        # 'variantas' pilnai suskaldyta -> vardas generuojamas iš meta.
+        self.assertIn("0,7 mm", names["V-1"])
+        self.assertIn("7 m", names["V-1"])
 
 
 class InferredContextTests(TestCase):
