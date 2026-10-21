@@ -69,7 +69,6 @@ def _translation_block(product: Product, base_lang: str) -> dict:
 
 from apps.catalog.attributes import (
     ATTRIBUTE_META,
-    AXIS_PRIORITY,
     MAX_OPTIONS,
     VARIANT_LABEL_CODE,
     classify_label,
@@ -79,6 +78,7 @@ from apps.catalog.attributes import (
     value_code,
     value_in_name,
 )
+from apps.catalog.profiles import DEFAULT_PROFILE, CategoryProfile, profile_for
 from apps.catalog.unmapped import collect, report
 from apps.catalog.values import parse_value
 
@@ -221,10 +221,6 @@ def offer_variant_label(offer) -> str:
     return ""
 
 
-# Ašys, renkamos tik kai niekas kita neatskiria variantų
-_LAST_RESORT_AXES = {"unit-length", "unit-width", "unit-height"}
-
-
 def _variant_meta(axis: str, value, supplier: str = "") -> dict:
     """parse_value meta vienai ašies reikšmei: code/label + num/unit."""
     meta = ATTRIBUTE_META.get(_norm_axis(axis)) or {}
@@ -248,23 +244,27 @@ def _norm_axis(axis: str) -> str:
 
 def _plan_variants(
     offers: list[Offer],
+    profile: "CategoryProfile | None" = None,
 ) -> tuple[dict[int, dict], dict[str, str], dict, dict[int, dict], dict]:
-    """Grupės lygio ašių planas – minimalus atskyrimo rinkinys.
+    """Grupės lygio ašių planas – deklaratyvus option rinkinys.
 
-    - tip_diameter == line_diameter -> viena ašis (line_diameter)
-    - ašis su ta pačia reikšme visame grupėje -> feature (ne option)
-    - greedy: ašis pridedama tik kol variantų kombinacijos dar
-      dubliuojamos; prioritetas: 'size' -> reikšmė randama pavadinime ->
-      registrų tvarka -> unit_* paskutiniai
-    - reikšmės normalizuojamos (XXL=2xl, '0,08MM'->'0-08mm', White=white)
+    - Option kandidatai = varijuojančios ašys ∩ `profile.axes`
+      (per-kategorijos deklaracija, apps.catalog.profiles).
+    - Greedy minimalus rinkinys išlaikomas, bet ALL-OR-NOTHING:
+      jei profilio ašys visų variantų neatskiria -> options tuščios
+      (pirkėjas renkasi pagal varianto pavadinimą).
+    - Pasirinktos option ašys IR varijuojančios neoption ašys eina į
+      variant.features (option = feature, kuris dar yra selektorius).
+    - tip_diameter == line_diameter -> viena ašis.
+    - Reikšmės normalizuojamos (XXL=2xl, '0,08MM'->'0-08mm', White=white).
 
     Grąžina ({offer_id: {axis: code}} options, {axis: label} demoted ->
     product features, {axis: {code: label}} option_labels ->
     shop OptionValue.label, {offer_id: {axis: meta}} variant_features ->
-    variant.features (varijuojančios, neoption ašys),
-    {axis: {code: {num,num_max,unit}}} option_value_meta ->
-    shop OptionValue skaitiniai laukai.
+    variant.features, {axis: {code: {num,num_max,unit}}} option_value_meta.
     """
+    if profile is None:
+        profile = DEFAULT_PROFILE
     raw = {offer.id: offer_axis_values(offer) for offer in offers}
     suppliers = {
         offer.id: (offer.supplier.code if offer.supplier_id else "")
@@ -305,6 +305,10 @@ def _plan_variants(
         if len({axes[ax] for axes in raw.values() if ax in axes}) > 1
     }
 
+    # Profilio ašys kanoniniais snake_case kodais; eksporto raktai kebab.
+    profile_axes_kebab = [_code(ax) for ax in profile.axes]
+    profile_index = {ax: i for i, ax in enumerate(profile_axes_kebab)}
+
     def _rank(ax: str) -> tuple:
         in_name = sum(
             1
@@ -313,19 +317,14 @@ def _plan_variants(
             and value_in_name(ax, display[oid].get(ax), names[oid])
         )
         coverage = sum(1 for axes in raw.values() if axes.get(ax))
-        return (
-            0 if ax == "size" else (2 if ax in _LAST_RESORT_AXES else 1),
-            -in_name,
-            -coverage,
-            AXIS_PRIORITY.get(ax, 99),
-        )
+        return (profile_index.get(ax, 99), -in_name, -coverage)
 
     def _collisions(selected: list[str]) -> int:
         combos = [tuple(axes.get(ax, "") for ax in selected) for axes in raw.values()]
         return len(combos) - len(set(combos))
 
-    # Greedy minimalus rinkinys: pridedam ašį tik kol lieka sutapimų.
-    candidates = sorted(varying, key=_rank)
+    # Greedy minimalus rinkinys TIK iš profilio ašių.
+    candidates = sorted(set(varying) & set(profile_axes_kebab), key=_rank)
     chosen: list[str] = []
     while candidates and len(chosen) < MAX_OPTIONS and _collisions(chosen) > 0:
         best = min(
@@ -334,14 +333,18 @@ def _plan_variants(
         )
         candidates.remove(best)
         chosen.append(best)
+    # All-or-nothing: nepilnai atskiriantys options -> options visai nebe.
+    if _collisions(chosen) > 0:
+        chosen = []
 
     # Nepanaudotos ašys:
     # - nevarijuojančios -> product features (viena reikšmė visam produktui)
     # - varijuojančios -> variant.features (kiekvienas variantas turi SAVO
-    #   reikšmę; variant features backend'e laimi prieš product features).
+    #   reikšmę). Option ašys IR GI yra variant.features (option =
+    #   feature + selektorius).
     demoted: dict[str, str] = {}
     variant_features: dict[int, dict[str, dict]] = {offer.id: {} for offer in offers}
-    for ax in all_axes - set(chosen):
+    for ax in all_axes:
         varying_ax = ax in varying
         for oid, axes in raw.items():
             if ax not in axes:
@@ -351,8 +354,7 @@ def _plan_variants(
             if varying_ax:
                 variant_features[oid][ax] = meta
             else:
-                # Žalia reikšmė (ne label'is) – _features pats parsuoja
-                # -> value_num/unit ir kanoninis display.
+                # Žalia reikšmė – _features pats parsuoja num/unit.
                 demoted.setdefault(ax, display[oid].get(ax, label))
     options = {
         oid: {ax: axes[ax] for ax in axes if ax in chosen}
@@ -617,10 +619,32 @@ def _merge_variant(dst: dict, src: dict) -> None:
         dst["features"] = list(existing.values())
 
 
+def _generated_variant_name(
+    offer, offers: list[Offer], variant_features: dict, profile
+) -> str:
+    """Fallback vardas, kai 'variantas' neteiktas: visų varijuojančių
+    ašių label'iai (profilio tvarka, po to abėcėlės), pvz.
+    'M · Black' / '0,20 mm · 4,5 kg · 150 m'."""
+    if len(offers) <= 1:
+        return ""
+    metas = variant_features.get(offer.id) or {}
+    if not metas:
+        return ""
+    order = [_code(ax) for ax in profile.axes]
+    ordered = sorted(
+        metas,
+        key=lambda ax: (order.index(ax) if ax in order else len(order), ax),
+    )
+    return " · ".join(
+        str(metas[ax].get("label") or "") for ax in ordered if metas[ax].get("label")
+    )
+
+
 def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], dict, dict]:
     """Variantai + demoted axes + option labels + option_value_meta."""
+    profile = profile_for(_offer_context(offers[0])) if offers else DEFAULT_PROFILE
     options_by_offer, demoted, option_labels, variant_features, option_value_meta = (
-        _plan_variants(offers)
+        _plan_variants(offers, profile)
     )
     variants: list[dict] = []
     index: dict[str, dict] = {}
@@ -638,7 +662,8 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
                 offer,
                 options_by_offer.get(offer.id, {}),
                 variant_features.get(offer.id, {}),
-                name=offer_variant_label(offer),
+                name=offer_variant_label(offer)
+                or _generated_variant_name(offer, offers, variant_features, profile),
             )
             variants.append(variant)
         else:

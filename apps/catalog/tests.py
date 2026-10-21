@@ -123,3 +123,19 @@ class ParseValueExtendedTests(TestCase):
         self.assertEqual(parse_value("8oz / 224 gr.", "number", "g").num, Decimal("224"))
         self.assertEqual(parse_value("2.70m / 9'", "number", "m").num, Decimal("2.7"))
         self.assertIsNone(parse_value("0,26mm/5kg", "number", "mm").num)
+
+
+class ProfileForTests(TestCase):
+    def test_feeder_before_rods(self):
+        from apps.catalog.profiles import profile_for
+
+        # 'feeder' match'ina rods ctx – feeders turi eiti pirmiau.
+        self.assertEqual(
+            profile_for("meškerės > feeder rods > method").code, "rods"
+        )
+        self.assertEqual(
+            profile_for("feeder cages > method feeders").code, "feeders"
+        )
+        self.assertEqual(profile_for("spinning rods").code, "rods")
+        self.assertEqual(profile_for("braided lines").code, "lines")
+        self.assertEqual(profile_for("luggage").code, "generic")

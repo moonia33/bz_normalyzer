@@ -68,7 +68,7 @@ _CANONICAL: list[tuple[str, str, list[str], str, str]] = [
     ("diameter", "feature", ["Ø"], "number", "mm"),
     ("hoop_diameter", "feature", ["Hoop Diameter"], "number", "cm"),
     ("material_fabric", "feature", ["Material/Fabric Information", "Material / Fabric Information"], "text", ""),
-    ("flavour", "feature", ["Flavour", "Flavor", "Aroma", "Aromat"], "text", ""),
+    ("flavour", "axis", ["Flavour", "Flavor", "Aroma", "Aromat"], "text", ""),
     # ---- SHIPPING (Retail* -> Height/Width/Length/Weight) ----
     ("height", "shipping", ["Retail Height cm", "Handelshöhe cm", "Wysokość detaliczna cm"], "number", "cm"),
     ("width", "shipping", ["Retail Width cm", "Handelsbreite cm", "Szerokość detaliczna cm"], "number", "cm"),

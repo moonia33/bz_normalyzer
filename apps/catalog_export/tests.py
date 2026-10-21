@@ -518,6 +518,11 @@ class AttributeGateTests(TestCase):
         )
 
     def test_option_value_meta_for_numeric_axis(self):
+        # casting-weight yra 'rods' profilio ašis – kategorija duoda profilį.
+        self.product.category = Category.objects.create(
+            name="Spinning rods", slug="gate-rods"
+        )
+        self.product.save(update_fields=["category"])
         self._offer({"axes": {"casting_weight": "10-40g"}})
         Offer.objects.create(
             supplier=self.supplier, external_id="G-2", sku="G-2",
@@ -540,3 +545,67 @@ class AttributeGateTests(TestCase):
         for f in variant.get("features", []):
             self.assertIn("value_num", f)
             self.assertIn("unit", f)
+
+
+class ProfileAxesTests(TestCase):
+    """Deklaratyvūs per-kategoriją option profiliai + all-or-nothing."""
+
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.supplier = Supplier.objects.create(
+            code="fox", name="FOX", vat_rate=Decimal("0.21"),
+            selling_price_includes_vat=True,
+        )
+        self.category = Category.objects.create(
+            name="Spinning rods", slug="spinning-rods"
+        )
+        self.product = Product.objects.create(
+            sku="fox-P-1", name="Rod", is_active=True, category=self.category,
+        )
+
+    def _offer(self, eid, name, attrs):
+        return Offer.objects.create(
+            supplier=self.supplier, external_id=eid, sku=eid, name=name,
+            product=self.product, is_published=True, is_available=True,
+            selling_price=Decimal("10.00"), attributes=attrs,
+        )
+
+    def test_profile_gates_option_axes(self):
+        # rods profilis: (rod_length_m, testcurve, casting_weight, sections,
+        # model). 'line-diameter' varijuoja bet profilyje nėra -> ne option.
+        self._offer("P-1", "Rod A", {"axes": {
+            "rod-length-m": "2.70m", "line-diameter": "0.20mm"}})
+        self._offer("P-2", "Rod B", {"axes": {
+            "rod-length-m": "3.00m", "line-diameter": "0.25mm"}})
+        payload = build_catalog_payload()
+        options = {v["code"]: v["options"] for v in payload["items"][0]["variants"]}
+        self.assertEqual(options["P-1"], {"rod-length-m": "2-7-m"})
+        self.assertEqual(options["P-2"], {"rod-length-m": "3-m"})
+        # line-diameter vis tiek yra variant.features (option ⊂ features)
+        v1 = next(v for v in payload["items"][0]["variants"] if v["code"] == "P-1")
+        fcodes = {f["code"] for f in v1["features"]}
+        self.assertIn("line-diameter", fcodes)
+        self.assertIn("rod-length-m", fcodes)
+
+    def test_collision_zeroes_options(self):
+        # casting-weight profilyje yra, bet abiem offer'iams ta pati
+        # reikšmė+combo -> nepilnai atskiria -> options = []
+        self._offer("P-1", "Rod A", {"axes": {
+            "casting-weight": "10-40g", "variantas": "A"}})
+        self._offer("P-2", "Rod B", {"axes": {
+            "casting-weight": "10-40g", "variantas": "B"}})
+        payload = build_catalog_payload()
+        item = payload["items"][0]
+        for v in item["variants"]:
+            self.assertEqual(v["options"], {})
+
+    def test_generated_variant_names(self):
+        self._offer("P-1", "Rod A", {"axes": {
+            "casting-weight": "10-40g", "sections": "2"}})
+        self._offer("P-2", "Rod B", {"axes": {
+            "casting-weight": "50-80g", "sections": "3"}})
+        payload = build_catalog_payload()
+        names = {v["code"]: v["name"] for v in payload["items"][0]["variants"]}
+        # Profilio tvarka: casting_weight prieš sections
+        self.assertEqual(names["P-1"], "10-40 g · 2")
+        self.assertEqual(names["P-2"], "50-80 g · 3")
