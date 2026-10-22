@@ -359,7 +359,7 @@ _SIZE_WORDS = {
 
 def _is_size_word(text: str) -> bool:
     """'X-Small'/'one size'/'MAXI' -> True; lyginama be tarpų/brūkšnių."""
-    flat = re.sub(r"[\s\-_.+]+", "", str(text or "").lower())
+    flat = re.sub(r"[\s\-_.]+", "", str(text or "").lower())
     return flat in _SIZE_WORDS
 
 
@@ -860,7 +860,14 @@ def _new_variant(
 
 
 def _add_offer_images(variant: dict, offer: Offer) -> None:
-    for url in offer.images or []:
+    urls = offer.images or []
+    # Fox media_cloud_links: kiekvienas offer'as gauna PILNA produkto
+    # galerija (~20 roliu: Main + InUse*/Studio*) su unikaliais asset id per
+    # offer'a — pozicijos 1+ baitais identiskos tarp broliu. Variante paliekam
+    # tik pirma (Main), bendra galerija lieka product.images lygmenyje.
+    if offer.supplier_id and offer.supplier.code == "fox" and len(urls) > 1:
+        urls = urls[:1]
+    for url in urls:
         url = str(url).strip()
         if url and all(v["url"] != url for v in variant["images"]):
             variant["images"].append(

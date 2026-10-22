@@ -143,6 +143,34 @@ class ExportPayloadTests(TestCase):
         payload = build_catalog_payload()
         self.assertEqual(payload["items"], [])
 
+    def test_fox_variant_keeps_only_main_image(self):
+        # Fox media_cloud_links: offer'is turi visa galerija (Main + roles);
+        # variante eksportuojam tik pirma (Main), galerija lieka produkte.
+        self.offer.images = [
+            "https://cdn.example.com/main.jpg",
+            "https://cdn.example.com/studio1.jpg",
+            "https://cdn.example.com/studio2.jpg",
+        ]
+        self.offer.save()
+        payload = build_catalog_payload()
+        variant = payload["items"][0]["variants"][0]
+        self.assertEqual(
+            [i["url"] for i in variant["images"]],
+            ["https://cdn.example.com/main.jpg"],
+        )
+
+    def test_non_fox_variant_keeps_all_offer_images(self):
+        self.supplier.code = "korda"
+        self.supplier.save()
+        self.offer.images = [
+            "https://cdn.example.com/a.jpg",
+            "https://cdn.example.com/b.jpg",
+        ]
+        self.offer.save()
+        payload = build_catalog_payload()
+        variant = payload["items"][0]["variants"][0]
+        self.assertEqual(len(variant["images"]), 2)
+
     def test_stock_payload(self):
         payload = build_stock_payload("fox")
         self.assertEqual(payload["warehouse_code"], "fox")
