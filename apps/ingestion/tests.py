@@ -496,6 +496,145 @@ class ImportPipelineTests(TestCase):
         self.assertEqual(comp.ean, "")
         self.assertEqual(comp.extra["duplicate_barcode"], "5060137480001")
 
+    def test_korda_hook_families_grouping(self):
+        """Guru kabliukai/rig'ai: plikas dydis prieš skliaustus,
+        'Size N x M', '4 in'->'4 inch', '- repl.' uodega, 'II' žymuo."""
+        from apps.suppliers.adapters.korda import _parse_description
+
+        cases = [
+            # (description, base, axes)
+            ("Guru LWG Feeder Special 10 (Barbed/Eyed)",
+             "Guru LWG Feeder Special", {"size": "10"}),
+            ("Guru LWG Hook size 20 (Barbless/Eyed) II",
+             "Guru LWG Hook II", {"size": "size 20"}),
+            ("Guru LWG Hook size 20 (Barbless/Spade End)II",
+             "Guru LWG Hook II", {"size": "size 20"}),
+            ("Guru LWGS Pole Rigs 6' Size 14 x 8 (0.15mm) II",
+             "Guru LWGS Pole Rigs 6' II",
+             {"size": "Size 14 x 8", "line_diameter": "0.15mm"}),
+            ("Guru SMWG Bait Bands Rig 4 inch  10 (0.22mm)",
+             "Guru SMWG Bait Bands Rig 4 inch",
+             {"size": "10", "line_diameter": "0.22mm"}),
+            ("Guru SMWG Bait Bands Rig 4 in 14 (0.19mm)",
+             "Guru SMWG Bait Bands Rig 4 inch",
+             {"size": "14", "line_diameter": "0.19mm"}),
+            ("Guru SMWG Bait Bands Rig 4 inch 16 (0.17mm) -  repl. for GRR155",
+             "Guru SMWG Bait Bands Rig 4 inch",
+             {"size": "16", "line_diameter": "0.17mm"}),
+            ("Guru SMWG Standard Hair 15 inch Size 18 (0.15mm)",
+             "Guru SMWG Standard Hair 15 inch",
+             {"size": "Size 18", "line_diameter": "0.15mm"}),
+        ]
+        for description, want_base, want_axes in cases:
+            base, axes, _ = _parse_description(description)
+            self.assertEqual(base, want_base, description)
+            self.assertEqual(axes, want_axes, description)
+
+        # Plikas skaičius be skliaustų – lieka base (modelių numeriai)
+        base, axes, _ = _parse_description("Guru Aventus 11")
+        self.assertEqual(base, "Guru Aventus 11")
+        self.assertEqual(axes, {})
+
+    def test_korda_hook_families_import_merges_products(self):
+        """GFSE dydžiai -> vienas produktas su variantais; MWG/GMWB
+        lieka atskiri (sub_category skiriasi); SMWG '4 in'/'4 inch'
+        ir '- repl.' netrukdo grupavimui."""
+        supplier = Supplier.objects.create(
+            code="korda",
+            name="Korda",
+            purchase_price_includes_vat=False,
+            selling_price_includes_vat=True,
+        )
+        workbook = Workbook()
+        ws = workbook.active
+        ws.title = "Current products"
+        ws.append(
+            [
+                "Brand", "Code", "Description", "Selling price", "RRP",
+                "Net Priced", "Trade Pack Size", "Trade Pack Price",
+                "Barcode", "Stock", "Headgroup", "Subgroup",
+                "Commodity code", "Country of origin", "Weight",
+            ]
+        )
+
+        def row(code, desc, subgroup, headgroup="Hooks", brand="GURU",
+                barcode=""):
+            ws.append(
+                [brand, code, desc, "0.60", "1.99", "no", "per piece", "",
+                 barcode or f"5060137{code[-6:]:0>6}", "In stock", headgroup,
+                 subgroup, "9507209000", "JP", "0.02"]
+            )
+
+        row("GFSE10", "Guru LWG Feeder Special 10 (Barbed/Eyed)",
+            "LWG Feeder Special Eyed", barcode="5060519398109")
+        row("GFSE12", "Guru LWG Feeder Special 12 (Barbed/Eyed)",
+            "LWG Feeder Special Eyed", barcode="5060519398123")
+        row("GFSE20", "Guru LWG Feeder Special 20 (Barbed/Eyed)",
+            "LWG Feeder Special Eyed", barcode="5060519398185")
+        row("GMW10", "Guru MWG Hook size 10 (Barbless/Eyed)", "MWG")
+        row("GMWB10", "Guru MWG Hook size 10 (Barbed/Eyed)", "MWGB")
+        row("GRR061", "Guru LWGS Pole Rigs 6' Size 14 x 8 (0.15mm) II",
+            "LWGS Pole Rigs", headgroup="Pole Rigs")
+        row("GRR064", "Guru LWGS Pole Rigs 6' Size 20 x 8 (0.11mm) II",
+            "LWGS Pole Rigs", headgroup="Pole Rigs")
+        row("GRR150", "Guru SMWG Bait Bands Rig 4 inch  10 (0.22mm)",
+            "Ready Rigs with Bait Bands", headgroup="Feeder Rigs")
+        row("GRR156", "Guru SMWG Bait Bands Rig 4 in 18 (0.15mm)",
+            "Ready Rigs with Bait Bands", headgroup="Feeder Rigs")
+        row("GRR155", "Guru SMWG Bait Bands Rig 4 inch 16 (0.17mm) -  repl. for GRR154",
+            "Ready Rigs with Bait Bands", headgroup="Feeder Rigs")
+
+        payload = BytesIO()
+        workbook.save(payload)
+        feed = SupplierFeed.objects.create(
+            supplier=supplier,
+            name="Korda hooks",
+            kind=SourceKind.EXCEL_UPLOAD,
+            adapter_code="korda",
+        )
+        feed.file.save("korda_hooks.xlsx", ContentFile(payload.getvalue()), save=True)
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        run_import(job)
+        job.refresh_from_db()
+        self.assertEqual(job.status, ImportJob.Status.SUCCESS)
+        self.assertEqual(Offer.objects.filter(supplier=supplier).count(), 10)
+
+        offers = {o.external_id: o for o in Offer.objects.all()}
+        # GFSE10/12/20 -> vienas produktas
+        self.assertEqual(
+            offers["GFSE10"].product_id, offers["GFSE12"].product_id
+        )
+        self.assertEqual(
+            offers["GFSE10"].product_id, offers["GFSE20"].product_id
+        )
+        self.assertEqual(
+            offers["GFSE10"].product.name, "Guru LWG Feeder Special"
+        )
+        self.assertEqual(
+            offers["GFSE10"].product_group, offers["GFSE12"].product_group
+        )
+        # MWG (barbless) vs GMWB (barbed) – skirtingi sub -> atskiri
+        self.assertNotEqual(
+            offers["GMW10"].product_id, offers["GMWB10"].product_id
+        )
+        # LWGS pole rigs – bendras produktas su size+diameter variantais
+        self.assertEqual(
+            offers["GRR061"].product_id, offers["GRR064"].product_id
+        )
+        self.assertEqual(
+            offers["GRR061"].product.name, "Guru LWGS Pole Rigs 6' II"
+        )
+        # SMWG Bait Bands '4 in'/'4 inch'/'- repl.' -> vienas produktas
+        self.assertEqual(
+            offers["GRR150"].product_id, offers["GRR156"].product_id
+        )
+        self.assertEqual(
+            offers["GRR150"].product_id, offers["GRR155"].product_id
+        )
+        self.assertEqual(
+            offers["GRR150"].product.name, "Guru SMWG Bait Bands Rig 4 inch"
+        )
+
     def test_shimano_adapter_import(self):
         """Shimano ArtExp txt: ';' CSV, desc2 -> option ašys, parts variantless."""
         supplier = Supplier.objects.create(

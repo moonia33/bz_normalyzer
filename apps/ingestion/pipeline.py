@@ -19,7 +19,7 @@ from apps.mapping.services import linked_product, map_brand, map_category
 from apps.pricing.engine import compute_selling_price
 from apps.suppliers.adapters.base import AdapterError
 from apps.suppliers.adapters.resolver import resolve_adapter
-from apps.suppliers.models import FeedRole, SupplierFeed
+from apps.suppliers.models import FeedRole, Supplier, SupplierFeed
 
 logger = logging.getLogger(__name__)
 
@@ -195,13 +195,20 @@ def _store_raw(job: ImportJob, item: NormalizedItem) -> None:
     )
 
 
-def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product | None:
-    existing = linked_product(job.supplier, item.external_id)
-    if existing:
-        return existing
+def _find_matching_product(
+    supplier: Supplier,
+    external_id: str,
+    offer: Offer,
+    use_links: bool = True,
+    use_identity: bool = True,
+) -> Product | None:
+    if use_links:
+        existing = linked_product(supplier, external_id)
+        if existing:
+            return existing
 
     # EAN – pirminis kryžminis (tarp tiekėjų) identiteto raktas.
-    if offer.ean:
+    if offer.ean and use_identity:
         product = Product.objects.filter(ean__iexact=offer.ean).order_by("pk").first()
         if product:
             return product
@@ -209,14 +216,15 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
     # art-no (sku) – tas pats tik TO PATIES tiekėjo ribose. Skirtingi
     # tiekėjai gali turėti sutampančius kodus (pvz. FOX 'GRD198' = Matrix,
     # Korda 'GRD198' = Guru) – kryžminis sujungimas lieka per EAN.
-    supplier_products = Product.objects.filter(supplier_links__supplier=job.supplier)
-    product = supplier_products.filter(sku=item.external_id).order_by("pk").first()
-    if not product:
-        product = supplier_products.filter(
-            source_external_id=item.external_id
-        ).order_by("pk").first()
-    if product:
-        return product
+    supplier_products = Product.objects.filter(supplier_links__supplier=supplier)
+    if use_identity:
+        product = supplier_products.filter(sku=external_id).order_by("pk").first()
+        if not product:
+            product = supplier_products.filter(
+                source_external_id=external_id
+            ).order_by("pk").first()
+        if product:
+            return product
 
     # Heuristikos tik tarp šio tiekėjo jau susietų prekių –
     # kad skirtingų tiekėjų product_group kodai nesusikirstų.
@@ -289,9 +297,13 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
         return not (offer_sub and product_sub and offer_sub != product_sub)
 
     for candidate in candidate_filters:
-        product = supplier_products.filter(candidate).order_by("pk").first()
-        if product and sub_category_ok(product):
-            return product
+        # Ne .first() – jei žemiausio pk produktas nepateisina
+        # sub_category_ok (pvz. užsilikęs svetimas sub), bandomi ir kiti
+        # kandidatai tame pačiame filtre; kitaip kiekvienas offer'is
+        # susikurtų atskirą produktą ir grupė niekada nesusijungtų.
+        for product in supplier_products.filter(candidate).order_by("pk")[:10]:
+            if sub_category_ok(product):
+                return product
 
     filters = Q()
     if offer.product_group:
@@ -316,7 +328,10 @@ def _find_matching_product(job: ImportJob, item: NormalizedItem, offer: Offer) -
 
 
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
-    product = _find_matching_product(job, item, offer) or offer.product
+    product = (
+        _find_matching_product(job.supplier, item.external_id, offer)
+        or offer.product
+    )
     if not product:
         # SKU = tiekėjo art-no; supplier sku_prefix tik kolizijos atveju
         # (tas pats art-no iš kito tiekėjo jau turi produktą).

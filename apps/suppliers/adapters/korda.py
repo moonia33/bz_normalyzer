@@ -23,7 +23,8 @@ _TAIL_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(rf"^({_SIZE_WORD}\s+{_MEAS}\s*g)$", re.I), "size"),
     (re.compile(rf"^({_MEAS}\s*oz\s+(?:large|medium|small))$", re.I), "size"),
     (re.compile(r"^(UK\s*\d+\s*/\s*EU\s*\d+)$", re.I), "size"),
-    (re.compile(r"^(Size\s*\d+)$", re.I), "size"),
+    # 'Size 14', 'Size 14 x 8' (dydis x vnt pakuotėje)
+    (re.compile(r"^(Size\s*\d+(?:\s*x\s*\d+)?)$", re.I), "size"),
     (re.compile(rf"^({_SIZE_LETTER})$", re.I), "size"),
     # 'Heli Swivel Large', 'Window Feeder Medium' – vienažodis dydis
     (re.compile(rf"^({_SIZE_WORD})$", re.I), "size"),
@@ -48,6 +49,18 @@ _VARIANTAS_TAIL = re.compile(
 )
 
 _TRAILING_PAREN_RE = re.compile(r"\s*\(([^()]*)\)\s*$")
+
+# Vardų normalizacija prieš parsinimą:
+# '- repl. for X' uodega (sutrumpintas tiekėjo komentaras, ne vardo dalis)
+_REPL_TAIL_RE = re.compile(r"\s*[-–]\s*repl\.?\s*(?:for\b.*)?$", re.I)
+# '... (0.15mm)II' -> '... (0.15mm) II' (skliaustas priekabintas prie žymens)
+_PAREN_GEN_RE = re.compile(r"\)(II|III|IV)\s*$")
+# Generacijos žymuo gale ('II', 'Mk2' ir t.t.) – lieka base, bet neturi
+# užstoti uodegos ('... Size 14 x 8 (0.15mm) II' -> axes + base '... II')
+_GEN_TAIL_RE = re.compile(r"\s+(II|III|IV|Mk\s*\d+|MK\d+)\s*$", re.I)
+# '4 in 14' / 'Rig 15 in' -> '4 inch 14' / 'Rig 15 inch' (in=inches, kai
+# šalia skaičiaus/eilutės galo; angliškas 'in' tarp žodžių neliečiamas)
+_IN_ABBR_RE = re.compile(r"(\d+)\s*in(?=\s*(?:\d|\(|$))", re.I)
 
 # Spalvų žodynas – '|' uodegos liekana / skliaustų turinys -> 'color' ašis
 _COLOR_WORDS = {
@@ -178,7 +191,22 @@ def _parse_description(description: str) -> tuple[str, dict[str, str], str]:
     ('variantas') -> nėra option. Skliaustai gale ignoruojami; liekana
     iš spalvų žodyno -> 'color'.
     """
-    clean, parens = _trailing_parens(description.strip())
+    clean = re.sub(r"\s+", " ", description.strip())
+    clean = _REPL_TAIL_RE.sub("", clean).strip()
+    clean = _PAREN_GEN_RE.sub(r") \1", clean)
+    # Generacijos žymuo ('... (0.15mm) II') – nugriebiamas prieš uodegų
+    # paiešką ir sugrąžinamas į base, kad produktas išliktų atskiras.
+    gen = ""
+    gen_match = _GEN_TAIL_RE.search(clean)
+    if gen_match:
+        gen = gen_match.group(0).strip()
+        clean = clean[: gen_match.start()].strip()
+    clean = _IN_ABBR_RE.sub(r"\1 inch", clean)
+    clean, parens = _trailing_parens(clean)
+
+    def _with_gen(base: str) -> str:
+        return f"{base} {gen}".strip() if gen else base
+
     axes: dict[str, str] = {}
     if "|" in clean:
         head, _, tail = clean.rpartition("|")
@@ -198,7 +226,7 @@ def _parse_description(description: str) -> tuple[str, dict[str, str], str]:
             p_axes, _ = _split_tail(parens)
             for ax, val in p_axes.items():
                 axes.setdefault(ax, val)
-        return head.strip(), axes, parens
+        return _with_gen(head.strip()), axes, parens
     words = clean.split()
     # Žinomos uodegos formos – ilgiausia pirma ('Super Mini 20g' ir pan.)
     for n in (4, 3, 2, 1):
@@ -216,15 +244,33 @@ def _parse_description(description: str) -> tuple[str, dict[str, str], str]:
                     p_axes, _ = _split_tail(parens)
                     for ax, val in p_axes.items():
                         axes.setdefault(ax, val)
-                return base, axes, parens
+                return _with_gen(base), axes, parens
+    # 'LWG Feeder Special 10 (Barbed/Eyed)' – plikas skaičius prieš
+    # skliaustus = kabliuko/dalys dydis (tipas skliaustuose). Be
+    # skliaustų plikas skaičius lieka base (modelių numeriai).
+    if parens and words and re.fullmatch(r"\d{1,3}", words[-1]):
+        axes["size"] = words[-1]
+        base = " ".join(words[:-1]).strip(" -–")
+        base, color = _pop_color(base)
+        if color:
+            axes["color"] = color
+        p_axes, _ = _split_tail(parens)
+        for ax, val in p_axes.items():
+            axes.setdefault(ax, val)
+        return _with_gen(base), axes, parens
     match = _VARIANTAS_TAIL.search(clean)
     if match and match.group(0) != clean:
+        axes["variantas"] = match.group(0).strip()
+        if parens:
+            p_axes, _ = _split_tail(parens)
+            for ax, val in p_axes.items():
+                axes.setdefault(ax, val)
         return (
-            clean[: match.start()].strip(" -–"),
-            {"variantas": match.group(0).strip()},
+            _with_gen(clean[: match.start()].strip(" -–")),
+            axes,
             parens,
         )
-    return clean, axes, parens
+    return _with_gen(clean), axes, parens
 
 
 def _trade_pack_qty(text: Any) -> int:
