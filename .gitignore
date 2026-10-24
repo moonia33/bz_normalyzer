@@ -39,3 +39,6 @@ htmlcov/
 Thumbs.db
 *.dump
 .~lock.*#
+
+# Scratch working dir
+tmp/

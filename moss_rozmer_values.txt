@@ -1,0 +1,2415 @@
+    1  #0/12kg
+    1  #0/4kg
+    1  #0/5kg
+    1  #1
+    1  #1 / 10cm / 16 kg
+    1  #1/0
+    1  #1/0 / 12cm / 18 kg
+    2  #1/12cm
+    1  #1/6kg
+    1  #1/7kg
+    4  #10
+    1  #10+16mm
+    1  #10/14kg
+    1  #10/5kg
+   15  #12
+    1  #12/5kg
+    1  #13
+    4  #14
+    1  #14/5kg
+   13  #16
+    7  #2
+    1  #2 / 10cm / 14 kg
+    1  #2/0
+    1  #2/0 / 14cm / 20 kg
+    1  #2/10cm
+    1  #2/12cm
+    2  #2/28kg
+    1  #2/43kg
+    1  #2/9kg
+    1  #20/25/30
+    1  #3/0
+    1  #3/10kg
+    1  #3/13kg
+    1  #3/35kg
+    1  #3/4/5
+   17  #4
+    1  #4 / 16
+    1  #4 / 28 kg
+    2  #4 / 35kg
+    1  #4 / G-ROUND
+    1  #4/0
+    2  #4/10cm
+    1  #4/15kg
+    2  #4/20kg
+    1  #4/28 kg
+    1  #4/35kg
+    1  #4/40kg
+    2  #4/8cm
+    1  #4/9kg
+    1  #40
+    6  #5
+    1  #5-16 MIX
+    1  #50
+   15  #6
+    1  #6/ 10cm
+    1  #6/0
+    2  #6/13kg
+    2  #6/27kg
+    2  #6/6cm
+    1  #6/7/8
+    1  #6/7kg
+    2  #6/8cm
+    1  #7
+    1  #7+18mm
+   10  #8
+    2  #8/19kg
+    1  #8/5kg
+    2  #8/6cm
+    1  #8/8cm
+    1  #9
+    1  0,045mm 1,7kg 135m
+    1  0,05mm 2,3kg 1000m
+    2  0,05mm 2,3kg 130m
+    2  0,05mm 2,3kg 20m
+    2  0,05mm 2,3kg 300m
+    1  0,065mm 2,6kg 135m
+    1  0,06mm 2,7kg 1000m
+    2  0,06mm 2,7kg 130m
+    2  0,06mm 2,7kg 20m
+    2  0,06mm 2,7kg 300m
+    1  0,07mm 4,5kg 150m
+    1  0,085mm 3,4kg 135m
+    1  0,08mm 3,6kg 150m
+    1  0,08mm 4,8kg 1300m
+    2  0,08mm 4,8kg 130m
+    2  0,08mm 4,8kg 20m
+    1  0,08mm 4,8kg 300m
+    2  0,08mm 5,0kg 135m
+    1  0,09mm 5,5kg 150m
+    1  0,10mm 4,5kg 150m
+    1  0,10mm 5,5kg 130m
+    1  0,10mm 5,5kg 20m
+    1  0,10mm 5,5kg 300m
+    1  0,10mm 6,0kg 1300m
+    1  0,10mm 6,0kg 130m
+    1  0,10mm 6,0kg 20m
+    2  0,10mm 6,2kg 135m
+    2  0,10mm 6,8kg 130m
+    1  0,10mm 6,8kg 300m
+    1  0,10mm 6,9kg  150m
+    2  0,117mm 1,3kg 200m
+    1  0,117mm 1,3kg 5000m
+    2  0,117mm 1,3kg 50m
+    1  0,11mm 7,0kg 150m
+    1  0,125mm 1,3kg 50m
+    1  0,128mm 1,38kg 50m
+    2  0,128mm 1,41kg 200m
+    1  0,128mm 1,41kg 50m
+    2  0,128mm 1,5kg 200m
+    1  0,128mm 1,5kg 5000m
+    2  0,128mm 1,5kg 50m
+    1  0,12mm 5,2kg 150m
+    1  0,12mm 5,2kg 80m
+    1  0,12mm 5,4kg 150m
+    2  0,12mm 7,5kg 135m
+    3  0,12mm 8,2kg   15m
+    2  0,12mm 8,2kg  1000m
+    1  0,12mm 8,2kg  117m
+    1  0,12mm 8,2kg  300m
+    1  0,12mm 8,2kg 1000m
+    1  0,12mm 8,2kg 117m
+    1  0,12mm 8,2kg 15m
+    1  0,12mm 8,2kg 300m
+    1  0,12mm 8,5kg  150m
+    2  0,12mm 8,7kg 130m
+    2  0,12mm 8,7kg 300m
+    1  0,13mm 7,7kg 1300m
+    1  0,13mm 7,7kg 130m
+    1  0,13mm 7,7kg 20m
+    1  0,13mm 8,0kg 150m
+    1  0,148mm 1,76kg 50m
+    2  0,148mm 1,88kg 200m
+    1  0,148mm 1,88kg 50m
+    1  0,148mm 1,9kg 50m
+    2  0,148mm 2,0kg 200m
+    2  0,148mm 2,0kg 300m
+    1  0,148mm 2,0kg 5000m
+    2  0,148mm 2,0kg 50m
+    2  0,14mm 1,8kg 150m
+    2  0,14mm 1,8kg 200m
+    2  0,14mm 1,8kg 300m
+    2  0,14mm 10,0kg 130m
+    2  0,14mm 10,0kg 300m
+    1  0,14mm 6,3kg 150m
+    2  0,14mm 9,0kg 135m
+    1  0,14mm 9,1kg   15m
+    1  0,14mm 9,1kg  300m
+    1  0,14mm 9,1kg 1000m
+    1  0,14mm 9,1kg 117m
+    1  0,14mm 9,1kg 15m
+    1  0,14mm 9,1kg 300m
+    2  0,14mm 9,5kg   15m
+    1  0,14mm 9,5kg  1000m
+    1  0,14mm 9,5kg  117m
+    1  0,14mm 9,5kg  300m
+    2  0,14mm 9,6kg  300m
+    1  0,14mm 9,8kg  150m
+    1  0,15mm 9,0kg 150m
+    1  0,15mm 9,5kg 1300m
+    1  0,15mm 9,5kg 130m
+    1  0,15mm 9,5kg 20m
+    2  0,165mm 2,33kg 200m
+    1  0,165mm 2,33kg 50m
+    4  0,165mm 2,5kg 200m
+    4  0,165mm 2,5kg 300m
+    4  0,165mm 2,5kg 50m
+    1  0,16mm 10,0kg   15m
+    1  0,16mm 10,0kg 1000m
+    1  0,16mm 10,0kg 117m
+    2  0,16mm 10,0kg 135m
+    1  0,16mm 10,0kg 15m
+    1  0,16mm 10,0kg 300m
+    2  0,16mm 10,5kg   15m
+    1  0,16mm 10,5kg  1000m
+    1  0,16mm 10,5kg  117m
+    1  0,16mm 10,5kg  300m
+    1  0,16mm 10,9kg  150m
+    2  0,16mm 11,0kg 130m
+    2  0,16mm 11,0kg 300m
+    3  0,16mm 2,4kg 150m
+    2  0,16mm 2,4kg 200m
+    1  0,16mm 2,4kg 300m
+    3  0,16mm 2,5kg 200m
+    3  0,16mm 2,5kg 300m
+    1  0,16mm 2,5kg 6000m
+    1  0,16mm 7,7kg 150m
+    1  0,16mm 7,7kg 80m
+    2  0,16mm 8,2kg 200m
+    2  0,16mm 8,2kg 300m
+    1  0,16mm 8,2kg 6000m
+    3  0,16mm 8,2kg 600m
+    1  0,17mm 10,0kg 150m
+    1  0,17mm 11,0kg 1300m
+    1  0,17mm 11,0kg 130m
+    1  0,17mm 11,0kg 20m
+    2  0,181mm 2,91kg 200m
+    2  0,181mm 2,91kg 350m
+    1  0,181mm 2,91kg 50m
+    1  0,181mm 3,0kg 1000m
+    2  0,181mm 3,0kg 200m
+    3  0,181mm 3,0kg 300m
+    1  0,181mm 3,0kg 500m
+    4  0,181mm 3,0kg 50m
+    1  0,185mm 2,53kg 50m
+    1  0,185mm 2,7kg 50m
+    2  0,18mm 11,5kg 135m
+    1  0,18mm 12,2kg 1000m
+    1  0,18mm 12,2kg 117m
+    1  0,18mm 12,2kg 15m
+    1  0,18mm 12,2kg 300m
+    1  0,18mm 12,3kg   15m
+    2  0,18mm 13,0kg 130m
+    2  0,18mm 13,0kg 300m
+    2  0,18mm 13,2kg   15m
+    1  0,18mm 13,2kg  1000m
+    1  0,18mm 13,2kg  117m
+    1  0,18mm 13,2kg  300m
+    1  0,18mm 14,6kg 150m
+    1  0,18mm 2,7kg 300m
+    3  0,18mm 2,9kg 200m
+    3  0,18mm 2,9kg 300m
+    1  0,18mm 2,9kg 6000m
+    1  0,18mm 3,0kg 1000m
+    2  0,18mm 3,0kg 150m
+    1  0,18mm 3,0kg 200m
+    1  0,18mm 3,0kg 300m
+    2  0,18mm 3,0kg 500m
+    1  0,18mm 40lbs 20m
+    1  0,18mm 40lbs 40m
+    3  0,18mm 9,1kg 200m
+    2  0,18mm 9,1kg 300m
+    1  0,18mm 9,1kg 6000m
+    3  0,18mm 9,1kg 600m
+    1  0,18mm 9,5kg 150m
+    1  0,18mm 9,5kg 80m
+    1  0,19mm 13,0kg 150m
+    1  0,1g
+    2  0,203mm 3,49kg 200m
+    2  0,203mm 3,49kg 350m
+    1  0,203mm 3,49kg 50m
+    1  0,203mm 3,8kg 300m
+    4  0,203mm 3,8kg 50m
+    1  0,205mm 3,7kg 50m
+    1  0,20mm 11kg 150m
+    1  0,20mm 11kg 80m
+    1  0,20mm 13,2kg   15m
+    1  0,20mm 13,2kg  1000m
+    1  0,20mm 13,2kg 1000m
+    1  0,20mm 13,2kg 117m
+    1  0,20mm 13,2kg 15m
+    1  0,20mm 13,2kg 300m
+    2  0,20mm 14,1kg   15m
+    1  0,20mm 14,1kg  1000m
+    1  0,20mm 14,1kg  117m
+    1  0,20mm 14,1kg  300m
+    2  0,20mm 15,0kg 130m
+    2  0,20mm 15,0kg 300m
+    1  0,20mm 15,5kg 150m
+    1  0,20mm 3,4kg 300m
+    1  0,20mm 3,5kg 150m
+    1  0,20mm 3,5kg 200m
+    1  0,20mm 3,5kg 300m
+    1  0,20mm 3,5kg 6000m
+    1  0,20mm 3,7kg 300m
+    1  0,218mm 3,69kg 50m
+    1  0,21mm 14,2kg 1300m
+    1  0,21mm 14,2kg 130m
+    1  0,21mm 14,2kg 20m
+    1  0,21mm 16,0kg 150m
+    2  0,22mm 17,7kg   15m
+    1  0,22mm 17,7kg  1000m
+    1  0,22mm 17,7kg  117m
+    1  0,22mm 17,7kg  300m
+    1  0,22mm 4,2kg 300m
+    1  0,234mm 4,29kg 50m
+    2  0,234mm 4,43kg 200m
+    2  0,234mm 4,43kg 350m
+    1  0,234mm 4,43kg 50m
+    2  0,234mm 4,7kg 50m
+    1  0,23mm 12,8kg 150m
+    1  0,23mm 12,8kg 80m
+    3  0,23mm 13,6kg 200m
+    2  0,23mm 13,6kg 3000m
+    2  0,23mm 13,6kg 300m
+    2  0,23mm 13,6kg 600m
+    1  0,23mm 16,5kg 1300m
+    1  0,23mm 16,5kg 130m
+    1  0,23mm 16,5kg 20m
+    1  0,23mm 4,2kg 50m
+    1  0,23mm 4,3kg 200m
+    1  0,23mm 4,3kg 300m
+    1  0,23mm 4,3kg 6000m
+    1  0,23mm 4,5kg 150m
+    1  0,24mm 35lbs 20m
+    1  0,24mm 35lbs 40m
+    1  0,25mm 16,8kg   15m
+    1  0,25mm 16,8kg 1000m
+    1  0,25mm 16,8kg 117m
+    1  0,25mm 16,8kg 15m
+    1  0,25mm 16,8kg 300m
+    2  0,25mm 19,1kg   15m
+    1  0,25mm 19,1kg  1000m
+    1  0,25mm 19,1kg  117m
+    1  0,25mm 19,1kg  300m
+    2  0,25mm 23,5kg 130m
+    2  0,25mm 23,5kg 300m
+    1  0,25mm 4,4kg 1200m
+    1  0,25mm 4,4kg 300m
+    1  0,25mm 4,4kg 600m
+    1  0,25mm 4,4kg 7850m
+    3  0,25mm 5,0kg 1200m
+    3  0,25mm 5,0kg 30000m
+    1  0,25mm 5,0kg 300m
+    3  0,25mm 5,0kg 600m
+    3  0,25mm 5,4kg 1200m
+    2  0,25mm 5,4kg 30000m
+    1  0,25mm 5,4kg 300m
+    3  0,25mm 5,4kg 600m
+    1  0,261mm 4,68kg 500m
+    1  0,261mm 4,68kg1000m
+    1  0,261mm 4,84kg 20m
+    2  0,261mm 5,37kg 1200m
+    2  0,261mm 5,37kg 200m
+    2  0,261mm 5,37kg 300m
+    2  0,261mm 5,37kg 350m
+    1  0,261mm 5,37kg 600m
+    2  0,261mm 5,37kg 7200m
+    1  0,261mm 5,4kg 1200m
+    1  0,261mm 5,4kg 300m
+    1  0,261mm 5,4kg 600m
+    1  0,261mm 5,7kg 1000m
+    1  0,26mm 4,8kg 20m
+    1  0,26mm 5,2kg 1200m
+    1  0,26mm 5,2kg 200m
+    2  0,26mm 5,2kg 300m
+    2  0,26mm 5,2kg 6000m
+    1  0,26mm 5,2kg 600m
+    1  0,26mm 5,5kg 150m
+    1  0,27mm 20,0kg 1300m
+    1  0,27mm 20,0kg 130m
+    1  0,27mm 20,0kg 20m
+    1  0,286mm 5,61kg 1000m
+    1  0,286mm 5,61kg 500m
+    2  0,286mm 6,31kg 1200m
+    2  0,286mm 6,31kg 300m
+    2  0,286mm 6,31kg 600m
+    1  0,286mm 6,31kg 6300m
+    1  0,286mm 6,4kg 1200m
+    1  0,286mm 6,4kg 300m
+    1  0,286mm 6,4kg 600m
+    1  0,286mm 6,8kg 1000m
+    3  0,286mm 6,8kg 200m
+    3  0,286mm 6,8kg 300m
+    1  0,286mm 6,8kg 500m
+    4  0,28mm 5,9kg 1200m
+    3  0,28mm 5,9kg 26000m
+    2  0,28mm 5,9kg 300m
+    4  0,28mm 5,9kg 600m
+    1  0,28mm 5,9kg 6300m
+    1  0,28mm 6,1kg 1200m
+    3  0,28mm 6,1kg 200m
+    4  0,28mm 6,1kg 300m
+    2  0,28mm 6,1kg 6000m
+    1  0,28mm 6,1kg 600m
+    1  0,28mm 6,3kg 150m
+    2  0,28mm 6,4kg 1200m
+    2  0,28mm 6,4kg 26000m
+    2  0,28mm 6,4kg 600m
+    1  0,28mm 6,5kg 1000m
+    1  0,28mm 6,5kg 1200m
+    1  0,28mm 6,5kg 150m
+    1  0,28mm 6,5kg 200m
+    2  0,28mm 6,5kg 300m
+    1  0,28mm 6,5kg 500m
+    1  0,28mm 6,5kg 600m
+    1  0,2g
+    1  0,309mm 6,55kg 1000m
+    1  0,309mm 6,55kg 20m
+    1  0,309mm 6,55kg 500m
+    2  0,309mm 7,20kg 1200m
+    2  0,309mm 7,20kg 300m
+    1  0,309mm 7,20kg 5200m
+    2  0,309mm 7,20kg 600m
+    1  0,309mm 7,3kg 1200m
+    1  0,309mm 7,3kg 300m
+    1  0,309mm 7,3kg 600m
+    1  0,30mm 20,4kg   15m
+    1  0,30mm 20,4kg  1000m
+    1  0,30mm 20,4kg 1000m
+    1  0,30mm 20,4kg 117m
+    1  0,30mm 20,4kg 15m
+    1  0,30mm 20,4kg 300m
+    2  0,30mm 21,4kg   15m
+    1  0,30mm 21,4kg  1000m
+    1  0,30mm 21,4kg  117m
+    1  0,30mm 21,4kg  300m
+    1  0,30mm 57lbs 20m
+    1  0,30mm 57lbs 40m
+    1  0,30mm 6,4kg 20m
+    3  0,30mm 6,8kg 1200m
+    3  0,30mm 6,8kg 20000m
+    3  0,30mm 6,8kg 600m
+    1  0,30mm 68lbs 20m
+    1  0,30mm 68lbs 40m
+    1  0,30mm 7,0kg 1200m
+    1  0,30mm 7,0kg 300m
+    1  0,30mm 7,0kg 6000m
+    1  0,30mm 7,0kg 600m
+    1  0,30mm 7,2kg 1200m
+    1  0,30mm 7,2kg 300m
+    1  0,30mm 7,2kg 5500m
+    1  0,30mm 7,2kg 600m
+    1  0,30mm 7,4kg 1200m
+    1  0,30mm 7,4kg 300m
+    1  0,30mm 7,4kg 600m
+    2  0,30mm 7,7kg 1200m
+    2  0,30mm 7,7kg 20000m
+    2  0,30mm 7,7kg 600m
+    1  0,32mm 7,4kg 1200m
+    1  0,32mm 7,4kg 300m
+    1  0,32mm 7,4kg 6000m
+    1  0,32mm 7,4kg 600m
+    2  0,330mm 8,23kg 1100m
+    2  0,330mm 8,23kg 300m
+    1  0,330mm 8,23kg 4600m
+    2  0,330mm 8,23kg 600m
+    1  0,331mm 7,39kg 1000m
+    1  0,331mm 7,39kg 500m
+    2  0,33mm 18,1kg 2000m
+    2  0,33mm 18,1kg 200m
+    2  0,33mm 18,1kg 300m
+    3  0,33mm 18,1kg 600m
+    1  0,33mm 25,9kg 1300m
+    1  0,33mm 25,9kg 130m
+    1  0,33mm 25,9kg 20m
+    1  0,33mm 8,2kg 1100m
+    1  0,33mm 8,2kg 300m
+    1  0,33mm 8,2kg 600m
+    1  0,34mm 7,4kg 1100m
+    1  0,34mm 8,1kg 300m
+    1  0,34mm 8,1kg 6000m
+    1  0,34mm 8,1kg 600m
+    2  0,35mm 10,4kg 1100m
+    2  0,35mm 10,4kg 15000m
+    2  0,35mm 10,4kg 600m
+    1  0,35mm 23,6kg  1000m
+    1  0,35mm 23,6kg  117m
+    1  0,35mm 23,6kg  300m
+    1  0,35mm 7,7kg 20m
+    2  0,35mm 8,6kg 1100m
+    2  0,35mm 8,6kg 15000m
+    2  0,35mm 8,6kg 600m
+    1  0,35mm 9,1kg 1100m
+    1  0,35mm 9,1kg 15000m
+    1  0,35mm 9,1kg 600m
+    1  0,35mm 9,2kg 1000m
+    1  0,35mm 9,2kg 300m
+    1  0,35mm 9,2kg 4090m
+    1  0,35mm 9,2kg 600m
+    1  0,369mm 10,0kg 1000m
+    1  0,369mm 10,0kg 300m
+    1  0,369mm 10,0kg 600m
+    1  0,369mm 8,69kg 20m
+    2  0,369mm 9,96kg 1000m
+    2  0,369mm 9,96kg 300m
+    1  0,369mm 9,96kg 3700m
+    2  0,369mm 9,96kg 600m
+    1  0,405mm 10,1kg 20m
+    1  0,40mm 10,0kg 80m
+    1  0,40mm 10,1kg 20m
+    1  0,40mm 11,3kg 25m
+    1  0,40mm 11,5kg 300m
+    1  0,40mm 11,5kg 3140m
+    1  0,40mm 11,5kg 600m
+    1  0,40mm 11,5kg 800m
+    2  0,40mm 26,4kg   10m
+    1  0,40mm 26,4kg  1000m
+    1  0,40mm 26,4kg  117m
+    1  0,40mm 26,4kg  300m
+    1  0,40mm 30,1kg   10m
+    1  0,40mm 30,1kg 1000m
+    1  0,40mm 30,1kg 10m
+    1  0,40mm 30,1kg 1100m
+    1  0,40mm 30,1kg 117m
+    1  0,40mm 30,1kg 150m
+    1  0,40mm 30,1kg 250m
+    1  0,40mm 30,1kg 300m
+    1  0,45mm 12,3kg 20m
+    1  0,45mm 13,6kg 25m
+    1  0,50mm 15,0kg 2000m
+    1  0,50mm 15,0kg 500m
+    1  0,50mm 15,0kg 80m
+    1  0,50mm 15,9kg 25m
+    1  0,50mm 26,4kg   10m
+    1  0,50mm 36,4kg   10m
+    1  0,50mm 36,4kg  1000m
+    1  0,50mm 36,4kg  117m
+    1  0,50mm 36,4kg  300m
+    1  0,50mm 41,7kg   10m
+    1  0,50mm 41,7kg 10m
+    1  0,50mm 41,7kg 1100m
+    1  0,50mm 41,7kg 117m
+    1  0,50mm 41,7kg 150m
+    1  0,50mm 41,7kg 250m
+    2  0,5g
+    1  0,60mm 16,0kg 20m
+    1  0,60mm 20,5kg 1400m
+    1  0,60mm 20,5kg 350m
+    1  0,60mm 20,5kg 35m
+    1  0,60mm 20,5kg 80m
+    1  0,60mm 52,6kg   10m
+    1  0,60mm 52,6kg 10m
+    1  0,60mm 52,6kg 1100m
+    1  0,60mm 52,6kg 150m
+    1  0,60mm 52,6kg 250m
+    1  0,63mm 68,2kg 1000m
+    1  0,63mm 68,2kg 10m
+    1  0,63mm 68,2kg 250m
+    1  0,70mm 28,6kg 1200m
+    1  0,70mm 28,6kg 300m
+    1  0,70mm 28,6kg 80m
+    1  0,70mm 62,8kg   10m
+    1  0,70mm 62,8kg 10m
+    1  0,70mm 62,8kg 1100m
+    1  0,70mm 62,8kg 150m
+    1  0,70mm 62,8kg 250m
+    1  0,73mm 90,9kg 10m
+    1  0,73mm 90,9kg 190m
+    1  0,73mm 90,9kg 750m
+    1  0,75g
+    2  0,80mm 31,4kg 1000m
+    2  0,80mm 31,4kg 35m
+    1  0,8x1,7x8mm
+    1  0,90mm 30,0kg 20m
+    1  0.20mm-0.35mm
+    1  0.22mm-0.40mm
+    1  0.26mm-0.45mm
+    1  0.28mm-0.50mm
+    1  0.30mm-0.50mm
+    1  0.30mm-0.60mm
+    1  0.5g AURO Hook #8 Snap 00
+    1  0.5g NEON Hook #8 Snap 00
+    1  0.5g NUCLEO Hook #8 Snap 00
+    1  0.5g PINKY Hook #8 Snap 00
+    1  0.5g SNOW Hook #8 Snap 00
+    1  0.5g TROUT Hook #8 Snap 00
+    1  0.5g WAMP Hook #8 Snap 00
+    1  0.6mm
+    2  0.6mm/4kg/10m
+    1  0.7x1.5x6mm
+    1  0.8mm
+    2  0.8mm/6kg/10m
+   10  1
+    2  1,00mm 45,8kg 35m
+    1  1,00mm 45,8kg 600m
+    1  1,00mm 78,2kg 10m
+    1  1,00mm 78,2kg 150m
+    1  1,00mm 78,2kg 250m
+    1  1,00mm 78,2kg 500m
+    3  1,0g
+    1  1,1mm  100,0kg   10m
+    1  1,25g
+    1  1,2x2,6x8mm
+    1  1,5W/2200mAh
+    3  1,5g
+    1  1,5g-1
+    1  1,5g-2
+    1  1,5g-4
+    1  1,5g-6
+    1  1,6 mm x 43 mm / brązowa
+    1  1,6 x 43mm / G-R
+    1  1,8 L
+    1  1.0mm
+    1  1.0x2.2x8mm
+    1  1.2mm
+    2  1.2mm/10kg/10m
+    1  1.4mm
+    1  1.5g AURO Hook #8
+    1  1.5g NUCLEO Hook #8
+    1  1.5g PINKY Hook #8
+    1  1.5g WAMP Hook #8
+    1  1.5g ZEBRA Hook #8
+    1  1.6mm
+    9  1/0
+    4  10
+    1  10 000 mAh
+    1  10 mm
+    1  10 sztuk / rozmiar L
+    4  10,0g
+    1  10,5 cm/PERCHY
+    1  10,5 cm/REDFACE
+    1  10,5cm/Coral
+    1  10,5cm/Motor Oil
+    1  10,5cm/Reactor
+    1  10,5cm/Spring
+    1  10,5cm/Yeti
+    1  10.5cm / Pearl + Candy + Firedot + Reactor + Brick
+    2  10.5cm/BERRY
+    2  10.5cm/BRICK
+    2  10.5cm/CAKE
+    2  10.5cm/CANDY
+    2  10.5cm/DeadSNOW
+    2  10.5cm/FIREDOT
+    2  10.5cm/FROGS
+    2  10.5cm/GREENCH
+    2  10.5cm/MINT
+    2  10.5cm/MudGOLD
+    2  10.5cm/NEON
+    2  10.5cm/PEARL
+    1  10.5cm/Pearl + Candy + Firedot + Reactor + Brick
+    2  10.5cm/REACTOR
+    2  10.5cm/RedFACE
+    2  10.5cm/YELLA
+    1  10/0 FLAT-O
+    1  10/8kg
+    1  100 cm / 30lbs
+    1  100 cm / 60lbs
+    6  100cm
+    1  100cm / 0,12mm / BARB #14
+    1  100cm / 0,14mm / BARB #12
+    1  100cm / 0,16mm / BARB #10
+    1  100cm / 0,18mm / BARB #10
+    1  100cm / 0,20mm / BARB #8
+   18  100g
+    1  100g / 0,1-1,5g
+    1  100g / 0,1-2,5g
+    1  100g / 0,25-3,0g
+    1  100x100 cm
+    2  100x100/1.8m/2 składy
+    1  100x100/1.8m/2składy/Tele
+    6  100x100cm
+    1  100x100cm 1.8m
+    1  100x100cm/1,8m
+    1  100x50cm
+    1  100x60 cm
+    1  100x65x30mm
+    1  100x65x35mm
+    1  105x75 cm
+    1  105x92x30mm
+    1  10Ft/3,00lbs
+    3  10L
+    2  10L + 7m
+    2  10cm
+    1  10cm / Perchy + Redface + Candy + Hawai + Best
+    4  10cm/AGRESOR
+    6  10cm/BERRY
+    6  10cm/BEST
+    2  10cm/BLOODY MILION
+    6  10cm/BOOTY
+    2  10cm/CAKE
+    6  10cm/CANDY
+    6  10cm/DISCO
+    6  10cm/DeadSNOW
+    2  10cm/EPIDEMY
+    2  10cm/FORESTER
+    2  10cm/GALAXY
+    6  10cm/GREENCH
+    6  10cm/HAWAI
+    2  10cm/LOLIPOP
+    2  10cm/MINT
+    6  10cm/MudGOLD
+    2  10cm/PARTY
+    6  10cm/PERCHY
+    2  10cm/POLAR
+    1  10cm/Perchy + Redface + Candy + Hawai + Best
+    6  10cm/RedFACE
+    4  10cm/TIGERA
+    2  10cm/TUNA
+    6  10cm/YELLA
+    6  10cm/YETI
+    2  10cm/Yeti + Booty + Candy + Perchy + Forester
+    1  10ft/300cm/3,00lbs/2 składy
+    2  10g
+    1  10g-1
+    3  10g-1/0
+    1  10g-2
+    3  10g-2/0
+    5  10g-3/0
+    5  10g-4/0
+    5  10g-5/0
+    4  10g-6/0
+    2  10g-8/0
+    1  10g/roz.3/BLOODY
+    1  10g/roz.3/COPPER
+    1  10g/roz.3/LoliDOT
+    1  10g/roz.3/METAL
+    1  10g/roz.3/PERCHY
+    1  10g/roz.3/RedEND
+    1  10g/roz.3/TROUTY
+    1  10m/14kg
+    1  10m/18kg
+    1  10m/9kg
+    2  10mm
+    9  10mm/wafters/rozpuszczalne/30g
+    1  10x10cm
+    1  10x10x8cm
+    1  10x12cm
+    1  10x4 20x5 20x6 10x8
+    1  10x5cm
+    1  10x6x2cm
+    1  11,0g
+    2  110-180cm
+    1  110-200cm
+    1  110-210cm
+    1  110cm
+    2  110g
+    1  110x60 cm
+    1  110x75 cm
+    1  114x62x34mm
+    2  115cm
+    1  11cm
+    2  12
+    1  12 cm
+    2  12,0g
+    1  12,5g
+    1  12,5g/9cm/Susp./MIRROR
+    1  12,5g/9cm/Susp./NEON
+    1  12,5g/9cm/Susp./NOVA
+    1  12,5g/9cm/Susp./PHANTOM
+    1  12,5g/9cm/Susp./POLAR
+    1  12,5g/9cm/Susp./RAINBO
+    1  12,5g/9cm/Susp./REDFACE
+    1  12,5g/9cm/Susp./SPRING
+    1  12,5g/9cm/Susp./TRAP
+    1  12,5x8x2cm
+   11  120g
+    1  120kg
+    1  120pcs
+    1  120x16cm
+    1  120x60mm
+    1  122
+    2  125cm
+    1  125kg
+    1  125x105x35mm
+    1  125x20cm
+    1  125x45cm
+    1  128
+    1  12cm / 0,10mm / B-LESS #10 / Sting 5mm
+    1  12cm / 0,10mm / B-LESS #12 / Sting 5mm
+    1  12cm / 0,10mm / BARB #10 / Sting 5mm
+    1  12cm / 0,10mm / BARB #12 / Sting 5mm
+    2  12cm / 0,10mm / BARB #6
+    1  12cm / 0,10mm / BARB #6 / Sting 5mm
+    1  12cm / 0,10mm / BARB #6 / Sting 7mm
+    1  12cm / 0,22mm / B-LESS #12 / Sting 5mm
+    2  12cm / 0,22mm / BARB #10
+    1  12cm / 0,22mm / BARB #10 / Sting 5mm
+    1  12cm / 0,22mm / BARB #12 / Sting 5mm
+    1  12cm / 0,22mm / BARB #6
+    1  12cm / 0,22mm / BARB #6 / Sting 5mm
+    1  12cm / 0,22mm / BARB #6 / Sting 7mm
+    1  12cm / 0,25mm / BARB #6 / Sting 7mm
+    1  12cm / 0,25mm / BARB #8 / Sting 7mm
+    1  12cm / 0,30mm / BARB #4 / Sting 7mm
+    2  12cm/ Yeti + Booty + Candy + Perchy + Forester
+    1  12cm/0,14mm/Chinu #8
+    1  12cm/0,14mm/Turner #8
+    1  12cm/0,20mm/Chinu #4
+    1  12cm/0,20mm/Chinu #6
+    1  12cm/0,20mm/Turner #4
+    1  12cm/0,20mm/Turner #6
+    1  12cm/0,22mm/Chinu #8
+    1  12cm/0,22mm/Turner #8
+    1  12cm/0,26mm/Chinu #6
+    1  12cm/0,26mm/Turner #6
+    1  12cm/0,30mm/Chinu #4
+    1  12cm/0,30mm/Turner #4
+    4  12cm/AGRESOR
+    4  12cm/BERRY
+    4  12cm/BEST
+    4  12cm/BLOODY MILION
+    4  12cm/BOOTY
+    4  12cm/CAKE
+    4  12cm/CANDY
+    4  12cm/DISCO
+    4  12cm/DeadSNOW
+    4  12cm/EPIDEMY
+    4  12cm/FORESTER
+    4  12cm/GALAXY
+    4  12cm/GREENCH
+    4  12cm/HAWAI
+    4  12cm/LOLIPOP
+    4  12cm/MINT
+    4  12cm/MudGOLD
+    4  12cm/PARTY
+    4  12cm/PERCHY
+    4  12cm/POLAR
+    2  12cm/REDFACE
+    2  12cm/RedFACE
+    4  12cm/TUNA
+    4  12cm/YELLA
+    4  12cm/YETI
+    2  12cm/Yeti + Booty + Candy + Perchy + Forester
+    1  12ft/360cm/2,75lbs/2 składy
+    1  12ft/360cm/3,00lbs/2 składy
+    1  12ft/360cm/3,25lbs/2 składy
+    1  12ft/360cm/3,50lbs/2 składy
+    2  12g-2/0
+    4  12g-3/0
+    4  12g-4/0
+    4  12g-5/0
+    4  12g-6/0
+    1  12g-8/0
+    1  12g/7cm/Float./MIRROR
+    1  12g/7cm/Float./NEON
+    1  12g/7cm/Float./NOVA
+    1  12g/7cm/Float./PERCHY
+    1  12g/7cm/Float./PHANTOM
+    1  12g/7cm/Float./RAINBO
+    1  12g/7cm/Float./REDFACE
+    1  12g/7cm/Float./SUNSET
+    1  12g/7cm/Float./TRAP
+    1  12g/BOOTY
+    1  12g/DANGER
+    1  12g/FORESTER
+    1  12g/PERCHY
+    1  12g/REDBACK
+    1  12g/TROPIC
+    1  12m / 0,22mm / B-LESS #10 / Sting 5mm
+    3  12mm
+    9  12mm/wafters/rozpuszczalne/30g
+    1  13 cm
+    4  130cm
+    1  130kg
+    1  130x20 cm
+    1  130x70mm
+    1  132x65x25mm
+    1  134
+    1  135cm
+    1  13Ft/3,5lbs
+    3  13cm
+    2  13cm / Mamba
+    2  13cm / Minnow
+    2  13cm / Mouse
+    2  13cm / Perch
+    2  13cm / Pike
+    1  13cm / Roach
+    2  13cm / Trout
+    2  13cm / Urban
+    2  14,0g
+    1  14.3mm
+    1  140
+    2  140cm
+    1  140cm/2 składy
+    1  140ml
+    1  140x105x35mm
+    1  140x75x50mm
+    1  140x80cm/110x50x15cm
+    4  145cm
+    1  145cm/50x40cm
+    1  146
+    2  14mm
+    9  14mm/wafters/rozpuszczalne/30g
+    1  15 cm
+    4  15,0g
+    1  15,5cm
+    1  15.6″
+    5  150cm
+   10  150g
+    1  150g / 0,1-1,5g
+    1  150g / 0,1-2,5g
+    1  150g / 0,25-3,0g
+    1  150g / 1,0-4,0g
+    1  150x80mm
+    2  155cm
+    5  15cm
+    4  15cm/AGRESOR
+    4  15cm/BERRY
+    4  15cm/BEST
+    4  15cm/BLOODY MILION
+    4  15cm/BOOTY
+    2  15cm/CAKE
+    4  15cm/CANDY
+    4  15cm/DISCO
+    4  15cm/DeadSNOW
+    4  15cm/EPIDEMY
+    4  15cm/FORESTER
+    4  15cm/GALAXY
+    4  15cm/GREENCH
+    4  15cm/HAWAI
+    4  15cm/LOLIPOP
+    2  15cm/MINT
+    4  15cm/MudGOLD
+    2  15cm/PARTY
+    4  15cm/PERCHY
+    2  15cm/POLAR
+    2  15cm/Perchy + Candy + Booty + Redface + Firedot
+    2  15cm/REDFACE
+    2  15cm/RedFACE
+    4  15cm/TUNA
+    4  15cm/YELLA
+    4  15cm/YETI
+    2  15cm/Yeti + Booty + Candy + Perchy + Forester
+    4  15g
+    1  15g-2/0
+    3  15g-3/0
+    4  15g-4/0
+    4  15g-5/0
+    4  15g-6/0
+    1  15g-7/0
+    2  15g-8/0
+    5  15lbs 20m
+    3  15mm
+    1  15x12cm
+    1  16 cm
+    1  16,0g
+    1  16,5cm
+    2  16.5cm
+    4  162x86x35mm
+    1  165cm
+    2  16mm
+    1  17,5cm
+    3  170cm
+    1  170cm/150g/2 składy
+    1  170cm/205g
+    2  170g
+    1  175x105x38mm
+    1  17g/roz.5/BLOODY
+    1  17g/roz.5/COPPER
+    1  17g/roz.5/LoliDOT
+    1  17g/roz.5/METAL
+    1  17g/roz.5/PERCHY
+    1  17g/roz.5/RedEND
+    1  17g/roz.5/TROUTY
+    1  18, 21, 25 mm / Ground+Clear
+    3  18,0g
+    1  18,21,25 mm mix
+    2  180cm
+    1  180cm + 3T + 0,25mm
+    1  180cm/0,5-5g/ 2 składy
+    1  180cm/0.5-6g/2 składy
+    1  180cm/1-5g/2 składy
+    1  180cm/10-30g
+    1  180cm/10-30g/2 składy
+    2  180cm/2 składy
+    1  180cm/20g
+    1  180cm/30g + 2T + 0,181mm
+    1  180cm/30g/2 składy
+    1  180cm/40g
+    1  183cm/0.5-5g
+    1  183cm/0.5-6g
+    1  183cm/0.5-6g/2 składy
+    4  185cm/0.5-5g/2 składy
+    1  185cm/2-7g/2 składy
+    1  185x85x50mm
+    4  186x98x35mm
+    6  18cm
+    1  18g-1/0
+    1  18g-2/0
+    1  18g-3/0
+    1  18g-4/0
+    1  18g-5/0
+    1  18g-6/0
+    1  18g-7/0
+    1  18g-8/0
+    2  18mm
+    1  190cm/150g/2 składy
+    1  190cm/205g
+    1  190cm/30g/2 składy
+    1  190cm/60x50cm
+    1  190x110x48mm
+    1  190x135x38mm
+    1  195cm/125g/2 składy
+    1  195x120x36mm
+    1  1W/100lm/2000mAh
+    2  1g-1
+    1  1g-1/0
+    2  1g-2
+    1  1g-2/0
+    1  1g-4
+    1  1g-6
+    1  1g-8
+    3  1m
+    1  1m/#1/0/0,26mm/5szt
+    1  1m/#2/0,20mm/5szt
+    1  1m/#4/0,16mm/5szt
+    2  1mm/8kg/10m
+    1  1x Uni uchwyt + 2x gumka
+    9  2
+   10  2+1
+    3  2,0g
+    2  2,5g
+    1  2,7m/2,75lbs/2 składy
+    1  2,8W/170lm/2200mAh
+    1  2.5cm / BRICK
+    1  2.5cm / CANDY
+    1  2.5cm / FROGS
+    1  2.5cm / FRUITY
+    1  2.5cm / MUDDY
+    1  2.5cm / NEON
+    1  2.5cm / PEARL
+    1  2.5cm / REACTOR
+    1  2.5g NEON Hook #8 Snap 00
+    1  2.5g NUCLEO Hook #8 Snap 00
+    1  2.5g PINKY Hook #8 Snap 00
+    1  2.5g TROUT Hook #8 Snap 00
+    1  2.5g WAMP Hook #8 Snap 00
+    7  2/0
+    1  20 cm / 17lbs / #4
+    1  20 cm / 17lbs / #6
+    1  20 x 7cm
+    2  20,0g
+    1  2000W
+    3  200cm
+    1  200cm/10g/2składy
+    1  200cm/300-400g/2składy
+    8  200g
+    1  200x145x50mm
+    2  200x70mm
+    1  200x97mm
+    3  20cm
+    2  20cm/25lbs/#2
+    4  20cm/25lbs/#4
+    4  20cm/25lbs/#6
+    4  20cm/25lbs/#8
+    8  20g
+    2  20g-3/0
+    4  20g-4/0
+    4  20g-5/0
+    4  20g-6/0
+    2  20g-7/0
+    2  20g-8/0
+    1  20g/roz.5/BLOODY
+    1  20g/roz.5/COPPER
+    1  20g/roz.5/LoliDOT
+    1  20g/roz.5/METAL
+    1  20g/roz.5/PERCHY
+    1  20g/roz.5/RedEND
+    1  20g/roz.5/TROUTY
+    1  20lbs 20m
+    2  20x10x3cm
+    1  20x10x8cm
+    1  20x8,5cm
+    2  210cm
+    1  210cm/1-7g/2 składy
+    1  210cm/10-30g
+    1  210cm/10-30g/2 składy
+    1  210cm/100g/2 składy
+    1  210cm/150g/2 składy
+    1  210cm/15g/2składy
+    1  210cm/2-10g/2 składy
+    2  210cm/2-7g/2 składy
+    1  210cm/200g
+    1  210cm/20g
+    1  210cm/250g
+    1  210cm/25g
+    1  210cm/25g/2 składy
+    1  210cm/3-18g/2 składy
+    2  210cm/3-21g/2 składy
+    1  210cm/30g + 2T + 0,181mm
+    2  210cm/30g/2 składy
+    1  210cm/5-28g/2 składy
+    1  210cm/5-35g
+    1  210cm/60g
+    2  210cm/60g/2 składy
+    1  210cm/7-30g/2 składy
+    1  210cm/7-32g/2 składy
+    1  210x115x35mm
+    1  210x120x50mm
+    1  210x120x65mm
+    1  210x165x40mm
+    1  213cm/1-7g
+    1  213cm/2-7g
+    4  213cm/2-7g/2 składy
+    1  213cm/3-10g/2 składy
+    4  214x113x41mm
+    2  215cm
+    1  215cm/15g/2 składy
+    1  215cm/5-25g/2 składy
+    1  215cm/65x60cm
+    2  215cm/7-26g/2 składy
+    2  216x46mm
+    1  22/23
+    1  2200W
+    1  220cm/2 składy
+    1  220cm/300-400g/2składy
+    1  220x112x30mm
+    3  220x80cm
+    1  220x83x35mm
+    2  220x90cm
+    1  223x84x33mm
+    1  225cm/7-26g/2 składy
+    1  225x155x45mm
+    1  228cm/3-18g
+    6  228cm/3-18g/2 składy
+    1  228x112x35mm
+    3  22mm
+    1  22x22x11cm
+    1  22x28x7cm
+    1  230cm/125g/2 składy
+    1  230cm/25g/2 składy
+    1  230cm/3-18g/2 składy
+    2  230cm/3-21g/2 składy
+    1  230cm/30g
+    1  230cm/5-28g/2 składy
+    1  230cm/60g/2 składy
+    1  230cm/7-30g/2 składy
+    1  230cm/7-32g/2 składy
+    1  230x119x45mm
+    1  235x155x140mm
+    1  24/25
+    1  240cm + 3T + 0,25mm
+    1  240cm/10-30g
+    3  240cm/10-30g/2 składy
+    1  240cm/100g
+    1  240cm/150g/2 składy
+    1  240cm/200g/2 składy
+    1  240cm/30g + 3T + 0,181mm
+    1  240cm/30g/2 składy
+    1  240cm/35g
+    1  240cm/35g/2 składy
+    2  240cm/40g
+    1  240cm/45g/2składy
+    1  240cm/5-35g
+    2  240cm/50g/2 składy
+    1  240cm/50g/Tele
+    2  240cm/60g
+    1  240cm/65g/2 składy
+    1  240cm/7-25g/2 składy
+    1  240cm/80g/3 składy
+    1  244cm/7-26g
+    1  244cm/8-32g/2 składy
+    1  24mm 55cm
+    1  24mm 90cm
+    2  25 mm (wąski) / powolne rozpuszczanie
+    2  25,0g
+    1  25-35cm
+    2  25-37cm
+    2  250cm
+    3  250cm 3/4
+    1  250cm 4/4
+    1  250cm/250-500g/2 składy
+    1  250cm/30g/2składy
+    1  250cm/80x70cm
+    1  250cm/green
+    5  250g
+    1  253x167x70mm
+    1  255cm/350g/2składy
+    1  255cm/40g
+    1  255cm/40g/2 składy
+    1  255cm/500g/2 składy
+    1  255cm/50g
+    1  255cm/55g/2 składy
+    3  25cm
+    1  25cm / 15kg
+    2  25g
+    1  25g-3/0
+    2  25g-4/0
+    2  25g-5/0
+    2  25g-6/0
+    1  25g-7/0
+    1  25g-8/0
+    4  25lbs 13m
+    7  25lbs 20m
+    4  25lbs 5m
+    1  25mm + 35mm / powolne rozpuszczanie
+    1  25mm+35mm/szybko rozpuszczalna
+    1  25x8cm
+    2  26 cm
+    1  26/27
+    3  260cm
+    1  260cm/60g
+    1  260cm/850g
+    1  27 000 mAh
+    1  270cm/100g
+    1  270cm/150g/2 składy
+    2  270cm/2,75lbs/2 składy
+    1  270cm/2.0lbs/2 składy
+    1  270cm/2.75lbs/2 składy
+    1  270cm/2.75lbs/TeleFIX
+    1  270cm/200g/2 składy
+    1  270cm/25g/2 składy
+    1  270cm/2lbs/2 składy
+    1  270cm/3-18g/2 składy
+    1  270cm/3-21g/2 składy
+    1  270cm/45g
+    1  270cm/45g/2 składy
+    1  270cm/45g/2składy
+    1  270cm/50g
+    4  270cm/60g/2 składy
+    1  270cm/7-25g/2 składy
+    1  270cm/70g/2 składy
+    2  270cm/80g
+    1  270cm/80g/3 składy
+    1  270cm/80g/Tele
+    1  273x176x45mm
+    1  274x180x63mm
+    1  275x185x45mm
+    2  275x185x50mm
+    1  276x176x49mm
+    1  27cm
+    1  28/29
+    1  280cm/100g/5 składy
+    1  280cm/250-500g/2 składy
+    1  285cm/350g/2składy
+    1  285cm/500g/2 składy
+    1  28x18x18cm
+    1  298x220x57mm
+    2  29cm/4mm
+    1  2L
+    1  2M,L,XL
+    2  2XL
+    2  2g AURO Hook #8 Snap 00
+    1  2g INDIGO Hook #8 Snap 00
+    1  2g NEON Hook #8 Snap 00
+    1  2g NUCLEO Hook #8 Snap 00
+    1  2g PERCH Hook #8 Snap 00
+    2  2g PINKY Hook #8 Snap 00
+    1  2g SNOW Hook #8 Snap 00
+    1  2g TIGERA hook #8
+    1  2g TROUT Hook #8 Snap 00
+    1  2g TROUTY hook #8
+    2  2g WAMP Hook #8 Snap 00
+    1  2g ZEBRA Hook #8 Snap 00
+    1  2g-1
+    1  2g-1/0
+    1  2g-2
+    1  2g-2/0
+    1  2g-3/0
+    1  2g-4/0
+    1  2g/roz.0/BLOODY
+    1  2g/roz.0/COPPER
+    1  2g/roz.0/LoliDOT
+    1  2g/roz.0/METAL
+    1  2g/roz.0/PERCHY
+    1  2g/roz.0/RedEND
+    1  2g/roz.0/TROUTY
+    1  2szt UNI
+    3  2szt/15cm/5kg
+    1  2szt/20cm/4kg
+    1  2szt/20cm/5kg
+    4  2szt/20cm/7kg
+    3  2szt/30cm/9kg
+    2  2szt/35cm/11kg
+    1  2szt/35cm/12kg
+    1  2szt/35cm/13kg
+    1  2szt/35cm/9kg
+    2  2szt/40cm/14kg
+    1  2szt/45cm/17kg
+    1  2szt/45cm/18kg
+    1  2szt/45cm/20kg
+    1  2szt/50cm/11kg
+    1  2szt/60cm/14kg
+    2  2w1
+    1  2x45cm
+    1  2x7mm
+    1  3 szt
+    1  3 szt.
+    1  3 x 25mm
+   10  3+1
+    6  3,0g
+    1  3,0m/3,0lbs/2 składy
+    2  3,5g
+    1  3,6m/3,0lbs/2 składy
+    1  3,6m/3,0lbs/3 składy
+    1  3,6m/3,25lbs/2 składy
+    1  3,8m/3,5lbs/2 składy
+    1  3,9m/3,5lbs/3 składy
+    1  3-6 mm
+    1  3-Point
+    1  3.0m/2.5lbs/2 składy
+    2  3.1mm
+    1  3.6m/3.0lbs/2 składy
+    1  3.6m/3.0lbs/3 składy
+    6  3/0
+    1  30+15L
+    2  30,0g
+    1  30-45cm
+    1  30-50cm
+    1  30/31
+    1  3000W
+    1  300cm
+    4  300cm/100g
+    1  300cm/100g + 3T + 0,181mm
+    4  300cm/100g/3 składy
+    1  300cm/100g/Tele
+    1  300cm/150g/3 składy
+    1  300cm/160g/3 składy
+    1  300cm/2,25lbs/2 składy
+    1  300cm/2,70lbs
+    2  300cm/2,75lbs/2 składy
+    1  300cm/2.25lbs/2 składy
+    1  300cm/2.50lbs/2 składy
+    1  300cm/200g/2 składy
+    2  300cm/3,00lbs
+    1  300cm/3.00lbs
+    1  300cm/3.00lbs/2 składy
+    1  300cm/3.00lbs/TeleFIX
+    1  300cm/3.0lbs
+    4  300cm/3.0lbs/2 składy
+    1  300cm/3.25lbs/TeleFIX
+    1  300cm/3.5lbs/2 składy
+    1  300cm/3lbs/2 składy
+    1  300cm/5lbs/2 składy
+    1  300cm/60g
+    1  300cm/60g/2 składy
+    2  300cm/80g
+    1  300cm/850g
+    1  300cm/90g
+    1  300cm/90g/3składy
+    1  300cm/950g
+    6  300g
+    3  300ml
+    1  300x210mm
+    1  303 x 60 mm
+    1  303x60mm
+    1  30L
+    5  30cm
+    9  30g
+    1  30g AURO hook #4
+    1  30g COPPER hook #4
+    1  30g FIRE ORANGE hook #4
+    1  30g WAMP hook #4
+    1  30g,40g,50g
+    2  30g-4/0
+    2  30g-5/0
+    2  30g-6/0
+    1  30g-8/0
+    1  30lbs 20m
+    1  30mm / 120cm
+    1  30mm / 90cm
+    1  30mm/70mm
+    1  30mmx68cm
+    1  30x17cm
+    1  30x20x11cm / 28x18x10cm / 26x16x9cm
+    1  30x21cm
+    1  310cm/250-500g/2 składy
+    1  310cm/350g/2składy
+    1  310cm/500g/2 składy
+    1  32,5cm
+    2  32-50cm
+    1  32/33
+    1  320-360cm/100g/3składy
+    3  320cm
+    1  320cm 4/4
+    1  320cm/180g/3 składy
+    1  330-360cm/100g/3 składy
+    1  330-360cm/120g/3 składy
+    1  330-360cm/60g/3 składy
+    3  330cm/100g
+    1  330cm/100g + 3T + 0,181mm
+    5  330cm/100g/3 składy
+    1  330cm/110g/Tele
+    2  330cm/120g
+    1  330cm/150g/3 składy
+    1  330cm/3.00lbs
+    1  330cm/3.0lbs
+    1  330cm/500g/2 składy
+    1  330cm/60g
+    1  330cm/75g/3 składy
+    1  330cm/80g
+    1  330cm/80g/3składy
+    1  330cm/850g
+    1  330cm/90g/3składy
+    2  33cm/4mm
+    1  34/35
+    1  345cm/70g/3składy
+    2  35 mm (szeroki) / powolne rozpuszczanie
+    1  350cm/3 składy
+    1  350ml
+    1  350x250x38mm
+    1  350x250x48mm
+    1  355-395cm/100g/3składy
+    1  35g
+    7  35lbs 20m
+    1  35x6.5x3cm
+    3  36
+    1  360-390cm/100g/3 składy
+    1  360-390cm/120g/3 składy
+    1  360-390cm/60g/3 składy
+    1  360cm / do 50g
+    2  360cm/100g
+    1  360cm/100g + 4T + 0,181mm
+    5  360cm/100g/3 składy
+    3  360cm/120g
+    2  360cm/120g/3 składy
+    1  360cm/120g/3składy
+    1  360cm/120g/Tele
+    1  360cm/125g/3 składy
+    2  360cm/140g
+    1  360cm/150g
+    1  360cm/150g/3 składy
+    1  360cm/150g/3składy
+    1  360cm/175g/3 składy
+    1  360cm/180g
+    1  360cm/2 części + 6T + 0,30mm
+    1  360cm/200g/3 składy
+    1  360cm/215g/3składy
+    1  360cm/25g
+    1  360cm/3 części + 6T + 0,30mm
+    2  360cm/3,00lbs
+    3  360cm/3,00lbs/2 składy
+    2  360cm/3,00lbs/3 składy
+    1  360cm/3,0lbs
+    1  360cm/3,0lbs/2 składy
+    1  360cm/3,50lbs/2 składy
+    3  360cm/3,5lbs/2 składy
+    3  360cm/3,5lbs/3 składy
+    1  360cm/3.00lbs
+    2  360cm/3.00lbs/2 składy
+    1  360cm/3.0lbs
+    4  360cm/3.0lbs/2 składy
+    2  360cm/3.0lbs/3 składy
+    1  360cm/3.35lbs/2 składy
+    1  360cm/3.50lbs/2 składy
+    1  360cm/3.50lbs/3 składy
+    1  360cm/3.5lbs/2 składy
+    1  360cm/35g
+    1  360cm/3lbs/2 składy
+    1  360cm/3lbs/3 składy
+    2  360cm/4lbs/3 składy
+    1  360cm/5.00lbs/2 składy
+    1  360cm/5lbs/2 składy
+    1  360cm/5lbs/3 składy
+    1  360cm/60g
+    1  360cm/65g
+    1  360cm/70g/3składy
+    1  360cm/75g/3 składy
+    1  360cm/80g/3składy
+    1  360cm/90g/3składy
+    2  360x230x50mm
+    1  365x280x90mm
+    3  36cm
+    4  37
+    4  38
+    1  38-41
+    1  380cm/3,50lbs/2 składy
+    1  380cm/3,5lbs/2 składy
+    1  380cm/5.00lbs/2 składy
+    1  380cm/5lbs/2 składy
+    1  385cm/3,50lbs/2 składy
+    1  385cm/3,5lbs/2 składy
+    1  385cm/3.5lbs/2 składy
+    1  385cm/3.75lbs/2 składy
+    1  385x270x125mm
+    5  39
+    1  39/40
+    1  390cm / do 30g
+    1  390cm / do 50g
+    1  390cm/120g
+    1  390cm/130g/3 składy
+    1  390cm/140g
+    1  390cm/150g/3 składy
+    1  390cm/150g/3składy
+    1  390cm/160g
+    1  390cm/25g
+    2  390cm/3,5lbs/3 składy
+    2  390cm/3.5lbs/3 składy
+    1  390cm/35g
+    1  390cm/40g/3 składy
+    1  390cm/5.00lbs/3 składy
+    1  390cm/5lbs/3 składy
+    1  390cm/60g
+    1  390cm/65g
+    1  390cm/75g/3 składy
+    1  390cm/80g/3składy
+    1  3W/115lm/1200mAh
+    1  3W/120lm/1200mAh
+    1  3W/120lm/1500mAh
+    1  3W/140lm/2600mAh
+    1  3W/220lm/1000mAh
+    1  3W/450lm/4400mAh
+    5  3XL
+    1  3cm / BERRY
+    1  3cm / GUMMY
+    1  3cm / MAGGOT
+    1  3cm / NACHOS
+    1  3cm / TROPIC
+    1  3cm / WHITE
+    1  3cm / eWORM
+    1  3g
+    1  3g AURO Hook #8
+    1  3g NUCLEO Hook #8
+    1  3g PINKY Hook #8
+    1  3g WAMP Hook #8
+    1  3g ZEBRA Hook #8
+    3  3g-1
+    3  3g-1/0
+    3  3g-2
+    3  3g-2/0
+    2  3g-3/0
+    2  3g-4
+    2  3g-4/0
+    1  3g-5/0
+    2  3g-6
+    1  3g/roz.0/BLOODY
+    1  3g/roz.0/COPPER
+    1  3g/roz.0/LoliDOT
+    1  3g/roz.0/METAL
+    1  3g/roz.0/PERCHY
+    1  3g/roz.0/RedEND
+    1  3g/roz.0/TROUTY
+    3  3m
+    7  4
+   10  4+1
+    2  4,0g
+    1  4,5 x 39mm
+    3  4/0
+    1  4/18kg
+    8  40
+    2  40 cm
+    1  40,0g
+    1  40-70cm
+    1  40/300cm
+    1  40/400cm
+    1  400cm
+    1  400cm/175g/3 składy
+    1  400cm/200g/3 składy
+    1  400cm/215g/3składy
+    1  400cm/250g/3 składy
+    1  400cm/30g
+    2  400g
+    1  400ml
+    1  40cm/1 część
+   15  40g
+    1  40g-4/0
+    1  40g-5/0
+    1  40g-6/0
+    1  40g-8/0
+    1  40lbs 20m
+    1  40mm/80mm
+    1  40x13cm
+    2  40x30cm
+    1  40x35cm
+    1  40x40/150cm
+    1  40x40cm
+   14  41
+    3  41-46
+    2  41-70cm
+   13  42
+    1  420cm / do 30g
+    1  420cm/25g
+    1  420cm/35g
+    1  420cm/40g/3 składy
+    1  420cm/65g
+   12  43
+    1  430cm/170g/3 składy
+    1  430cm/175g/3 składy
+    1  430cm/215g/3składy
+    1  43mm x 3mm
+    1  43mm x 3mm / Clear
+   12  44
+    1  4400 mAh
+   12  45
+    2  45cm
+    3  45lbs 5m
+    2  45lbs 8m
+    1  45mm/85mm
+    1  45x35cm
+    1  45x40cm
+    1  45x45x10cm
+   12  46
+    5  47
+    1  47x30cm
+    1  48
+    1  4L
+    1  4W/180lm/3600mAh
+    1  4cm / BLOODY
+    1  4cm / CHEWY
+    1  4cm / CHRUST
+    1  4cm / FIRE
+    1  4cm / GEPARD
+    1  4cm / KAKAO
+    1  4cm / ORANGE
+    1  4cm / ORGANS
+    1  4cm / PINKY
+    1  4cm / SKINY
+    1  4cm / SPRING
+    1  4cm / TROPIC
+    1  4cm / VOGON
+    1  4cm / WHITE
+    1  4g-1
+    1  4g-1/0
+    1  4g-2
+    1  4g-2/0
+    1  4g-3/0
+    1  4g-4/0
+    1  4g/4cm/Float./MIRROR
+    1  4g/4cm/Float./NEON
+    1  4g/4cm/Float./NOVA
+    1  4g/4cm/Float./PERCHY
+    1  4g/4cm/Float./PHANTOM
+    1  4g/4cm/Float./RAINBO
+    1  4g/4cm/Float./SNOW
+    1  4g/4cm/Float./SUNSET
+    1  4g/4cm/Float./TRAP
+    1  4g/roz.1/BLOODY
+    1  4g/roz.1/COPPER
+    1  4g/roz.1/LoliDOT
+    1  4g/roz.1/METAL
+    1  4g/roz.1/PERCHY
+    1  4g/roz.1/RedEND
+    1  4g/roz.1/TROUTY
+    3  4m
+    1  4m/30g
+    1  4mm
+    1  4w1
+    1  4x
+    1  4x30ml
+    1  4x70ml
+    2  5+1BB
+    1  5+4 LED
+    6  5,0g
+    1  5-8 mm
+    1  5/0
+    1  50
+    1  50 x 30cm
+    1  50-150cm
+    4  50-90cm
+    1  500cm/30g
+    2  50cm
+   14  50g
+    1  50g-10/0
+    1  50g-6/0
+    1  50g-8/0
+    1  50x30cm
+    9  50x40cm
+    2  50x40cm / 300cm
+    2  50x40cm / 400cm
+    2  50x45cm
+    1  50x50/170cm
+    1  52x35cm
+    1  53x53cm
+    1  55/90cm
+    1  55cm
+    1  55mm
+    1  55x35cm
+    2  55x45cm
+    1  55x55cm
+    3  5L
+    2  5L + 5m
+    1  5W/220lm/1200mAh
+    1  5W/300lm/1200mAh
+    1  5W/350lm/1200mAh
+    1  5cm / JERKY
+    1  5cm / NATUR
+    1  5cm / NEON
+    2  5cm/AGRESOR
+    2  5cm/AVATAR
+    2  5cm/Agresor Redface Best Candy Virus
+    2  5cm/BEST
+    2  5cm/BOOTY
+    2  5cm/CANDY
+    2  5cm/CAROT
+    2  5cm/DISCO
+    2  5cm/HAWAI
+    2  5cm/NERO
+    2  5cm/PERCHY
+    2  5cm/PINGUI
+    2  5cm/POLAR
+    2  5cm/REDFACE
+    2  5cm/SPRING
+    2  5cm/TANGO
+    2  5cm/TIGERA
+    2  5cm/VIRUS
+    2  5cm/YETI
+    2  5g
+    1  5g AURO hook #10
+    1  5g AURO hook #2
+    1  5g AURO hook #8
+    1  5g INDIGO hook #10
+    1  5g NEON hook #8
+    1  5g NUCLEO hook #2
+    1  5g PERCH hook #10
+    1  5g PINKY hook #10
+    1  5g PINKY hook #2
+    1  5g PINKY hook #8
+    1  5g TIGERA hook #10
+    1  5g TROUTY hook #10
+    1  5g WAMP hook #10
+    1  5g WAMP hook #2
+    1  5g WAMP hook #8
+    1  5g ZEBRA hook #10
+    1  5g ZEBRA hook #2
+    3  5g-1
+    5  5g-1/0
+    2  5g-2
+    5  5g-2/0
+    5  5g-3/0
+    2  5g-4
+    5  5g-4/0
+    5  5g-5/0
+    1  5g-6
+    2  5g-6/0
+    1  5l +13l / 2x400ml
+    3  5m
+    1  5m/30g
+    1  5m/85g
+    3  5mm
+    7  6
+    1  6 pojemników
+    1  6+1 SS BB
+    1  6,0g
+    1  6,2g/roz.1/BLOODY
+    1  6,2g/roz.1/COPPER
+    1  6,2g/roz.1/LoliDOT
+    1  6,2g/roz.1/METAL
+    1  6,2g/roz.1/PERCHY
+    1  6,2g/roz.1/RedEND
+    1  6,2g/roz.1/TROUTY
+    1  6,5g/8cm/Susp./MIRROR
+    1  6,5g/8cm/Susp./NEON
+    1  6,5g/8cm/Susp./NOVA
+    1  6,5g/8cm/Susp./PHANTOM
+    1  6,5g/8cm/Susp./POLAR
+    1  6,5g/8cm/Susp./RAINBO
+    1  6,5g/8cm/Susp./REDFACE
+    1  6,5g/8cm/Susp./SPRING
+    1  6,5g/8cm/Susp./TRAP
+    1  6/0
+    1  6/0 BEND-O
+    1  6/12kg
+    2  60 cm
+    2  60-100cm
+    2  60-95cm
+    1  600 ml
+    1  600cm/30g
+    1  600ml
+    2  60cm
+   15  60g
+    1  60g-10/0
+    1  60g-6/0
+    1  60g-8/0
+    2  60lbs 10m
+    1  60x /20,30,35cm/7,9,11kg
+    1  60x /30,35,40cm/9,11,14kg
+    1  60x /30,35,45cm/9,13,18kg
+    6  60x40cm
+    8  60x50cm
+    2  60x60/170cm
+    3  60x60/200cm
+    2  60x60/240cm
+    1  60x60x60cm
+    1  65cm
+    1  65kg
+    1  65x20cm
+    1  6cm / 0.45mm/#6
+    2  6cm/AGRESOR
+    2  6cm/BERRY
+    2  6cm/BEST
+    2  6cm/BLOODY MILION
+    2  6cm/BOOTY
+    2  6cm/CANDY
+    2  6cm/DISCO
+    2  6cm/DeadSNOW
+    2  6cm/EPIDEMY
+    2  6cm/FORESTER
+    2  6cm/GALAXY
+    2  6cm/GREENCH
+    2  6cm/HAWAI
+    2  6cm/LOLIPOP
+    2  6cm/MudGOLD
+    2  6cm/PERCHY
+    2  6cm/Perchy + Candy + Booty + Redface + Firedot
+    2  6cm/REDFACE
+    2  6cm/TUNA
+    2  6cm/YELLA
+    2  6cm/YETI
+    2  6m
+    1  6m/0,5g
+    1  6m/1,5g
+    1  6m/1g
+    1  6m/30g
+    1  6m/3g
+    1  6m/85g
+    1  6mm
+    2  6x25mm
+    1  6x55ml
+    4  7,0g
+    1  7,5g
+    1  7,5g AURO hook #10
+    1  7,5g INDIGO hook #10
+    1  7,5g PERCH hook #10
+    1  7,5g PINKY hook #10
+    1  7,5g TIGERA hook #10
+    1  7,5g TROUTY hook #10
+    1  7,5g WAMP hook #10
+    1  7,5g ZEBRA hook #10
+    1  7,5g-1
+    2  7,5g-1/0
+    1  7,5g-2
+    4  7,5g-2/0
+    4  7,5g-3/0
+    1  7,5g-4
+    4  7,5g-4/0
+    4  7,5g-5/0
+    2  7,5g-6/0
+    1  7,5g/BOOTY
+    1  7,5g/DANGER
+    1  7,5g/FORESTER
+    1  7,5g/PERCHY
+    1  7,5g/REDBACK
+    1  7,5g/TROPIC
+    1  7.5ft / #3
+    1  7.5g-1
+    1  7.5g-1/0
+    1  7.5g-2/0
+    1  7.5g-3/0
+    1  7.5g-4/0
+    1  7.5g-5/0
+    1  7.5g-6/0
+    1  70-110cm
+    2  70-140cm
+    1  700cm/30g
+    1  700ml
+    1  70cm
+   11  70g
+    1  70g / 0,1-1,25g
+    1  70g / 0,1-2,0g
+    1  70g / 0,25-3,0g
+    1  70x50 cm
+    7  70x60cm
+    2  70x70/200cm
+    1  70x70/250cm
+    1  70x70x70cm
+    1  75cm
+    1  75x /20,30,40cm/12kg
+    1  75x /20,30,40cm/9kg
+    1  75x /35cm/9,12,15kg
+    1  75x25cm / 9 paneli
+    1  75x45x50cm
+    1  75x60cm
+    1  75x90cm
+    1  7ft/2,25lbs/2 składy
+    1  7m
+    1  7m/30g
+    1  7m/85g
+    4  7mm
+    2  7x7cm
+    7  8
+    2  8,0g
+    1  8,5W/500lm/3600mAh
+    1  8,5W/500lm/5400mAh
+    1  8,5cm
+    1  8,5cm/Coral
+    1  8,5cm/Spring
+    1  8,5cmD-SHOT
+    1  8,5g
+    1  8/0 BEND-O
+    1  8/0 FLAT-O
+    1  80 cm / 30lbs
+    1  80 cm / 60lbs
+    2  80-130cm
+    1  80cm
+   14  80g
+    1  80g-10/0
+    1  80g-6/0
+    1  80g-8/0
+    5  80x70cm
+    1  80x80/250cm
+    1  85x85cm/1,8m
+    1  8cm / 0,10mm / B-LESS #10 / Sting 5mm
+    1  8cm / 0,10mm / B-LESS #12 / Sting 5mm
+    2  8cm / 0,10mm / B-LESS #6
+    1  8cm / 0,10mm / B-LESS #6 / Sting 5mm
+    1  8cm / 0,10mm / B-LESS #6 / Sting 7mm
+    2  8cm / 0,10mm / B-LESS #8
+    1  8cm / 0,10mm / B-LESS #8 / Sting 5mm
+    1  8cm / 0,10mm / B-LESS #8 / Sting 7mm
+    1  8cm / 0,10mm / BARB #10 / Sting 5mm
+    1  8cm / 0,10mm / BARB #12 / Sting 5mm
+    2  8cm / 0,10mm / BARB #8
+    1  8cm / 0,10mm / BARB #8 / Sting 5mm
+    1  8cm / 0,10mm / BARB #8 / Sting 7mm
+    1  8cm / 0,22mm / B-LESS #10 / Sting 5mm
+    1  8cm / 0,22mm / B-LESS #12 / Sting 5mm
+    2  8cm / 0,22mm / B-LESS #6
+    1  8cm / 0,22mm / B-LESS #6 / Sting 5mm
+    1  8cm / 0,22mm / B-LESS #6 / Sting 7mm
+    2  8cm / 0,22mm / B-LESS #8
+    1  8cm / 0,22mm / B-LESS #8 / Sting 5mm
+    1  8cm / 0,22mm / B-LESS #8 / Sting 7mm
+    2  8cm / 0,22mm / BARB #10
+    1  8cm / 0,22mm / BARB #10 / Sting 5mm
+    1  8cm / 0,22mm / BARB #12 / Sting 5mm
+    1  8cm / 0,22mm / BARB #6 / Sting 7mm
+    1  8cm / 0,22mm / BARB #8
+    1  8cm / 0,22mm / BARB #8 / Sting 5mm
+    1  8cm / 0,22mm / BARB #8 / Sting 7mm
+    1  8cm / 0,22mm / BARB #8 / Sting7mm
+    1  8cm / 0,25mm / BARB #6
+    1  8cm / 0,25mm / BARB #6 / Sting 7mm
+    1  8cm / 0,25mm / BARB #8
+    1  8cm / 0,25mm / BARB #8 / Sting 7mm
+    1  8cm / 0,30mm / BARB #4
+    1  8cm / 0,30mm / BARB #4 / Sting 7mm
+    1  8cm / 0.45mm/#6
+    2  8cm / BOOTY
+    2  8cm / CANDY
+    2  8cm / HELIOS
+    2  8cm / IMPULZ
+    2  8cm / MUDGOLD
+    1  8cm / Perchy + Redface + Candy + Hawai + Best
+    2  8cm / REACTOR
+    2  8cm / REDFACE
+    1  8cm /0,22mm / BARB #6
+    1  8cm/ 0,22mm / BARB #8
+    1  8cm/0,14mm/Chinu #8
+    1  8cm/0,14mm/Turner #8
+    1  8cm/0,20mm/Chinu #4
+    1  8cm/0,20mm/Chinu #6
+    1  8cm/0,20mm/Turner #4
+    1  8cm/0,20mm/Turner #6
+    1  8cm/0,22mm/Chinu #8
+    1  8cm/0,22mm/Turner #8
+    1  8cm/0,26mm/Chinu #6
+    1  8cm/0,26mm/Turner #6
+    1  8cm/0,30mm/Chinu #4
+    1  8cm/0,30mm/Turner #4
+    4  8cm/AGRESOR
+    4  8cm/BERRY
+    4  8cm/BEST
+    4  8cm/BOOTY
+    4  8cm/CANDY
+    4  8cm/DISCO
+    4  8cm/DeadSNOW
+    4  8cm/GREENCH
+    4  8cm/HAWAI
+    4  8cm/MudGOLD
+    4  8cm/PERCHY
+    1  8cm/Perchy + Redface + Candy + Firedot + Booty
+    4  8cm/RedFACE
+    4  8cm/TIGERA
+    4  8cm/YELLA
+    4  8cm/YETI
+    1  8ft / #4
+    1  8ft/2,5lbs/2 składy
+    2  8g
+    1  8g/5cm/Float./MIRROR
+    1  8g/5cm/Float./NEON
+    1  8g/5cm/Float./NOVA
+    1  8g/5cm/Float./PERCHY
+    1  8g/5cm/Float./PHANTOM
+    1  8g/5cm/Float./RAINBO
+    1  8g/5cm/Float./REDFACE
+    1  8g/5cm/Float./SUNSET
+    1  8g/5cm/Float./TRAP
+    1  8m/85g
+    2  8mm
+    9  8mm/wafters/rozpuszczalne/30g
+    1  9,0g
+    1  9,5 cm
+    1  9,5cm
+    1  9,5g/roz.3/BLOODY
+    1  9,5g/roz.3/COPPER
+    1  9,5g/roz.3/LoliDOT
+    1  9,5g/roz.3/METAL
+    1  9,5g/roz.3/PERCHY
+    1  9,5g/roz.3/RedEND
+    1  9,5g/roz.3/TROUTY
+    1  90-130cm
+    1  90cm
+    1  90cm/1 część
+    1  90cm/2 składy
+   11  90g
+    1  90kg
+    1  90x120cm
+    1  90x40x10 cm
+    1  90x50 cm
+    1  90x65cm
+    2  90x90/1.8m/2 składy
+    1  95cm
+    1  95x75mm
+    1  9ft / #5
+    1  9ft/2.75lbs/2 składy
+    1  9ft/270cm/2,75lbs/2 składy
+    7  9x8cm
+    9  Aluminium
+    8  Ananasowo-Kukurydziany
+    6  BN/1
+    4  BN/1/0
+    8  BN/10
+    6  BN/12
+    4  BN/14
+    1  BN/16
+    6  BN/2
+    3  BN/2/0
+    3  BN/3/0
+    9  BN/4
+    1  BN/4/0
+   10  BN/6
+    7  BN/8
+    1  BN/M
+    1  BN/S
+    1  BN/XS
+    1  BN/XXL
+    1  Banx L
+    1  Banx M
+    1  Banx S
+    1  Banx XL
+    1  Banx XXL
+    1  Banx XXXL
+    2  BlackWAY
+    1  Brązowy
+    1  Bubble gum
+    1  Bung trout
+    2  Buzzbar na 2 wędki
+    3  Carbon / 5szt.
+    3  Carbon /Heavy - biały/ 1szt.
+    3  Carbon /Light - pomarańczowa/ 1szt.
+    3  Carbon /Medium - zielona/ 1szt.
+    3  Carbon /Ultra Heavy - różowy/ 1szt.
+    3  Carbon /Ultra Light - żółty/ 1szt.
+    3  Carbon/Heavy - biały
+    2  Carbon/Ultra Heavy - różowy
+    1  CarbonGlass/Medium - zielona
+    1  Citrus
+    1  Czarny
+    1  Czekolada-Banan/zielony fluo
+    8  Czekoladowo-Bananowy
+    1  Czosnek
+    1  Czosnek-Kwas Masłowy/400g+120ml booster+10mm waft
+    9  Czosnkowo-Masłowy
+    1  Czosnkowo-maślany/zielony fluo
+    2  Frankfurterka – Chilli
+    1  Frankfurterka–Chilli/400g+120ml booster+10mm waft
+    1  Glass/Heavy - biały
+    2  Glass/Light - pomarańczowa
+    3  Glass/Medium - zielona
+    1  Green tea
+    1  Ground
+    4  HEAVY
+    1  Harder - różowy
+    1  Heavy -  biały /Carbon/ 1szt.
+    1  Heavy -  biały /Glass/ 1szt.
+    3  Heavy - biały / Carbon / 1szt.
+    1  Heavy - biały / CarbonGlass / 1szt.
+    3  Heavy - biały /Carbon/ 1szt.
+    1  Heavy - czerwony
+    1  Heavy /Carbon - biała
+    1  Jungle
+   23  KING SIZE
+    1  Kałamarnica
+    1  Kałamarnica-Łosoś/16mm/100g
+    1  Kałamarnica-Łosoś/16mm/200ml
+    1  Kałamarnica-Łosoś/16mm/300g
+    1  Kałamarnica-Łosoś/20mm/100g
+    1  Kałamarnica-Łosoś/20mm/200ml
+    1  Kałamarnica-Łosoś/20mm/300g
+    1  Kałamarnica-Łosoś/24mm/100g
+    1  Kałamarnica-Łosoś/24mm/200ml
+    1  Kałamarnica-Łosoś/24mm/300g
+    1  Kałamarnica-Łosoś/250ml
+    9  Krab-Kryl
+    1  Krab-krill/czerwony
+    1  Krewetka
+    1  Kryl-Mango/16mm/100g
+    1  Kryl-Mango/16mm/200ml
+    1  Kryl-Mango/16mm/300g
+    1  Kryl-Mango/20mm/100g
+    1  Kryl-Mango/20mm/200ml
+    1  Kryl-Mango/20mm/300g
+    1  Kryl-Mango/24mm/100g
+    1  Kryl-Mango/24mm/200ml
+    1  Kryl-Mango/24mm/300g
+    1  Kryl-Mango/250ml
+    1  Kukurydza - ananas
+    1  Kukurydza-Ananas/zielony fluo
+    1  Kukurydza–Ananas/400g+120ml booster+10mm waft
+   64  L
+    1  L + BOX
+    1  L + box
+    1  L / 100g
+    1  L / 10g
+    1  L / 10mm / 30ks
+    1  L / 20g
+    2  L / 30g
+    2  L / 40g
+    2  L / 50g
+    1  L / 5g
+    1  L / 5kg
+    1  L / 60g
+    1  L / 70g
+    1  L / 80g
+    1  L / Przezroczysta miękka
+    2  L 100g
+    2  L 120g
+    2  L 18-25cm
+    2  L 20g
+    2  L 30g
+    2  L 40g
+    2  L 50g
+    2  L 60g
+    2  L 70g
+    2  L 80g
+    3  L+M+H / Carbon / 3szt.
+    1  L+M+H CarbonGLASS
+    1  L+M+H/ CarbonGlass/ 3szt.
+    1  L-XXL
+    1  L/10g
+    1  L/20g
+    1  L/25g
+    1  L/30g
+    1  L/30mm/10ks
+    1  L/40g
+    1  L/50g
+    1  L/60g
+    1  L/70g
+    4  LIGHT
+    1  Lewa Dłoń
+    3  Light - pomarańczowa / Carbon / 1szt.
+    1  Light - pomarańczowa / CarbonGlass / 1szt.
+    1  Light - pomarańczowa /Carbon/ 1 szt.
+    2  Light - pomarańczowa /Carbon/ 1szt.
+    1  Light - pomarańczowa /CarbonGLASS / 1szt.
+    3  Light - pomarańczowa /CarbonGLASS/ 1szt.
+    3  Light - pomarańczowa /Glass/ 1szt.
+    2  Light - zielona
+   54  M
+    1  M / 30g
+    1  M / 3kg
+    1  M / 40g
+    1  M / 50g
+    1  M / 7mm / 30ks
+    2  M 100g
+    2  M 120g
+    2  M 20g
+    3  M 30g
+    3  M 40g
+    3  M 50g
+    3  M 60g
+    2  M 70g
+    2  M 80g
+    1  M+H+UH /Carbon
+    1  M/10g
+    1  M/20g
+    1  M/24mm/10ks
+    1  M/25g
+    1  M/30g
+    1  M/40g
+    1  M/50g
+    1  M/60g
+    1  M/70g
+    1  M/85mm
+    4  MEDIUM
+    9  Mango-Brzoskwinia
+    1  Mango-brzoskwinia/czerwony
+    1  Mango–Brzoskwinia/400g+120ml booster+10 waft
+    1  Małża - Przyprawy/czerwony
+    8  Małże-Przyprawy
+    3  Medium - zielona / Carbon / 1szt.
+    1  Medium - zielona / CarbonGlass / 1szt.
+    2  Medium - zielona /Carbon/ 1szt.
+    4  Medium - zielona /CarbonGLASS/ 1szt.
+    3  Medium - zielona /Glass/ 1szt.
+    2  Medium - żółty
+    1  Medium /Carbon - zielona
+    1  Miód - brzoskwinia
+    1  Monster Crab-Tuńczyk/16mm/100g
+    1  Monster Crab-Tuńczyk/16mm/200ml
+    1  Monster Crab-Tuńczyk/16mm/300g
+    1  Monster Crab-Tuńczyk/20mm/100g
+    1  Monster Crab-Tuńczyk/20mm/200ml
+    1  Monster Crab-Tuńczyk/20mm/300g
+    1  Monster Crab-Tuńczyk/24mm/100g
+    1  Monster Crab-Tuńczyk/24mm/200ml
+    1  Monster Crab-Tuńczyk/24mm/300g
+    1  Monster Crab-Tuńczyk/250ml
+    1  Morwa-Truskawka-Śliwka/16mm/100g
+    1  Morwa-Truskawka-Śliwka/16mm/200ml
+    1  Morwa-Truskawka-Śliwka/16mm/300g
+    1  Morwa-Truskawka-Śliwka/20mm/100g
+    1  Morwa-Truskawka-Śliwka/20mm/200ml
+    1  Morwa-Truskawka-Śliwka/20mm/300g
+    1  Morwa-Truskawka-Śliwka/24mm/100g
+    1  Morwa-Truskawka-Śliwka/24mm/200ml
+    1  Morwa-Truskawka-Śliwka/24mm/300g
+    1  Morwa-Truskawka-Śliwka/250ml
+    2  New car
+    1  Olive (L)
+    1  Olive (M)
+    1  Olive (S)
+    1  Olive (XL)
+    1  Olive (XXL)
+    1  Olive (XXXL)
+    1  Orzech tygrysi-Scopex-Kukurydza/16mm/100g
+    1  Orzech tygrysi-Scopex-Kukurydza/16mm/200ml
+    1  Orzech tygrysi-Scopex-Kukurydza/16mm/300g
+    1  Orzech tygrysi-Scopex-Kukurydza/20mm/100g
+    1  Orzech tygrysi-Scopex-Kukurydza/20mm/200ml
+    1  Orzech tygrysi-Scopex-Kukurydza/20mm/300g
+    1  Orzech tygrysi-Scopex-Kukurydza/24mm/100g
+    1  Orzech tygrysi-Scopex-Kukurydza/24mm/200ml
+    1  Orzech tygrysi-Scopex-Kukurydza/24mm/300g
+    1  Orzech tygrysi-Scopex-Kukurydza/250ml
+    1  Ostryga/czerwony
+    1  Ostryga/przezroczysty
+    2  Ostrze 10cm
+    1  Ostrze 15cm
+    1  Ostrze 17,5 cm
+    1  Ostrze 17,5cm
+    1  Ostrze 7cm
+    1  Ostrze 8cm
+    1  Patyk 3.0x25mm
+    1  Patyk 4.5x37mm
+    1  Pond trout
+    1  Predator L
+    1  Predator M
+    1  Predator S
+    1  Predator XL
+    1  Predator XXL
+    1  Predator XXXL
+    2  Queen
+    1  Reaxe L
+    1  Reaxe M
+    1  Reaxe S
+    1  Reaxe XL
+    1  Reaxe XXL
+    1  Reaxe XXXL
+    1  Robin Red-Chilli-Frankfurterka/16mm/100g
+    1  Robin Red-Chilli-Frankfurterka/16mm/200ml
+    1  Robin Red-Chilli-Frankfurterka/16mm/300g
+    1  Robin Red-Chilli-Frankfurterka/20mm/100g
+    1  Robin Red-Chilli-Frankfurterka/20mm/200ml
+    1  Robin Red-Chilli-Frankfurterka/20mm/300g
+    1  Robin Red-Chilli-Frankfurterka/24mm/100g
+    1  Robin Red-Chilli-Frankfurterka/24mm/200ml
+    1  Robin Red-Chilli-Frankfurterka/24mm/300g
+    1  Robin Red-Chilli-Frankfurterka/250ml
+    2  Rum – Cola
+    1  Ryba
+   61  S
+    1  S / 0
+    1  S / 1,5kg
+    1  S / 5mm / 60ks
+    2  S 20g
+    2  S 30g
+    2  S 40g
+    2  S 50g
+    2  S 60g
+    1  S+H /2 szt.
+    1  S,M,L/transparent+camo green
+    1  S/10g
+    1  S/20g
+    1  S/25g
+    1  S/30g
+    1  S/40g
+    1  S/50g
+    1  S/55mm
+    1  S/60g
+    1  S/70g
+    1  SOFT
+    2  SS
+    1  SSS
+    1  SSSS
+    1  STRONG
+    8  Scopex-vanilla
+    1  Scopex-wanilia/czerwony
+    9  Ser-wątroba
+    1  Ser-wątróbka/czerwony
+    1  Slim
+    1  Softer - żółty
+    1  Srebro
+    1  Trout L
+    1  Trout M
+    1  Trout S
+    1  Trout XL
+    1  Trout XXL
+    1  Trout XXXL
+    2  TwoMAN
+    1  U-Heavy /Carbon - różowy
+    1  UL+L+M CarbonGLASS / 3 szt.
+    1  UL+L+M CarbonGLASS / 3szt.
+    3  UL+L+M/ Carbon/ 3 składy
+   40  UNI
+    1  Ultra Heavy - różowy /Carbon/ 1szt.
+    1  Ultra Light - żółty / Carbon/ 1skład
+    1  Ultra Light - żółty /Carbon/ 1szt.
+    2  Ultra light - żółty /CarbonGLASS/ 1szt.
+    1  Ultra-Heavy - różowy /Carbon/ 1szt.
+    2  UltraLight - żółty /Glass/ 1szt.
+    1  Uni
+    1  Uni V+U / czarny
+    1  Uni V+U / żółty fluorescencyjny
+    1  WF3-F / 100 FT
+    1  WF4-F / 100 FT
+    1  WF5-F / 100 FT
+    1  WF6-F / 100 FT
+    1  WF7-F / 100 FT
+    1  Wild trout
+    1  Wilder AT
+    1  Wood
+   60  XL
+    1  XL + BOX
+    1  XL / Przezroczysta miękka
+    2  XL 25-35cm
+    5  XS
+    1  XS-M
+   50  XXL
+    1  XXL 10g
+    1  XXL 20g
+   35  XXXL
+   86  aluminium
+    1  białe pióra #10
+    1  białe pióra #4
+    1  białe pióra #6
+    1  białe pióra #8
+    2  biały
+    1  brązowy
+    2  chrom
+    1  czarna
+    1  czarne pióra #10
+    3  czarne pióra #8
+    1  czarno-żółte 12 mm
+    1  czarno-żółte 15 mm
+   13  czarny
+    1  czerwone pióra #10
+    1  czerwone pióra #4
+    1  czerwone pióra #6
+    1  czerwone pióra #8
+   17  czerwony
+    1  czerwony + fluo żółty
+    1  do 20mm
+    1  do 22kg
+    1  do 24mm
+    1  do 25 kg
+    1  do 35kg
+    4  do 50kg
+    1  duża
+    1  heavy - biała
+    1  kamuflaż
+    1  kurtka + spodnie - M,L,XL,XXL
+    1  light - pomarańczowa
+    1  maxi
+    1  mała
+    1  medium - zielona
+    1  mix 12mm
+    1  mix 15mm
+    1  model L
+    1  model OO
+    1  model U
+    1  model V
+    1  na  24 szt
+    1  na 18 szt.
+    1  na 2 wędki
+    5  na 3 wędki
+    1  na 4 wędki
+   17  niebieski
+    1  niebieski + czerwony
+    1  pomarańczowa
+    2  przednia, model V
+    6  przezroczysty
+    8  purpurowy
+    3  roz. 1000
+    3  roz. 10000
+    5  roz. 12000
+   10  roz. 2000
+   13  roz. 3000
+    4  roz. 36
+    1  roz. 37
+    4  roz. 38
+    2  roz. 38-42
+    1  roz. 39
+    4  roz. 40
+    1  roz. 40-46
+   13  roz. 4000
+    7  roz. 41
+    5  roz. 41-46
+    7  roz. 42
+    7  roz. 43
+    7  roz. 44
+    7  roz. 45
+    1  roz. 45-50
+    3  roz. 4500
+    7  roz. 46
+    7  roz. 47
+    1  roz. 47-50
+    3  roz. 48
+    3  roz. 50
+   20  roz. 5000
+   16  roz. 6000
+    7  roz. 7000
+    1  roz.20
+    1  roz.4
+    2  roz.5000
+    1  roz.6
+    2  roz.6000
+    1  roz.7000
+    1  roz.8
+    2  rozmiar 4
+    1  rozmiar 41–46 / 2 pary
+    1  rozmiar 5000
+    1  rozmiar 6
+    1  rozmiar 6000
+    1  rozmiar 7000
+    1  rozmiar 8
+    1  różowa
+    1  srebro
+    2  szeroka-35mm/szybko rozpuszczalna
+    1  transparentna
+    1  udźwig 3,5kg
+    2  veľ. 20
+    2  veľ. 30
+    2  veľ. 40
+    2  veľ. 50
+    2  veľ. 60
+    2  veľ.4
+    1  veľ.6
+    2  veľ.8
+    1  wąska-25 mm/szybko rozpuszczalna
+    1  wąska-25mm/szybko rozpuszczalna
+    1  właściwa
+    2  zadná, model U
+    1  zielona
+   17  zielony
+    1  zielony + żółty
+    2  Łosoś – Rak
+    1  Łosoś–Rak/400g+120ml booster+10mm waft
+    2  Śliwka – Morwa
+    1  Śliwka–Morwa/400g+120ml booster+10mm waft
+    1  średnia
+    1  štvornožka
+    1  Żarówka 3.0x25mm
+    1  Żarówka 4.5x37mm
+   16  żółty
