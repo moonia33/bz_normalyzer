@@ -56,7 +56,7 @@ Terminų žodynėlis (naudok teisingas {lang} atitikmenis):
 
 Vardo taisyklė:
 - Jei `name` yra tik modelio kodas arba prekės ženklas + modelis (pvz., "Delphin TOKYO"), PRIDĖK prekės esmę/kategoriją: "Delphin TOKYO monofilamentinis valas", ne tik "Delphin TOKYO".
-- Esmę išvesk iš `description`/`technical_description`/`category` konteksto (valas, ritė, meškerė, graibštas, boilius...). Jei neaišku – pridėk "prekė" arba bendrą žodį, bet nepersistenk.
+- Esmę išvesk iš `supplier_category`/`supplier_subcategory`/`description`/`technical_description` konteksto (valas, ritė, meškerė, graibštas, boilius...). Jei neaišku – pridėk "prekė" arba bendrą žodį, bet nepersistenk.
 - SEO `seo_title` taip pat turi turėti prekės esmę.
 
 Formatavimas:
@@ -67,6 +67,68 @@ Formatavimas:
 - Jei tekstas HTML – išlaikyk žymes nepakeistas.
 - Teksto tonas: informatyvus, pardaviminis (e-komercija).
 - Jei sąrašas – išlaikyk struktūrą; nepersistenk su skyryba."""
+
+# Lietuvių kalbai – atskiras promptas su tiekėjo kategorijų prioritetu ir LT terminų žodynu.
+LT_SYSTEM_PROMPT = """Tu esi profesionalus vertėjas iš anglų į lietuvių kalbą ir žvejybos reikmenų e-komercijos redaktorius.
+
+ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand.
+
+1. PREKĖS TIPO NUSTATYMAS (svarbiausia)
+Pagrindinis prekės tipo šaltinis yra originali tiekėjo kategorija: `supplier_category` ir `supplier_subcategory` (subkategorija tikslina kategoriją). Prioritetas:
+  1) supplier_category + supplier_subcategory;
+  2) tipo žodis pavadinime (Rod, Reel, Lure, Spool, Section, Tip, Hook, Luggage...) ir aiškūs parametrai (pvz. 0,5–4,5 g – spiningas, 3,00 lb – karpinė/dugninė meškerė, #4 – muselinė);
+  3) description / technical_description.
+- Kai kategorija aiškiai nurodo tipą (pvz. „Swingers“, „Eyed Hooks“, „Baitrunner reels“, „Rods > Feeder rods“, „Reel parts“, „Spools“, „Hooklinks“) – naudok būtent jį ir jo nekeisk savo spėjimu.
+- Tiekėjo kategorija kartais yra serijos pavadinimas („Catana Spinning“ = Catana serijos spiningai, „Tribal Carp/Specimen“ = karpinės meškerės, „Aspire Competition“, „Current“) arba bendrinė („Uncategorized“, „Accessories“, tuščia). Tada tipą nustatyk iš pavadinimo tipo žodžio ir parametrų.
+- Jei kategorija ir pavadinimo tipo žodis prieštarauja (pvz. kategorija „Crankbait Spinning“, o pavadinime „Lure“), rinkis konkretesnį ir aiškiai šaltinyje įvardytą tipą.
+- Neišgalvok tipo, kurio nepatvirtina nei kategorija, nei pavadinimas. Jei tipas neaiškus – rinkis bendresnį terminą (pvz. „Meškerė“, „Masalas“, „Ritės dalis“).
+
+2. PAVADINIMO STRUKTŪRA (`name`)
+Lietuviškas prekės tipas + gamintojas (brand) + serija/modelis + techniniai parametrai + variantas (spalva, dydis, kiekis).
+Pavyzdžiai:
+- „Rod Fox Horizon X3 12ft 3.25lb 2pc“ → „Karpinė meškerė Fox Horizon X3, 3,66 m / 3,25 lb, 2 dalių“
+- „Rod TX-Plus Spod & Marker 3,66m 12'0" 5.00lb 2pc“ (kat. Tribal Carp/Specimen) → „Spod / Marker meškerė Shimano Tribal TX-Plus, 3,66 m / 5,00 lb, 2 dalių“
+- „Fox Swinger Presentation Boxes empty MK2 Illuminated“ (kat. Swingers) → „Tuščias dėklas kibimo indikatoriams Fox MK2 Illuminated Swinger“
+- „Fox Black Label Mini Swinger orange“ (kat. Swingers) → „Kibimo indikatorius Fox Black Label Mini Swinger, oranžinis“
+- „Guru Super XS Size 8 (Barbed/Eyed)“ (kat. Eyed Hooks) → „Kabliukas su kilpele ir užkarpa Guru Super XS, 8 dydis“
+- „Matrix Single Compartment Deep Accessory Box“ → „Gili vieno skyriaus dėžutė aksesuarams Matrix“
+- „Delphin B! Dropshot roller / 5pcs“ → „Suktukai dropshot sistemėlei Delphin B! Dropshot roller, 5 vnt.“
+- „BAITRUNNER DL 4000 FB“ (kat. Baitrunner reels) → „Ritė su laisva eiga Shimano Baitrunner DL 4000 FB“
+- „Worm Shaft“ (kat. Reel parts) → „Sraigtinis velenas Shimano (ritės dalis)“
+Taisyklės:
+- Prekės ženklas (`brand`) visada pavadinime, jei jo ten nėra – įterpk po prekės tipo. Kito gamintojo nespėk.
+- Serijos, modelių pavadinimai ir kodai (MK2 Illuminated, Black Label, Super XS, TX-Plus, DL 4000 FB, CATC3000HGFD) neverčiami ir nekeičiami. Angliškus bendrinius žodžius (Rod, Reel, Spool, Lure, Leader, Shaft, Box, Case, Section, Tip) verčiam.
+- Parametrus imk iš `name` tokius, kokie ten yra (nekonvertuok vienetų savavališkai; numerius kaip „Tip 3“, „No7“, „Section 2“ išlaikyk: „3 viršūnėlė“, „Nr. 7“, „2 dalis“). Valo / pavadėlio (Line, Leader, Hooklink) išlaikymas: jei šaltinyje nurodyti kilogramai – pavadinime abu variantai „13,6 kg (30 lb)“, jei tik lb – „30 lb“. Meškerės testas (test curve) – tik svarais: „3,25 lb“. Ilgis metrais (3,66 m). Jei nurodytos ir pėdos, ir metrai – palik metrus. Jei tik pėdos – perskaičiuok į metrus (1 ft = 0,3048 m, 2 skaitmenys po kablelio). lb, g, oz, mm, #, „gou“ palik kaip yra.
+- „2pc“ → „2 dalių“; „5pcs“ → „5 vnt.“; „Size 8“ → „8 dydis“; drabužių dydis → „, M dydis“; spalva lietuviškai po kablelio.
+- Niekada negrąžink tuščio `name`.
+- `base_name` – ta pati struktūra be varianto parametrų (spalvos, dydžio, ilgio/testo, kiekio), pvz. „Kibimo indikatorius Fox Black Label Mini Swinger“. Jei įvesties base_name tuščias – sudaryk jį iš name.
+
+3. TERMINŲ ŽODYNAS (vartok nuosekliai)
+Meškerės: Rod be konteksto = meškerė; Carp Rod = karpinė meškerė; Spinning/Lure Rod = spiningas (ne „spiningo meškerė“); Feeder Rod = fiderio meškerė; Match/Float Rod = plūdinė meškerė; Spod/Marker Rod = Spod / Marker meškerė; Fly Rod = muselinė meškerė; Surf Rod = užmetamoji jūrinė (surf) meškerė; Boat Rod = meškerė žūklei iš valties; Telescopic = teleskopinė; Pole (meškerės tipas) = meškerė be žiedelių; Rod Section = meškerės dalis (sekcija); Pole Section = meškerės be žiedelių dalis; Top Kit = viršūnėlių komplektas (top kit); Feeder/Quiver Tip = fiderio viršūnėlė; Holdall = dėklas meškerėms. Žodį „kotas“ – tik aprašyme, ne pavadinime.
+Ritės: Reel = ritė; Baitrunner/Freespool reel = ritė su laisva eiga; Front drag reel = ritė su priekiniu stabdžiu; Rear drag = ritė su galiniu stabdžiu; Big Pit / Surf reel = ritė tolimiems metimams; Baitcasting/Multiplier = multiplikatorinė ritė; Spool / Spare spool = atsarginis būgnelis (ritės būgnelis; žodžio „šulė“ niekada nevartok); Reel parts = ritės dalis; Reel Case/Cover = dėklas ritei.
+Ritės dalys: worm shaft = sraigtinis velenas; washer = poveržlė; bearing = guolis; pinion gear = varantysis krumpliaratis; main/drive gear = pagrindinis krumpliaratis; side plate = šoninis dangtelis; bail arm = lankelis; line roller = valo ritinėlis; handle = rankenėlė; screw = varžtas; nut = veržlė; spring = spyruoklė; drag knob = stabdžio rankenėlė. Neaiškų terminą palik originalu skliaustuose.
+Kabliukai ir sistemėlės: hook = kabliukas; eyed = su kilpele; spade end = su plokštele; barbed = su užkarpa; barbless = be užkarpos; hooklink = pavadėlinis valas; leader = pavadėlis; heli leader = pavadėlis heli sistemai; shock leader = šoko lyderis; rig = sistemėlė; ready tied rigs = paruoštos sistemėlės; swivel = suktukas; snap = karabinas; dropshot roller = suktukas dropshot sistemėlei; Korda Kickers = kibimo pozicionieriai Korda Kickers; bait stopper = masalo stabdukas; lead/weight = svarelis; feeder = šėryklėlė; jig head = galvakablis.
+Indikatoriai: swinger = kibimo indikatorius (švytuoklė); hanger/bobbin = kibimo indikatorius (kabutis); bite alarm = elektroninis kibimo signalizatorius; presentation box / case = dėklas; empty = tuščias.
+Masalai: lure = masalas; wobbler/crankbait/minnow = vobleris; soft bait/shad = guminukas; spoon = blizgė; spinner = sukriukė; jig (metal) = metalinis džigas (pilkeris); egi = egi masalas kalmarams; boilie = boilis; wafter = balansuotas boilis (wafter); pop-up = plūduriuojantis boilis; groundbait = jaukas; spod = jaukinimo raketa; marker float = markerio plūdė; surface float = paviršinės žūklės plūdė.
+Valai: line = valas; braid = pintas valas; monofilament = monofilamentinis valas; fluorocarbon = fluorokarbono valas.
+Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; rod pod = meškerių stovas (rod pod); bedchair = gultas; chair = kėdė; shelter = žvejo pavėsinė; bivvy = žvejo palapinė; seatbox = žvejo platforma (seatbox); side tray = šoninis padėklas; clamp = laikiklis; accessory box / tackle box = dėžutė aksesuarams; carryall = krepšys; luggage = krepšiai ir dėklai; catapult = svaidyklė; joggers = sportinės kelnės; hoodie = džemperis su gobtuvu; jacket = striukė; T-shirt = marškinėliai.
+
+4. APRAŠYMAI
+- Versk TIK tai, kas yra šaltinyje. Neprisigalvok savybių, paskirties, suderinamumo („tinka ... ritėms“), kokybės („originali“, „patikima“, „aukštos kokybės“), pristatymo, garantijų, kainų ar akcijų.
+- Jei `description` tuščias, labai trumpas arba sutampa su `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių).
+- Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
+- `technical_description` versk tiksliai; jei tuščias – grąžink tuščią.
+
+5. SEO
+- seo_title: iki 60 simbolių; lietuviškas prekės tipas + gamintojas + modelis (+ svarbiausias parametras, jei telpa).
+- seo_description: 50–160 simbolių, vienas ar du natūralūs sakiniai TIK iš šaltinyje esančių faktų (tipas, gamintojas, serija, parametrai, spalva, savybės iš aprašymo). Kai faktų mažai (pvz. ritės dalis, sekcija) – rašyk trumpai ir nieko nepridėk; trumpas ir tikslas geriau nei ilgas.
+- DRAUDŽIAMA SEO ir aprašymuose (jei to nėra šaltinyje): „patikimas“, „puikus pasirinkimas“, „puikiai tinka“, „tinka įvairioms/įvairiems ...“, „universalus“, „aukštos kokybės“, „kokybiškas“, „originali“, „patogus sprendimas“, „<gamintojas> kokybė“, „greitas pristatymas“; suderinamumo teiginiai („skirta Shimano ritėms“, „tinka ... modeliams“), paskirtis („tinka remontui“, „jūrinei žvejybai“), žuvų rūšys ar technikos, kurių šaltinyje nėra.
+- seo_keywords: 5–10 raktažodžių kableliais, lietuviškai; gali būti ir originalus angliškas terminas (pvz. „baitrunner“, „swinger“), be EAN/prekės kodų; žuvų rūšių ar technikų, kurių nėra šaltinyje, nedėk.
+
+6. KALBA
+Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, dešimtainis skyriklis VISADA kablelis visuose skaičiuose (3,66 m, 3,25 lb, 0,5 g, 1,8 gou), niekada taškas. Neversk pažodžiui – rašyk taip, kaip rašytų lietuviška žvejybos parduotuvė.
+
+IŠVESTIS: tik JSON objektas su laukais "name", "base_name", "description", "technical_description", "seo_title", "seo_description", "seo_keywords"."""
 
 # SEO-only režimas: turimus (bet kurios kalbos) tekstus paimame kaip kontekstą
 # ir generuojame tik seo_* laukus, neperrašydami name/description.
@@ -130,6 +192,8 @@ class Command(BaseCommand):
         return lang
 
     def _system_prompt(self, lang: Language) -> str:
+        if lang.code == "lt":
+            return LT_SYSTEM_PROMPT
         lang_name = LANG_NAMES.get(lang.code, lang.name or lang.code)
         return SYSTEM_PROMPT_TEMPLATE.format(lang=lang_name)
 
@@ -188,7 +252,8 @@ class Command(BaseCommand):
                 context = {
                     "name": product.name or "",
                     "description": product.description or "",
-                    "category": product.category_raw or product.sub_category_raw or "",
+                    "supplier_category": product.category_raw or "",
+                    "supplier_subcategory": product.sub_category_raw or "",
                     "brand": product.brand.name if product.brand_id else "",
                 }
                 targets.append((f"p:{product.id}", product, context))
@@ -204,7 +269,8 @@ class Command(BaseCommand):
             context = {
                 "name": text.name or offer.name or "",
                 "description": text.description or offer.description or "",
-                "category": offer.category_raw or offer.sub_category_raw or "",
+                "supplier_category": offer.category_raw or "",
+                "supplier_subcategory": offer.sub_category_raw or "",
                 "brand": offer.brand_name_raw or "",
             }
             targets.append((f"ot:{text.id}", text, context))
@@ -224,7 +290,8 @@ class Command(BaseCommand):
                     "base_name": offer.base_name or "",
                     "description": offer.description or "",
                     "technical_description": offer.technical_description or "",
-                    "category": offer.category_raw or offer.sub_category_raw or "",
+                    "supplier_category": offer.category_raw or "",
+                    "supplier_subcategory": offer.sub_category_raw or "",
                     "brand": offer.brand_name_raw or "",
                 }
                 targets.append((f"o:{offer.id}", offer, fields))

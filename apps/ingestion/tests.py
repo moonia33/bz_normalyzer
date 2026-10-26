@@ -1,7 +1,8 @@
 import json
+import tempfile
 
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from django.core.files.base import ContentFile
 from django.core.management import call_command
@@ -1266,3 +1267,44 @@ class MergeVariantProductsTests(TestCase):
             )
         call_command("merge_variant_products", apply=True)
         self.assertEqual(Product.objects.count(), 2)
+
+
+class TranslateLangPrepareTests(TestCase):
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        Language.objects.create(code="lt", name="Lithuanian")
+        Language.objects.create(code="pl", name="Polish")
+        supplier = Supplier.objects.create(code="fox", name="FOX")
+        Offer.objects.create(
+            supplier=supplier, external_id="SW1", sku="SW1",
+            name="Fox Black Label Mini Swinger orange", is_published=True,
+            selling_price=Decimal("10.00"), product_group="SW1",
+            category_raw="Swingers", sub_category_raw="Mini",
+        )
+
+    def _prepare(self, lang, tmp_path):
+        call_command(
+            "translate_lang", "--language", lang, "--prepare", "--out", tmp_path,
+            stdout=StringIO(),
+        )
+        with open(tmp_path, encoding="utf-8") as handle:
+            return [json.loads(line) for line in handle]
+
+    def test_lt_uses_lt_prompt_and_supplier_categories(self):
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        self.assertEqual(len(lines), 1)
+        system, user = lines[0]["body"]["messages"]
+        self.assertIn("supplier_category", system["content"])
+        self.assertIn("atsarginis būgnelis", system["content"])
+        fields = json.loads(user["content"])
+        self.assertEqual(fields["supplier_category"], "Swingers")
+        self.assertEqual(fields["supplier_subcategory"], "Mini")
+        self.assertNotIn("category", fields)
+
+    def test_other_languages_keep_generic_prompt(self):
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("pl", tmp.name)
+        system = lines[0]["body"]["messages"][0]["content"]
+        self.assertIn("lenkų", system)
+        self.assertNotIn("atsarginis būgnelis", system)
