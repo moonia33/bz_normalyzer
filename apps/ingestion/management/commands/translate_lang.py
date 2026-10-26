@@ -115,7 +115,7 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
 
 4. APRAŠYMAI
 - Versk TIK tai, kas yra šaltinyje. Neprisigalvok savybių, paskirties, suderinamumo („tinka ... ritėms“), kokybės („originali“, „patikima“, „aukštos kokybės“), pristatymo, garantijų, kainų ar akcijų.
-- Jei `description` tuščias, labai trumpas arba sutampa su `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių).
+- Jei `description` tuščias arba tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
 - Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
 - `technical_description` versk tiksliai; jei tuščias – grąžink tuščią.
 
@@ -126,7 +126,7 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
 - seo_keywords: 5–10 raktažodžių kableliais, lietuviškai; gali būti ir originalus angliškas terminas (pvz. „baitrunner“, „swinger“), be EAN/prekės kodų; žuvų rūšių ar technikų, kurių nėra šaltinyje, nedėk.
 
 6. KALBA
-Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, dešimtainis skyriklis VISADA kablelis visuose skaičiuose (3,66 m, 3,25 lb, 0,5 g, 1,8 gou), niekada taškas. Neversk pažodžiui – rašyk taip, kaip rašytų lietuviška žvejybos parduotuvė.
+Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, kiekiuose ir matavimuose dešimtainis skyriklis visada kablelis (3,66 m, 3,25 lb, 0,5 g, 1,8 gou), ne taškas; modelių kodų, serijų ir kitų identifikatorių (pvz. N1.5, 12SAFLHOSO) nekeisk – juose taškas lieka. Neversk pažodžiui – rašyk taip, kaip rašytų lietuviška žvejybos parduotuvė.
 
 IŠVESTIS: tik JSON objektas su laukais "name", "base_name", "description", "technical_description", "seo_title", "seo_description", "seo_keywords"."""
 
