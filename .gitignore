@@ -42,3 +42,6 @@ Thumbs.db
 
 # Scratch working dir
 tmp/
+
+# Supplier source files (price lists, FTP instructions) — keep local only
+docs_suplier/
