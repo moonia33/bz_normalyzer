@@ -23,6 +23,7 @@ import csv
 import json
 import re
 import unicodedata
+from collections import Counter
 from decimal import Decimal
 from html import unescape
 from html.parser import HTMLParser
@@ -359,6 +360,7 @@ class Command(BaseCommand):
             ]
 
             item: dict = {
+                "_ps_id": pid,
                 "code": code,
                 "ean": (p.get("ean13") or "").strip() or None,
                 "brand_code": brand_slug,
@@ -403,6 +405,7 @@ class Command(BaseCommand):
                         option_labels.setdefault(gc, {})[vc] = v
                         vfeatures.append({"code": gc, "value": v})
                     variants.append({
+                        "_ps_attr_id": a["id_product_attribute"],
                         "code": vcode,
                         "supplier_code": aref,
                         "options": options,
@@ -419,6 +422,26 @@ class Command(BaseCommand):
             catalog_items.append(item)
             report["new_products"] += 1
 
+        # PrestaShop'e skirtingos prekės (pvz. CCMoore skoniai) dalijasi tuo pačiu
+        # reference -> tas pats code. Upsert pagal code jas suliektų į vieną,
+        # todėl dubliuotiems kodams pridedamas "-{ps_id}" (variantams
+        # "-{id_product_attribute}"), deterministiškai.
+        prod_codes = Counter(i["code"] for i in catalog_items)
+        sku_codes = Counter(
+            [v["code"] for i in catalog_items for v in i.get("variants", [])]
+            + [i["code"] for i in catalog_items if not i.get("variants")]
+        )
+        report["code_collisions"] = []
+        for i in catalog_items:
+            pid = i.pop("_ps_id")
+            if prod_codes[i["code"]] > 1 or (not i.get("variants") and sku_codes[i["code"]] > 1):
+                report["code_collisions"].append({"ps_id": pid, "code": i["code"], "new_code": f"{i['code']}-{pid}"})
+                i["code"] = f"{i['code']}-{pid}"
+            for v in i.get("variants", []):
+                attr_id = v.pop("_ps_attr_id")
+                if sku_codes[v["code"]] > 1:
+                    v["code"] = f"{v['code']}-{attr_id}"
+
         # attr_names set -> sorted list
         report["attr_names"] = {k: sorted(v) for k, v in report["attr_names"].items()}
 
@@ -428,10 +451,15 @@ class Command(BaseCommand):
             "mode": "upsert",
             "items": catalog_items,
         }
+        # Ta pati prekė PrestaShop'e gali būti įkelta kelis kartus (sena kortelė +
+        # tiekėjo importas) ir abi atitinka tą patį shop SKU -> imamas max likutis.
+        stock_by_code: dict[str, int] = {}
+        for s in stock_items:
+            stock_by_code[s["code"]] = max(stock_by_code.get(s["code"], 0), s["qty"])
         stock_doc = {
             "format_version": 1,
             "warehouse_code": wh,
-            "items": stock_items,
+            "items": [{"code": c, "qty": q} for c, q in stock_by_code.items()],
         }
 
         (out_dir / "catalog.json").write_text(
