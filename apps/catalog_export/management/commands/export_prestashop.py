@@ -451,10 +451,15 @@ class Command(BaseCommand):
             "mode": "upsert",
             "items": catalog_items,
         }
+        # Ta pati prekė PrestaShop'e gali būti įkelta kelis kartus (sena kortelė +
+        # tiekėjo importas) ir abi atitinka tą patį shop SKU -> imamas max likutis.
+        stock_by_code: dict[str, int] = {}
+        for s in stock_items:
+            stock_by_code[s["code"]] = max(stock_by_code.get(s["code"], 0), s["qty"])
         stock_doc = {
             "format_version": 1,
             "warehouse_code": wh,
-            "items": stock_items,
+            "items": [{"code": c, "qty": q} for c, q in stock_by_code.items()],
         }
 
         (out_dir / "catalog.json").write_text(
