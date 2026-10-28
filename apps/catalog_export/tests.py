@@ -86,6 +86,7 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(item["code"], "fox-AAA-1")
         self.assertEqual(item["ean"], "1111111111111")
         self.assertEqual(item["brand_code"], "fox-rage")
+        self.assertTrue(item["brand_name"])
         self.assertEqual(item["category"], "meskeres")
         self.assertEqual(item["product_group_code"], "GRP-1")
         # 12.10 su PVM -> 10.00 neto

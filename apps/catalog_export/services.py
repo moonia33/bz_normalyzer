@@ -1046,6 +1046,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                         "product_group_code": product.product_group or "",
                         "ean": product.ean or "",
                         "brand_code": product.brand.slug if product.brand_id else "",
+                        "brand_name": product.brand.name if product.brand_id else "",
                         "category": product.category.slug if product.category_id else "",
                         "tax_class": tax_class,
                         "is_active": product.is_active,
