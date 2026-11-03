@@ -46,9 +46,9 @@ PIM_SUPPLIERS = [
 ]
 
 MOSS_URLS = {
-    "en": "https://moss.sk/moss-feed-en.xml",
-    "pl": "https://moss.sk/moss-feed-pl.xml",
-    "de": "https://moss.sk/moss-feed-de.xml",
+    "en": "https://delphin.sk/feeds/zPadVOLFCeM7Nbws0u8FEDyBWV9conTgTAAIOPz0/moss-feed-en.xml",
+    "pl": "https://delphin.sk/feeds/zPadVOLFCeM7Nbws0u8FEDyBWV9conTgTAAIOPz0/moss-feed-pl.xml",
+    "de": "https://delphin.sk/feeds/zPadVOLFCeM7Nbws0u8FEDyBWV9conTgTAAIOPz0/moss-feed-de.xml",
 }
 
 DEFAULT_SYNC_MINUTES = 60 * 24  # kasdien

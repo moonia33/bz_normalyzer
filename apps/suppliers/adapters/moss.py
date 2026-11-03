@@ -19,10 +19,13 @@ class MossAdapter(BaseAdapter):
     # Žemėlapis: alternatyvus laukas -> kanoninis (EN) laukas.
     _FIELD_ALIASES = {
         "ID_PRODUCT": "OC",
+        "PRODUCT_ID": "OC",
         "SKUPINA": "VARIANT",
         "PACKAGING": "BALENIE",
         "CENA_S_DPH_EU": "PRICE_VAT",
         "SKLADOVOST": "AVAILABLE",
+        "BRAND": "ZNACKA",
+        "SIZE": "ROZMER",
     }
 
     def _item_to_row(self, item: etree._Element) -> dict[str, Any]:
