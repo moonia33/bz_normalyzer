@@ -85,6 +85,15 @@ PROFILES: list[CategoryProfile] = [
         r"rit[ėe]s|ritė|reel|rolle|kołowrot|kolowrot",
         ("reel_size", "size", "model", "color"),
     ),
+    # Prieš lures/lines: offer'is su skonio (flavour) ašimi yra jaukas /
+    # karpinis masalas net po 'Masalai ir jaukai' parent'u ar su 'Fluoro'
+    # pavadinime. Tokeną prideda catalog_export._inferred_context_tokens.
+    CategoryProfile(
+        "bait",
+        r"\bflavoured-bait\b",
+        ("size", "weight", "volume", "flavour"),
+        leftover_axis="flavour",
+    ),
     # Prieš bait: 'Soft Baits' / 'Hard Baits' yra masalai, ne jaukas.
     CategoryProfile(
         "lures",
