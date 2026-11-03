@@ -126,7 +126,7 @@ class Command(BaseCommand):
                 # Kaina svetainėje rodoma be PVM.
                 "purchase_price_includes_vat": False,
                 "selling_price_includes_vat": True,
-                "sku_prefix": "bounty-",
+                "sku_prefix": "BT.",
             },
         )
         bounty_config = {
