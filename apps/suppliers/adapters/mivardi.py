@@ -232,8 +232,10 @@ class MivardiAdapter(BaseAdapter):
         purchase = self._purchase_price(rrp_vat, row.get("vat"))
 
         qty_raw = (row.get("stock_quantity") or "").strip()
-        stock = self._stock_qty(qty_raw)
         stock_flag = (row.get("stock_flag") or "").strip() == "1"
+        # STOCK=0 -> out of stock nepriklausomai nuo qty (45 prekės feed'e
+        # turi liekamą qty, bet jau neparduodamos). ">50" -> stock_cap (51).
+        stock = self._stock_qty(qty_raw) if stock_flag else 0
         is_available = stock_flag and stock > 0
 
         images = [self._image_url(u) for u in row.get("images") or []]
@@ -311,7 +313,7 @@ class MivardiAdapter(BaseAdapter):
         if not raw:
             return 0
         if raw.startswith(">"):
-            return int(self.config.get("stock_cap", 50))
+            return int(self.config.get("stock_cap", 51))
         return self._to_int(raw)
 
     def _image_url(self, path: str) -> str:

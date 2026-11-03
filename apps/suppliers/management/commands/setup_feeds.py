@@ -169,7 +169,7 @@ class Command(BaseCommand):
             "username": os.environ.get("MIVARDI_USERNAME", ""),
             "password": os.environ.get("MIVARDI_PASSWORD", ""),
             "brand": "Mivardi",
-            "stock_cap": 50,
+            "stock_cap": 51,
         }
         for feed_name, role, interval in (
             ("Mivardi katalogas (XML)", FeedRole.CATALOG, 7 * 24 * 60),
