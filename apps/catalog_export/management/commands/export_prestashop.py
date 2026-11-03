@@ -40,7 +40,7 @@ FALLBACK_CATEGORY = "nepriskirta"
 ROOT_CAT_IDS = {"1", "2"}
 # Shop tiekėjų SKU prefiksai – matching'e nuimami, kad PS "90247" match'intų
 # shop "KD.90247". Suderinama su supplier_brand_prefix.csv.
-KNOWN_PREFIXES = ("FX.", "KD.", "MS.", "SH.")
+KNOWN_PREFIXES = ("BT.", "FX.", "KD.", "MS.", "SH.")
 # Gamintojų alias'ai (normalized -> normalized)
 BRAND_ALIASES = {"ccmoore": "ccmoore", "cc moore": "ccmoore", "cc-moore": "ccmoore"}
 
