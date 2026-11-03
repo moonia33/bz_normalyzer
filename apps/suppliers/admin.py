@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db.models import Count, Max, Q
 
-from apps.suppliers.models import Supplier, SupplierFeed
+from apps.suppliers.models import Supplier, SupplierFeed, SupplierSchedule
 
 
 class SupplierFeedInline(admin.TabularInline):
@@ -10,6 +10,28 @@ class SupplierFeedInline(admin.TabularInline):
     fields = [
         "name", "kind", "role", "language", "feed_group",
         "url", "file", "adapter_code", "sync_interval_minutes", "is_active",
+    ]
+
+
+class SupplierScheduleInline(admin.StackedInline):
+    model = SupplierSchedule
+    extra = 0
+    max_num = 1
+    can_delete = False
+    fields = [
+        "enabled",
+        ("catalog_weekday", "catalog_hour"),
+        ("price_interval_hours", "price_change_guard_pct"),
+        "stock_interval_minutes",
+        ("last_catalog_at", "last_prices_at", "last_stock_at"),
+        ("catalog_phase", "translation_batch_id"),
+    ]
+    readonly_fields = [
+        "last_catalog_at",
+        "last_prices_at",
+        "last_stock_at",
+        "catalog_phase",
+        "translation_batch_id",
     ]
 
 
@@ -27,7 +49,7 @@ class SupplierAdmin(admin.ModelAdmin):
         "updated_at",
     ]
     list_filter = ["is_active"]
-    inlines = [SupplierFeedInline]
+    inlines = [SupplierScheduleInline, SupplierFeedInline]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 FORMAT_VERSION = 2
 CATALOG_PATH = "/api/v1/ops/imports/catalog"
 STOCK_PATH = "/api/v1/ops/imports/stock"
+PRICES_PATH = "/api/v1/ops/imports/prices"
 DEFAULT_TAX_CLASS = "standard"
 # Kol nėra LT vertimų pipeline – lt transliacija pildoma baziniu tekstu.
 FALLBACK_TRANSLATION_LANG = "lt"
@@ -779,12 +780,8 @@ def _variant_keys(offer: Offer) -> set[str]:
     return keys
 
 
-def _new_variant(
-    offer: Offer,
-    options: dict,
-    variant_features: dict | None = None,
-    name: str = "",
-) -> dict:
+def offer_prices(offer: Offer) -> tuple:
+    """(price_net, cost_net, pack_price, pack_purchase_price) shop'ui."""
     price_net = _net(
         offer.selling_price,
         offer.supplier.selling_price_includes_vat,
@@ -816,6 +813,17 @@ def _new_variant(
     if offer.sold_as_pack:
         price_net = pack_price or price_net
         cost_net = pack_purchase_price or cost_net
+    return price_net, cost_net, pack_price, pack_purchase_price
+
+
+def _new_variant(
+    offer: Offer,
+    options: dict,
+    variant_features: dict | None = None,
+    name: str = "",
+) -> dict:
+    pack_qty = offer.trade_pack_qty or 0
+    price_net, cost_net, pack_price, pack_purchase_price = offer_prices(offer)
     return {
         "code": _offer_variant_code(offer),
         "name": name,
@@ -1230,7 +1238,11 @@ def run_export(
         triggered_by=triggered_by,
     )
     if push:
-        path = CATALOG_PATH if kind == ExportRun.Kind.CATALOG else STOCK_PATH
+        path = {
+            ExportRun.Kind.CATALOG: CATALOG_PATH,
+            ExportRun.Kind.STOCK: STOCK_PATH,
+            ExportRun.Kind.PRICE: PRICES_PATH,
+        }[kind]
         try:
             response = push_to_shop(path, payload)
             # Sinchroninis apply (maži feed'ai / senas shop) gali grąžinti
