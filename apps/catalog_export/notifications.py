@@ -231,7 +231,6 @@ def build_summary(now) -> tuple[str, str, str]:
             exp = expected[stage]
             if not exp and not stage_runs:
                 continue
-            done = counts[Status.DONE] + counts[Status.WAITING]
             bad = counts[Status.FAILED] + counts[Status.RUNNING]
             missing = max(exp - len(stage_runs), 0) if stage != Stage.CATALOG else max(exp - (1 if stage_runs else 0), 0)
             ok = not bad and not missing
