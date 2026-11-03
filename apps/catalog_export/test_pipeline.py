@@ -223,6 +223,51 @@ class PlanTests(TestCase):
             response.json.return_value = {"status": "completed"}
             self.assertTrue(pipeline._translation_step(self.schedule, run, False))
         mock_apply.assert_called_once()
+        self.assertEqual(mock_apply.call_args[0][1]["batch_id"], "batch_1")
         self.schedule.refresh_from_db()
         self.assertEqual(self.schedule.catalog_phase, "")
         self.assertEqual(self.schedule.translation_batch_id, "")
+
+    def test_translation_submits_next_chunk_after_apply(self):
+        self._offer("A1")
+        self.schedule.translation_batch_id = "batch_1"
+        self.schedule.save()
+        run = PipelineRun.objects.create(supplier=self.supplier, stage="catalog")
+        response = MagicMock()
+        response.json.return_value = {"status": "completed"}
+        tl = "apps.ingestion.management.commands.translate_lang"
+
+        def fake_submit(_lang, _options):
+            from apps.corecfg.models import ConfigEntry
+
+            ConfigEntry.objects.update_or_create(
+                key="translation_batch_id_lt", defaults={"value": "batch_2"}
+            )
+
+        with (
+            patch(f"{tl}._openai_headers", return_value={}),
+            patch.object(pipeline.requests, "get", return_value=response),
+            patch(f"{tl}.Command._apply"),
+            patch(f"{tl}.Command._submit", side_effect=fake_submit),
+        ):
+            self.assertFalse(pipeline._translation_step(self.schedule, run, False))
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.translation_batch_id, "batch_2")
+        self.assertEqual(self.schedule.catalog_phase, "translating")
+
+    def test_failed_batch_does_not_resubmit(self):
+        self._offer("A1")
+        self.schedule.translation_batch_id = "batch_1"
+        self.schedule.save()
+        run = PipelineRun.objects.create(supplier=self.supplier, stage="catalog")
+        response = MagicMock()
+        response.json.return_value = {"status": "failed"}
+        tl = "apps.ingestion.management.commands.translate_lang"
+        with (
+            patch(f"{tl}._openai_headers", return_value={}),
+            patch.object(pipeline.requests, "get", return_value=response),
+            patch(f"{tl}.Command._submit") as mock_submit,
+        ):
+            self.assertTrue(pipeline._translation_step(self.schedule, run, False))
+        mock_submit.assert_not_called()
+        self.assertIn("error", run.details["translation"])
