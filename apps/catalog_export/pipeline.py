@@ -28,6 +28,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductText
+from apps.catalog_export import notifications
 from apps.catalog_export.models import ExportRun, PipelineRun
 from apps.catalog_export.services import (
     ShopClient,
@@ -143,6 +144,8 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
         for schedule in schedules:
             for stage in due_stages(schedule, now):
                 runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+        if not dry_run:
+            notifications.safe_tick(now)
         return runs
 
 
@@ -162,6 +165,8 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
         run.error_message = str(exc)[:2000]
     run.finished_at = timezone.now()
     run.save()
+    if not dry_run:
+        notifications.safe_alert_run(run)
     return run
 
 

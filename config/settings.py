@@ -148,6 +148,21 @@ SHOP_USER_PASSWORD = _env("SHOP_USER_PASSWORD", "")
 SHOP_IMPORT_POLL_INTERVAL = _env("SHOP_IMPORT_POLL_INTERVAL", "10")
 SHOP_IMPORT_POLL_TIMEOUT = _env("SHOP_IMPORT_POLL_TIMEOUT", "3600")
 
+# El. paštas (pipeline pranešimai). Tas pats SMTP kaip BE.
+EMAIL_BACKEND = _env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = _env("EMAIL_HOST", "")
+EMAIL_PORT = int(_env("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = _env("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes")
+EMAIL_USE_SSL = _env("EMAIL_USE_SSL", "False").lower() in ("1", "true", "yes")
+EMAIL_HOST_USER = _env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = _env("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = 30
+DEFAULT_FROM_EMAIL = _env("DEFAULT_FROM_EMAIL", "normalyzer@localhost")
+# Kam siųsti pipeline klaidas ir kasdienę suvestinę (kableliais). Tuščia = nesiunčiama.
+PIPELINE_ALERT_EMAILS = [e.strip() for e in _env("PIPELINE_ALERT_EMAILS", "").split(",") if e.strip()]
+PIPELINE_SUMMARY_HOUR = int(_env("PIPELINE_SUMMARY_HOUR", "7"))
+PUBLIC_BASE_URL = _env("PUBLIC_BASE_URL", "https://normalyzer.baltijoszvynas.lt")
+
 # OpenAI Batch API (LT vertimai). Tuščia = vertimų pipeline išjungtas.
 OPENAI_API_KEY = _env("OPENAI_API_KEY", "")
 

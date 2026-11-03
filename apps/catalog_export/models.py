@@ -67,3 +67,19 @@ class PipelineRun(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.supplier_id}:{self.stage} #{self.pk} {self.status}"
 
+
+
+class PipelineAlert(models.Model):
+    """Išsiųstų pipeline pranešimų žurnalas (kad tas pats nebūtų siunčiamas kas 15 min.)."""
+
+    key = models.CharField(max_length=200, unique=True)
+    subject = models.CharField(max_length=300, blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-sent_at"]
+        verbose_name = "pipeline pranešimas"
+        verbose_name_plural = "pipeline pranešimai"
+
+    def __str__(self) -> str:
+        return self.key
