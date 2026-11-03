@@ -289,6 +289,8 @@ def tick(now=None, *, mark_stale: bool = True) -> None:
     """mark_stale=False – kai pipeline užraktas užimtas (etapas dar tikrai vykdomas)."""
     now = now or timezone.now()
     check_stuck(now, mark_stale=mark_stale)
+    if not mark_stale:
+        return
     retry_recent_alerts(now)
     check_missed(now)
     send_daily_summary(now)
