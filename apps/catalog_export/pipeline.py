@@ -134,6 +134,8 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
     """Paleidžia visus atėjusius etapus. None – kitas pipeline dar vykdomas."""
     with pipeline_lock() as locked:
         if not locked:
+            if not dry_run:
+                notifications.safe_tick(now, mark_stale=False)
             return None
         runs = []
         schedules = (

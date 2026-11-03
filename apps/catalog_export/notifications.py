@@ -109,12 +109,12 @@ def safe_alert_run(run: PipelineRun) -> None:
 # --- periodiniai patikrinimai ----------------------------------------------
 
 
-def check_stuck(now) -> None:
+def check_stuck(now, *, mark_stale: bool = True) -> None:
     for run in PipelineRun.objects.filter(status=Status.RUNNING, dry_run=False).select_related(
         "supplier"
     ):
         age = now - run.created_at
-        if age >= STALE_AFTER:
+        if mark_stale and age >= STALE_AFTER:
             run.status = Status.FAILED
             run.error_message = (
                 f"Nutrūko: paleidimas nebaigtas per {int(age.total_seconds() // 3600)} val. "
@@ -277,15 +277,27 @@ def send_daily_summary(now, *, force: bool = False) -> bool:
     return _send_once(key, subject, text, html)
 
 
-def tick(now=None) -> None:
+def retry_recent_alerts(now) -> None:
+    """Pakartoja per SMTP klaidą neišsiųstus paleidimų pranešimus (raktas tada ištrinamas)."""
+    for run in PipelineRun.objects.filter(
+        dry_run=False, finished_at__gte=now - timedelta(days=1)
+    ).select_related("supplier"):
+        alert_run(run)
+
+
+def tick(now=None, *, mark_stale: bool = True) -> None:
+    """mark_stale=False – kai pipeline užraktas užimtas (etapas dar tikrai vykdomas)."""
     now = now or timezone.now()
-    check_stuck(now)
+    check_stuck(now, mark_stale=mark_stale)
+    if not mark_stale:
+        return
+    retry_recent_alerts(now)
     check_missed(now)
     send_daily_summary(now)
 
 
-def safe_tick(now=None) -> None:
+def safe_tick(now=None, *, mark_stale: bool = True) -> None:
     try:
-        tick(now)
+        tick(now, mark_stale=mark_stale)
     except Exception:  # noqa: BLE001
         logger.exception("Pipeline pranešimų patikra nepavyko")

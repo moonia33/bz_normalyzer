@@ -81,3 +81,21 @@ class NotificationTests(TestCase):
         self.assertTrue(notifications.send_daily_summary(local))
         self.assertFalse(notifications.send_daily_summary(local + timedelta(minutes=15)))
         self.assertFalse(notifications.send_daily_summary(local.replace(hour=6)))
+
+    def test_stuck_alert_without_marking_when_locked(self):
+        run = self._run("catalog", Status.RUNNING)
+        PipelineRun.objects.filter(pk=run.pk).update(created_at=timezone.now() - timedelta(hours=7))
+        notifications.tick(timezone.now(), mark_stale=False)
+        run.refresh_from_db()
+        self.assertEqual(run.status, Status.RUNNING)
+        self.assertIn("Užstrigo", mail.outbox[0].subject)
+
+    def test_failed_delivery_retried_next_tick(self):
+        from unittest import mock
+
+        run = self._run("stock", Status.FAILED, error_message="x", finished_at=timezone.now())
+        with mock.patch.object(notifications, "send_mail", side_effect=OSError("smtp down")):
+            with self.assertRaises(OSError):
+                notifications.alert_run(run)
+        notifications.retry_recent_alerts(timezone.now())
+        self.assertEqual(len(mail.outbox), 1)
