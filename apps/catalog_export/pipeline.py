@@ -24,6 +24,7 @@ from decimal import Decimal
 
 import requests
 from django.db import connection
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.catalog.models import Product, ProductText
@@ -64,6 +65,9 @@ VOLATILE_VARIANT_KEYS = {"price_net", "cost_net", "pack_price", "pack_purchase_p
 LIST_LIMIT = 200
 # OpenAI Batch enqueued-token limitas (~1.2M) – ~4k token/eilutė su LT promptu.
 TRANSLATION_BATCH_ROWS = 250
+# Iš pilno katalogo feed'o dingusios prekės -> likutis 0, jei feed'e matyta
+# bent tokia dalis tiekėjo offer'ių (apsauga nuo sugadinto/tuščio feed'o).
+ABSENT_MIN_SEEN_SHARE = 0.8
 
 Stage = PipelineRun.Stage
 
@@ -193,7 +197,9 @@ def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[Suppli
     return sorted(feeds, key=sort_key)
 
 
-def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> None:
+def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun):
+    """Importuoja feed'us; grąžina importo pradžios laiką."""
+    started = timezone.now()
     jobs = []
     for feed in feeds:
         job = ImportJob.objects.create(supplier=feed.supplier, feed=feed)
@@ -213,6 +219,47 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> None:
     failed = [j["feed"] for j in jobs if j["status"] != ImportJob.Status.SUCCESS]
     if failed:
         raise PipelineError(f"feed import failed: {failed}")
+    return started
+
+
+def _last_import_start(feeds: list[SupplierFeed]):
+    """Dry-run: paskutinių sėkmingų šių feed'ų importų pradžia (seniausia)."""
+    starts = []
+    for feed in feeds:
+        job = (
+            ImportJob.objects.filter(feed=feed, status=ImportJob.Status.SUCCESS)
+            .order_by("-started_at")
+            .first()
+        )
+        if job is None or job.started_at is None:
+            return None
+        starts.append(job.started_at)
+    return min(starts) if starts else None
+
+
+def mark_absent_offers(supplier: Supplier, since, run: PipelineRun, dry_run: bool) -> None:
+    """Pilname kataloge nebeesančios prekės: likutis 0, neprieinamos.
+
+    Offer/produktas lieka (grįžus į feed'ą importas atstato likutį); stock
+    etapas nusiunčia 0 į shop.
+    """
+    if since is None:
+        return
+    offers = Offer.objects.filter(supplier=supplier)
+    total = offers.count()
+    seen = offers.filter(last_imported_at__gte=since).count()
+    info = {"seen": seen, "total": total}
+    run.details["absent"] = info
+    if not total or seen < total * ABSENT_MIN_SEEN_SHARE:
+        info["skipped"] = "per mažai prekių feed'e – likučiai neliečiami"
+        return
+    absent = offers.filter(Q(last_imported_at__lt=since) | Q(last_imported_at__isnull=True)).filter(
+        Q(stock__gt=0) | Q(is_available=True)
+    )
+    info["absent"] = absent.count()
+    info["sample"] = list(absent.values_list("sku", flat=True)[:LIST_LIMIT])
+    if not dry_run and info["absent"]:
+        info["marked"] = absent.update(stock=0, is_available=False, updated_at=timezone.now())
 
 
 # ------------------------------------------------------------------ shop
@@ -402,9 +449,16 @@ def plan_catalog_delta(supplier: Supplier) -> tuple[dict, dict[str, str], dict]:
 def _stage_catalog(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
     supplier = schedule.supplier
     resuming = schedule.catalog_phase == SupplierSchedule.Phase.TRANSLATING
-    if not resuming and not dry_run:
-        _touch(schedule, "last_catalog_at")
-        _import_feeds(_feeds(supplier, [FeedRole.CATALOG, FeedRole.DISCONTINUED]), run)
+    if not resuming:
+        feeds = _feeds(supplier, [FeedRole.CATALOG, FeedRole.DISCONTINUED])
+        catalog_feeds = [f for f in feeds if f.role == FeedRole.CATALOG]
+        if dry_run:
+            since = _last_import_start(catalog_feeds)
+        else:
+            _touch(schedule, "last_catalog_at")
+            since = _import_feeds(feeds, run)
+        if catalog_feeds:
+            mark_absent_offers(supplier, since, run, dry_run)
     if not _translation_step(schedule, run, dry_run):
         return PipelineRun.Status.WAITING
     payload, hashes, stats = plan_catalog_delta(supplier)
@@ -495,9 +549,13 @@ def plan_prices(schedule: SupplierSchedule) -> tuple[list[dict], dict]:
 
 def _stage_prices(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
     supplier = schedule.supplier
-    if not dry_run:
+    feeds = _feeds(supplier, [FeedRole.CATALOG], base_only=True)
+    if dry_run:
+        mark_absent_offers(supplier, _last_import_start(feeds), run, dry_run)
+    else:
         _touch(schedule, "last_prices_at")
-        _import_feeds(_feeds(supplier, [FeedRole.CATALOG], base_only=True), run)
+        if feeds:
+            mark_absent_offers(supplier, _import_feeds(feeds, run), run, dry_run)
         apply_pricing(Offer.objects.filter(supplier=supplier).select_related("supplier"))
     items, stats = plan_prices(schedule)
     run.details["prices"] = stats
@@ -539,12 +597,13 @@ def plan_stock(supplier: Supplier) -> tuple[str, list[dict], dict]:
 
 def _stage_stock(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
     supplier = schedule.supplier
+    stock_feeds = _feeds(supplier, [FeedRole.STOCK])
+    feeds = stock_feeds or _feeds(supplier, [FeedRole.CATALOG], base_only=True)
     if not dry_run:
         _touch(schedule, "last_stock_at")
-        feeds = _feeds(supplier, [FeedRole.STOCK]) or _feeds(
-            supplier, [FeedRole.CATALOG], base_only=True
-        )
-        _import_feeds(feeds, run)
+        since = _import_feeds(feeds, run)
+        if feeds and not stock_feeds:
+            mark_absent_offers(supplier, since, run, dry_run)
     warehouse, items, stats = plan_stock(supplier)
     run.details["stock"] = stats
     if items and not dry_run:
