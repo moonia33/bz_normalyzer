@@ -272,32 +272,45 @@ class PlanTests(TestCase):
         mock_submit.assert_not_called()
         self.assertIn("error", run.details["translation"])
 
-    def test_mark_absent_offers_zeroes_missing_only_when_feed_complete(self):
-        from django.utils import timezone
+    def _job(self, external_ids, errors=0):
+        from apps.ingestion.models import ImportJob, RawItem
 
-        since = timezone.now()
-        old = since - timedelta(days=1)
-        for i in range(9):
-            self._offer(f"S{i}", last_imported_at=since + timedelta(seconds=1))
-        gone = self._offer("GONE", stock=4, last_imported_at=old)
+        job = ImportJob.objects.create(supplier=self.supplier, status="success", stats={"errors": errors})
+        for ext in external_ids:
+            RawItem.objects.create(job=job, supplier=self.supplier, external_id=ext, payload={})
+        return job
+
+    def _absent_run(self, job, dry_run=False):
         run = PipelineRun.objects.create(supplier=self.supplier, stage="catalog")
-        pipeline.mark_absent_offers(self.supplier, since, run, True)
+        pipeline.mark_absent_offers(self.supplier, [job.pk], run, dry_run)
+        return run
+
+    def test_mark_absent_offers_zeroes_missing_only_when_feed_complete(self):
+        for i in range(9):
+            self._offer(f"S{i}")
+        gone = self._offer("GONE", stock=4)
+        job = self._job([f"S{i}" for i in range(9)])
+        run = self._absent_run(job, dry_run=True)
         gone.refresh_from_db()
         self.assertEqual(gone.stock, 4)
         self.assertEqual(run.details["absent"]["absent"], 1)
-        pipeline.mark_absent_offers(self.supplier, since, run, False)
+        self._absent_run(job)
         gone.refresh_from_db()
         self.assertEqual((gone.stock, gone.is_available), (0, False))
 
     def test_mark_absent_skipped_for_partial_feed(self):
-        from django.utils import timezone
-
-        since = timezone.now()
-        self._offer("S1", last_imported_at=since + timedelta(seconds=1))
-        gone = self._offer("GONE", stock=4, last_imported_at=since - timedelta(days=1))
-        run = PipelineRun.objects.create(supplier=self.supplier, stage="catalog")
-        pipeline.mark_absent_offers(self.supplier, since, run, False)
+        self._offer("S1")
+        gone = self._offer("GONE", stock=4)
+        run = self._absent_run(self._job(["S1"]))
         gone.refresh_from_db()
         self.assertEqual(gone.stock, 4)
         self.assertIn("skipped", run.details["absent"])
 
+    def test_mark_absent_skipped_when_import_had_row_errors(self):
+        for i in range(9):
+            self._offer(f"S{i}")
+        gone = self._offer("GONE", stock=4)
+        run = self._absent_run(self._job([f"S{i}" for i in range(9)], errors=1))
+        gone.refresh_from_db()
+        self.assertEqual(gone.stock, 4)
+        self.assertIn("skipped", run.details["absent"])
