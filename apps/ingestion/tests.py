@@ -1363,3 +1363,11 @@ class DescriptionClearedTests(TestCase):
         self._import(self._feed_xml("true", "922"))
         main = Offer.objects.get(supplier=self.supplier, external_id="922")
         self.assertEqual(main.product.description, "Complete feeder set")
+
+    def test_other_source_description_not_cleared(self):
+        self._import(self._feed_xml("false", ""))
+        tip = Offer.objects.get(supplier=self.supplier, external_id="981")
+        Product.objects.filter(pk=tip.product_id).update(description="Other supplier text")
+        self._import(self._feed_xml("true", "922"))
+        tip.refresh_from_db()
+        self.assertEqual(tip.product.description, "Other supplier text")

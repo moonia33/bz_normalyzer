@@ -377,8 +377,11 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     if item.ean and product.ean != item.ean:
         product.ean = item.ean
         changed_fields.append("ean")
-    clear_description = _description_cleared(item) and (
-        product.source_external_id == item.external_id
+    cleared = _cleared_description(item)
+    clear_description = (
+        cleared
+        and product.description == cleared
+        and product.source_external_id == item.external_id
     )
     if (
         item.description or clear_description
@@ -526,21 +529,28 @@ def _upsert_offer_text(
         defaults=fields,
     )
     if offer.product_id:
-        clear = {"description"} if _description_cleared(item) else set()
+        cleared = _cleared_description(item)
+        clear = {"description": cleared} if cleared else {}
         _propagate_product_text(offer, language, fields, clear)
 
 
-def _description_cleared(item: NormalizedItem) -> bool:
-    """Adapteris sąmoningai išvalė aprašymą (pvz. priedas paveldėjo kitos prekės tekstą)."""
-    return isinstance(item.extra, dict) and bool(item.extra.get("description_cleared"))
+def _cleared_description(item: NormalizedItem) -> str:
+    """Adapterio išmestas paveldėtas aprašymas (pvz. priedas turėjo pagrindinės prekės tekstą).
+
+    Išvalomas tik tas tekstas, kuris sutampa su juo; kitų šaltinių tekstas lieka.
+    """
+    if not isinstance(item.extra, dict):
+        return ""
+    return str(item.extra.get("description_cleared") or "").strip()
 
 
 def _propagate_product_text(
     offer: Offer,
     language: Language,
     fields: dict[str, str],
-    clear: set[str] = frozenset(),
+    clear: dict[str, str] | None = None,
 ) -> None:
+    clear = clear or {}
     from django.utils.text import slugify
 
     text = ProductText.objects.filter(product_id=offer.product_id, language=language).first()
@@ -558,7 +568,10 @@ def _propagate_product_text(
         return
     changed = []
     for key, value in fields.items():
-        if (value or key in clear) and getattr(text, key) != value:
+        current = getattr(text, key)
+        if (value and current != value) or (
+            key in clear and current == clear[key] and text.source_offer_id == offer.id
+        ):
             setattr(text, key, value)
             changed.append(key)
     if not text.slug and fields.get("name"):

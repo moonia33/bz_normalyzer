@@ -64,6 +64,6 @@ class MossAccessoryTests(TestCase):
         self.assertFalse(items["922"].extra["is_accessory"])
         self.assertEqual(items["981"].description, "")
         self.assertTrue(items["981"].extra["is_accessory"])
-        self.assertTrue(items["981"].extra["description_cleared"])
-        self.assertFalse(items["982"].extra["description_cleared"])
+        self.assertEqual(items["981"].extra["description_cleared"], "Complete feeder set")
+        self.assertEqual(items["982"].extra["description_cleared"], "")
         self.assertEqual(items["982"].description, "Own spool text")

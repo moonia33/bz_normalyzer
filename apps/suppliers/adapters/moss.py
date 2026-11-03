@@ -84,11 +84,9 @@ class MossAdapter(BaseAdapter):
             is_accessory = self._is_accessory(row)
             description = self._text(row.get("DESCRIPTION"))
             group = self._text(row.get("VARIANT")) or external_id
-            description_cleared = bool(
-                is_accessory and description in main_descriptions.get(group, ())
-            )
-            if description_cleared:
-                description = ""
+            description_cleared = ""
+            if is_accessory and description in main_descriptions.get(group, ()):
+                description_cleared, description = description, ""
 
             variant_parent = self._text(row.get("VARIANT"))
             product_name = self._text(row.get("PRODUCT"))
@@ -191,7 +189,7 @@ class MossAdapter(BaseAdapter):
             "main_image_url": self._text(base_extra.get("main_image_url")),
             "rrp_price": self._text(base_extra.get("rrp_price") or row.get("rrp_price")),
             "is_accessory": bool(base_extra.get("is_accessory")),
-            "description_cleared": bool(base_extra.get("description_cleared")),
+            "description_cleared": self._text(base_extra.get("description_cleared")),
         }
 
         stock = self._to_int(row.get("stock"))
