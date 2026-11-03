@@ -71,6 +71,7 @@ def _translation_block(product: Product, base_lang: str) -> dict:
 
 from apps.catalog.attributes import (
     ATTRIBUTE_META,
+    CODE_ALIASES,
     MAX_OPTIONS,
     VARIANT_LABEL_CODE,
     _norm_code,
@@ -141,8 +142,10 @@ _INFER_REEL_AXES = {"reel_size", "gear_ratio"}
 def _inferred_context_tokens(axes_keys) -> str:
     """Ašių kodai -> konteksto tokenai ('rods', 'reels'), kuriuos
     match'ina _RODS_CTX / reels profilio regex'ai."""
-    codes = {_norm_code(k) for k in axes_keys}
+    codes = {CODE_ALIASES.get(c, c) for c in (_norm_code(k) for k in axes_keys)}
     tokens: list[str] = []
+    if "flavour" in codes:
+        tokens.append("flavoured-bait")
     if codes & _INFER_ROD_AXES:
         tokens.append("rods")
     if codes & _INFER_REEL_AXES:

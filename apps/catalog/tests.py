@@ -166,14 +166,17 @@ class ProfileForTests(TestCase):
         self.assertEqual(profile_for("spinning rods").code, "rods")
         self.assertEqual(profile_for("braided lines").code, "lines")
         self.assertEqual(
-            profile_for("masalai hookbaits > pop-ups > pop-up classic").code, "bait"
+            profile_for("masalai ir jaukai > jaukai baits > granule flavoured-bait").code,
+            "bait",
         )
         self.assertEqual(
-            profile_for("masalai hookbaits > fluoro hookbait kolobok").code, "bait"
+            profile_for("masalai hookbaits > fluoro hookbait flavoured-bait").code, "bait"
         )
-        self.assertEqual(profile_for("masalai > vobleriai").code, "lures")
         self.assertEqual(
             profile_for("masalai ir jaukai > vobleriai").code, "lures"
+        )
+        self.assertEqual(
+            profile_for("masalai ir jaukai > liquid attractor").code, "lures"
         )
         self.assertEqual(profile_for("luggage").code, "generic")
 

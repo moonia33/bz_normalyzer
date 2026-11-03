@@ -85,13 +85,12 @@ PROFILES: list[CategoryProfile] = [
         r"rit[ėe]s|ritė|reel|rolle|kołowrot|kolowrot",
         ("reel_size", "size", "model", "color"),
     ),
-    # Prieš lures/lines: karpinių kabliuko masalų (pop-up, wafter,
-    # boilie) kategorija dažnai 'Masalai', o pavadinimuose 'Fluoro'.
-    # Be 'jauk': parent'as 'Masalai ir jaukai' turi likti lures.
+    # Prieš lures/lines: offer'is su skonio (flavour) ašimi yra jaukas /
+    # karpinis masalas net po 'Masalai ir jaukai' parent'u ar su 'Fluoro'
+    # pavadinime. Tokeną prideda catalog_export._inferred_context_tokens.
     CategoryProfile(
         "bait",
-        r"hookbait|boil|pop.?up|wafter|dumbell|method.?mix|pellet|groundbait|"
-        r"liquid|\bdips?\b|stick.?mix|pasta|activator|booster|kvap|skyst",
+        r"\bflavoured-bait\b",
         ("size", "weight", "volume", "flavour"),
         leftover_axis="flavour",
     ),
