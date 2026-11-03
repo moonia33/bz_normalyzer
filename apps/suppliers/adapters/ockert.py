@@ -266,7 +266,10 @@ class OckertAdapter(BaseAdapter):
     ) -> list[dict[str, Any]]:
         """BFS per /Katalog + /Kategorie medį -> [{url, path, name}] produktams."""
         seen_pages: set[str] = set()
-        products: dict[str, dict[str, Any]] = {}
+        # Tas pats produktas pasiekiamas per kelis kelius (pvz. outlet
+        # 'Auslauf Ruten' rodo likučio prekes iš visų serijų) – renkame
+        # visas kandidatų kelias ir paskui imame giliausią ne-outlet.
+        paths: dict[str, list[list[str]]] = {}
         # (url, vardų kelias iki šio puslapio)
         queue: list[tuple[str, list[str]]] = [(catalog_path, [])]
         while queue:
@@ -285,17 +288,29 @@ class OckertAdapter(BaseAdapter):
                     continue
                 label = _text(anchor)
                 if href.startswith("/Produkt/"):
-                    if href not in products:
-                        products[href] = {
-                            "url": href,
-                            "category_path": list(crumbs),
-                        }
+                    paths.setdefault(href, [])
+                    if crumbs and crumbs not in paths[href]:
+                        paths[href].append(list(crumbs))
                 elif href.startswith("/Katalog/") or href.startswith("/Kategorie/"):
                     if href not in seen_pages and label:
                         queue.append((href, [*crumbs, label]))
             if delay:
                 time.sleep(delay)
-        return list(products.values())
+        return [
+            {"url": url, "category_path": self._best_path(candidates)}
+            for url, candidates in paths.items()
+        ]
+
+    @staticmethod
+    def _best_path(candidates: list[list[str]]) -> list[str]:
+        """Iš kelių kategorijų kelių – giliausias, 'Auslauf'/'Sale'
+        outlet kategorijas atstumiant (ten rodomas svetimas inventorius)."""
+
+        def score(crumbs: list[str]) -> tuple[int, int]:
+            outlet = any("auslauf" in c.lower() or "sale" in c.lower() for c in crumbs)
+            return (0 if outlet else 1, len(crumbs))
+
+        return max(candidates, key=score) if candidates else []
 
     def _fetch_product(
         self, session, base_url: str, product: dict[str, Any], timeout: int, retries: int
