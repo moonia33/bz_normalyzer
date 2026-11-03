@@ -1,3 +1,5 @@
+import os
+
 from django.core.management.base import BaseCommand
 
 from apps.corecfg.models import Language
@@ -112,6 +114,41 @@ class Command(BaseCommand):
                     "url": url,
                     "adapter_code": "moss",
                     "sync_interval_minutes": DEFAULT_SYNC_MINUTES,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
+        bounty, _ = Supplier.objects.update_or_create(
+            code="bounty_fishing",
+            defaults={
+                "name": "Bounty Fishing",
+                # Kaina svetainėje rodoma be PVM.
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "bounty-",
+            },
+        )
+        bounty_config = {
+            "username": os.environ.get("BOUNTY_USERNAME", ""),
+            "password": os.environ.get("BOUNTY_PASSWORD", ""),
+            "brand": "BOUNTY",
+            "request_delay": 0.2,
+        }
+        for feed_name, role, interval in (
+            ("Bounty Fishing katalogas (scrape)", FeedRole.CATALOG, 7 * 24 * 60),
+            ("Bounty Fishing likučiai ir kainos (scrape)", FeedRole.STOCK, 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=bounty,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.SCRAPER,
+                    "role": role,
+                    "language": languages["en"] if role == FeedRole.CATALOG else None,
+                    "adapter_code": "bounty_fishing",
+                    "config": bounty_config,
+                    "sync_interval_minutes": interval,
                     "is_active": True,
                 },
             )
