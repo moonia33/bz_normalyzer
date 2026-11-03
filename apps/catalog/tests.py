@@ -172,6 +172,9 @@ class ProfileForTests(TestCase):
             profile_for("masalai hookbaits > fluoro hookbait kolobok").code, "bait"
         )
         self.assertEqual(profile_for("masalai > vobleriai").code, "lures")
+        self.assertEqual(
+            profile_for("masalai ir jaukai > vobleriai").code, "lures"
+        )
         self.assertEqual(profile_for("luggage").code, "generic")
 
 

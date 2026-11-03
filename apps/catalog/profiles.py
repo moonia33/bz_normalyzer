@@ -87,9 +87,11 @@ PROFILES: list[CategoryProfile] = [
     ),
     # Prieš lures/lines: karpinių kabliuko masalų (pop-up, wafter,
     # boilie) kategorija dažnai 'Masalai', o pavadinimuose 'Fluoro'.
+    # Be 'jauk': parent'as 'Masalai ir jaukai' turi likti lures.
     CategoryProfile(
         "bait",
-        r"hookbait|boil|pop.?up|wafter|dumbell|method.?mix|jauk",
+        r"hookbait|boil|pop.?up|wafter|dumbell|method.?mix|pellet|groundbait|"
+        r"liquid|\bdips?\b|stick.?mix|pasta|activator|booster|kvap|skyst",
         ("size", "weight", "volume", "flavour"),
         leftover_axis="flavour",
     ),
