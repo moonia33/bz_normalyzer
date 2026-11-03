@@ -377,7 +377,12 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     if item.ean and product.ean != item.ean:
         product.ean = item.ean
         changed_fields.append("ean")
-    if item.description and product.description != item.description:
+    clear_description = _description_cleared(item) and (
+        product.source_external_id == item.external_id
+    )
+    if (
+        item.description or clear_description
+    ) and product.description != item.description:
         product.description = item.description
         changed_fields.append("description")
     if offer.purchase_price is not None and product.purchase_price != offer.purchase_price:
@@ -521,10 +526,21 @@ def _upsert_offer_text(
         defaults=fields,
     )
     if offer.product_id:
-        _propagate_product_text(offer, language, fields)
+        clear = {"description"} if _description_cleared(item) else set()
+        _propagate_product_text(offer, language, fields, clear)
 
 
-def _propagate_product_text(offer: Offer, language: Language, fields: dict[str, str]) -> None:
+def _description_cleared(item: NormalizedItem) -> bool:
+    """Adapteris sąmoningai išvalė aprašymą (pvz. priedas paveldėjo kitos prekės tekstą)."""
+    return isinstance(item.extra, dict) and bool(item.extra.get("description_cleared"))
+
+
+def _propagate_product_text(
+    offer: Offer,
+    language: Language,
+    fields: dict[str, str],
+    clear: set[str] = frozenset(),
+) -> None:
     from django.utils.text import slugify
 
     text = ProductText.objects.filter(product_id=offer.product_id, language=language).first()
@@ -542,7 +558,7 @@ def _propagate_product_text(offer: Offer, language: Language, fields: dict[str, 
         return
     changed = []
     for key, value in fields.items():
-        if value and getattr(text, key) != value:
+        if (value or key in clear) and getattr(text, key) != value:
             setattr(text, key, value)
             changed.append(key)
     if not text.slug and fields.get("name"):
