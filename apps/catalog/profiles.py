@@ -85,6 +85,14 @@ PROFILES: list[CategoryProfile] = [
         r"rit[ėe]s|ritė|reel|rolle|kołowrot|kolowrot",
         ("reel_size", "size", "model", "color"),
     ),
+    # Prieš lures/lines: karpinių kabliuko masalų (pop-up, wafter,
+    # boilie) kategorija dažnai 'Masalai', o pavadinimuose 'Fluoro'.
+    CategoryProfile(
+        "bait",
+        r"hookbait|boil|pop.?up|wafter|dumbell|method.?mix|jauk",
+        ("size", "weight", "volume", "flavour"),
+        leftover_axis="flavour",
+    ),
     # Prieš bait: 'Soft Baits' / 'Hard Baits' yra masalai, ne jaukas.
     CategoryProfile(
         "lures",
