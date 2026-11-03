@@ -12,6 +12,7 @@ from apps.catalog.values import parse_value
 class ResolveCodeTests(TestCase):
     def test_alias(self):
         self.assertEqual(resolve_code("strength_lb", ""), "line_strength")
+        self.assertEqual(resolve_code("flavor", ""), "flavour")
         self.assertEqual(resolve_code("line-test-kg", ""), "line_strength")
         self.assertEqual(resolve_code("section", ""), "sections")
 
@@ -164,6 +165,13 @@ class ProfileForTests(TestCase):
         )
         self.assertEqual(profile_for("spinning rods").code, "rods")
         self.assertEqual(profile_for("braided lines").code, "lines")
+        self.assertEqual(
+            profile_for("masalai hookbaits > pop-ups > pop-up classic").code, "bait"
+        )
+        self.assertEqual(
+            profile_for("masalai hookbaits > fluoro hookbait kolobok").code, "bait"
+        )
+        self.assertEqual(profile_for("masalai > vobleriai").code, "lures")
         self.assertEqual(profile_for("luggage").code, "generic")
 
 
@@ -433,3 +441,12 @@ class StripNameSpecTests(SimpleTestCase):
         self.assertEqual(
             base, self._strip("Guru Pulse 9 Braid (0.12mm) 150m")
         )
+
+
+class StripAxisPrefixCyrillicTests(SimpleTestCase):
+    def test_cyrillic_units_in_numeric_values(self):
+        from apps.catalog.attributes import strip_axis_prefix
+
+        self.assertEqual(strip_axis_prefix("0,6 л"), "0,6 l")
+        self.assertEqual(strip_axis_prefix("0.8 кg"), "0.8 kg")
+        self.assertEqual(strip_axis_prefix("КРИЛЬ"), "КРИЛЬ")

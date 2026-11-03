@@ -147,6 +147,7 @@ CODE_ALIASES: dict[str, str] = {
     "line_rating_lbs": "line_strength",
     "length_imperial": "rod_length_ft",
     "section": "sections",
+    "flavor": "flavour",
 }
 
 # (code, category_regex, canonical) – regex taikomas lowercase
@@ -222,8 +223,18 @@ def strip_axis_prefix(value: str) -> str:
     if ":" in text:
         head, _, tail = text.partition(":")
         if head.strip().lower() in LABEL_MAP or head.strip().lower() in META_LABELS:
-            return tail.strip()
+            text = tail.strip()
+    if _NUMERIC_START.match(text):
+        text = text.translate(_CYRILLIC_UNIT_LOOKALIKES)
     return text
+
+
+# Kirilicos vienetai skaitinėse reikšmėse ('0,6 л', '0.8 кg', '20 мм').
+_NUMERIC_START = re.compile(r"^\d")
+_CYRILLIC_UNIT_LOOKALIKES = str.maketrans(
+    {"к": "k", "К": "K", "г": "g", "Г": "G", "м": "m", "М": "M",
+     "л": "l", "Л": "L", "с": "c", "С": "C"}
+)
 
 
 # Reikšmės-be-informacijos: netampa nei option, nei feature reikšmėmis.
