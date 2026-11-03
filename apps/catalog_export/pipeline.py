@@ -62,6 +62,8 @@ ACTIVE_BATCH_STATUSES = {"validating", "in_progress", "finalizing", "cancelling"
 VOLATILE_ITEM_KEYS = {"price_net", "cost_net", "stock"}
 VOLATILE_VARIANT_KEYS = {"price_net", "cost_net", "pack_price", "pack_purchase_price", "stock"}
 LIST_LIMIT = 200
+# OpenAI Batch enqueued-token limitas (~1.2M) – ~4k token/eilutė su LT promptu.
+TRANSLATION_BATCH_ROWS = 250
 
 Stage = PipelineRun.Stage
 
@@ -298,30 +300,31 @@ def _translation_step(schedule: SupplierSchedule, run: PipelineRun, dry_run: boo
     if lang is None or lang.is_base:
         return True
     command = tl.Command()
-    if schedule.translation_batch_id:
+    batch_id = schedule.translation_batch_id
+    if batch_id:
         response = requests.get(
-            f"{tl.BATCH_ENDPOINT}/{schedule.translation_batch_id}",
+            f"{tl.BATCH_ENDPOINT}/{batch_id}",
             headers=tl._openai_headers(),
             timeout=30,
         )
         response.raise_for_status()
         status = response.json().get("status")
-        run.details["translation"] = {"batch_id": schedule.translation_batch_id, "status": status}
+        run.details["translation"] = {"batch_id": batch_id, "status": status}
         if status in ACTIVE_BATCH_STATUSES:
             return False
         if dry_run:
             return True
-        if status == "completed":
-            command._apply(lang, {"batch_id": schedule.translation_batch_id})
-        else:
-            run.details["translation"]["error"] = f"batch {status}; neišverstos prekės lieka nesiųstos"
         schedule.translation_batch_id = ""
         schedule.catalog_phase = SupplierSchedule.Phase.IDLE
         schedule.save(update_fields=["translation_batch_id", "catalog_phase", "updated_at"])
-        return True
+        if status != "completed":
+            # Nesikartojam kas tick'ą: neišverstos prekės lieka nesiųstos iki kito katalogo paleidimo.
+            run.details["translation"]["error"] = f"batch {status}; neišverstos prekės lieka nesiųstos"
+            return True
+        command._apply(lang, {"batch_id": batch_id})
 
     pending = command._offers_to_translate(lang, False, schedule.supplier).count()
-    run.details["translation"] = {"pending": pending}
+    run.details.setdefault("translation", {})["pending"] = pending
     if not pending or dry_run:
         return True
     fd, path = tempfile.mkstemp(prefix=f"tr_{schedule.supplier.code}_", suffix=".jsonl")
@@ -333,7 +336,7 @@ def _translation_step(schedule: SupplierSchedule, run: PipelineRun, dry_run: boo
                 "seo_only": False,
                 "model": None,
                 "force": False,
-                "limit": 0,
+                "limit": TRANSLATION_BATCH_ROWS,
                 "out": path,
                 "supplier": schedule.supplier.code,
             },
