@@ -54,7 +54,10 @@ TARGETS: dict[str, str] = {
 
 
 class Command(BaseCommand):
-    help = "Sumapina Ockert (vokiškas) kategorijas ir peržiūri offer'ius."
+    help = (
+        "Sumapina Ockert (vokiškas) kategorijas ir peržiūri offer'ius. "
+        "Auslauf meškerės gauna tipą tik po katalogo perimportavimo."
+    )
 
     def handle(self, *args, **options):
         supplier = Supplier.objects.get(code="ockert")
@@ -73,14 +76,15 @@ class Command(BaseCommand):
         created = updated = 0
         with transaction.atomic():
             for source_path, category in targets.items():
-                category_raw, _, sub_category_raw = source_path.partition(" > ")
+                # Kaip importas: category_raw = visas kelias, sub = paskutinė dalis.
                 _, was_created = CategoryMapping.objects.update_or_create(
                     supplier=supplier,
                     source_path=source_path,
-                    defaults={
+                    defaults={"category": category},
+                    create_defaults={
                         "category": category,
-                        "source_category_raw": category_raw,
-                        "source_sub_category_raw": sub_category_raw,
+                        "source_category_raw": source_path,
+                        "source_sub_category_raw": source_path.rsplit(" > ", 1)[-1],
                     },
                 )
                 created += was_created
