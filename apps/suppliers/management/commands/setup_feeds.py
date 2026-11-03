@@ -161,7 +161,7 @@ class Command(BaseCommand):
                 # HEK svetainėje – neto (data-ws-isUseNetPrices=true).
                 "purchase_price_includes_vat": False,
                 "selling_price_includes_vat": True,
-                "sku_prefix": "OC-",
+                "sku_prefix": "OC.",
             },
         )
         ockert_config = {
