@@ -149,8 +149,13 @@ SHOP_IMPORT_POLL_INTERVAL = _env("SHOP_IMPORT_POLL_INTERVAL", "10")
 SHOP_IMPORT_POLL_TIMEOUT = _env("SHOP_IMPORT_POLL_TIMEOUT", "3600")
 
 # El. paštas (pipeline pranešimai). Tas pats SMTP kaip BE.
-EMAIL_BACKEND = _env("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = _env("EMAIL_HOST", "")
+EMAIL_BACKEND = _env(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST
+    else "django.core.mail.backends.console.EmailBackend",
+)
 EMAIL_PORT = int(_env("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = _env("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes")
 EMAIL_USE_SSL = _env("EMAIL_USE_SSL", "False").lower() in ("1", "true", "yes")
