@@ -79,9 +79,33 @@ _H2_NOISE = {"inkl. quetschhülsen", "inkl quetschhülsen"}
 
 _WORD_RE = re.compile(r"[^a-z0-9]+")
 
+# Outlet ('Auslauf') meškerės svetainėje neturi serijos kategorijos – tipas
+# imamas iš pavadinimo (pirmas atitikmuo laimi).
+DEFAULT_OUTLET_ROD_TYPES = (
+    (r"meeres|seacast|neptoon", "Meeresruten"),
+    (r"waller|\bcat\b", "Wallerruten"),
+    (r"\bfly\b", "Fliegenruten"),
+    (r"carp|stalker", "Karpfenruten"),
+    (r"feeder|picker", "Feederruten"),
+    (r"trowler|troll", "Trollingruten"),
+)
+DEFAULT_OUTLET_ROD_FALLBACK = "Spinnruten"
+
 
 def _text(node) -> str:
     return " ".join((node.text_content() or "").split())
+
+
+def _is_outlet(label: str) -> bool:
+    low = label.lower()
+    return "auslauf" in low or "sale" in low
+
+
+def _outlet_rod_type(name: str) -> str:
+    for pattern, rod_type in DEFAULT_OUTLET_ROD_TYPES:
+        if re.search(pattern, name, re.I):
+            return rod_type
+    return DEFAULT_OUTLET_ROD_FALLBACK
 
 
 def _norm_label(label: str) -> str:
@@ -307,7 +331,7 @@ class OckertAdapter(BaseAdapter):
         outlet kategorijas atstumiant (ten rodomas svetimas inventorius)."""
 
         def score(crumbs: list[str]) -> tuple[int, int]:
-            outlet = any("auslauf" in c.lower() or "sale" in c.lower() for c in crumbs)
+            outlet = any(_is_outlet(c) for c in crumbs)
             return (0 if outlet else 1, len(crumbs))
 
         return max(candidates, key=score) if candidates else []
@@ -500,6 +524,8 @@ class OckertAdapter(BaseAdapter):
         name = _variant_name(product_name, h2, descriptor) or art_no
 
         crumbs = [c for c in (row.get("category_path") or []) if c]
+        if crumbs and crumbs[0].lower().endswith("ruten") and _is_outlet(crumbs[-1]):
+            crumbs.append(_outlet_rod_type(f"{product_name} {name}"))
         category_path = " > ".join(crumbs)
         catalog = crumbs[0] if crumbs else ""
         sub_category = crumbs[-1] if crumbs else ""

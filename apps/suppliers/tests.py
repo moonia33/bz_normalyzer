@@ -124,6 +124,24 @@ class OckertAdapterTests(TestCase):
         self.assertEqual(rod.brand_name, "Sportex")
         self.assertEqual(str(rod.extra["rrp_price"]), "219.95")
 
+    def test_outlet_rods_get_type_from_name(self):
+        from apps.suppliers.adapters.ockert import OckertAdapter
+
+        adapter = OckertAdapter(SimpleNamespace(config={"default_brand": "Climax"}))
+        base = dict(self.PAYLOAD["items"][0], category_path=["Sportex Ruten", "Auslauf Ruten"])
+        cases = {
+            "Revolt Carp Stalker": "Karpfenruten",
+            "Top Cat Wallerruten": "Wallerruten",
+            "Synoris Fly": "Fliegenruten",
+            "Magnus Mastergrade Meeresruten": "Meeresruten",
+            "JIG-Xpert": "Spinnruten",
+        }
+        for product_name, rod_type in cases.items():
+            item = adapter.normalize(dict(base, product_name=product_name, table_title=product_name))
+            self.assertEqual(item.category_path, f"Sportex Ruten > Auslauf Ruten > {rod_type}")
+        item = adapter.normalize(self.PAYLOAD["items"][0])
+        self.assertEqual(item.category_path, "Sportex Ruten > Salmon Ruten > Laks Serie")
+
     def test_pack_and_availability(self):
         items = self._items()
         # VE>1 -> parduodama tik pakuotėmis; kaina = vieneto × qty.
