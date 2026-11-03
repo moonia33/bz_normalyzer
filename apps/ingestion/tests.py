@@ -1302,6 +1302,19 @@ class TranslateLangPrepareTests(TestCase):
         self.assertEqual(fields["supplier_subcategory"], "Mini")
         self.assertNotIn("category", fields)
 
+    def test_accessory_flag_passed_only_for_accessories(self):
+        offer = Offer.objects.get(external_id="SW1")
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        self.assertNotIn("is_accessory", json.loads(lines[0]["body"]["messages"][1]["content"]))
+        offer.extra = {"is_accessory": True}
+        offer.save(update_fields=["extra"])
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        system, user = lines[0]["body"]["messages"]
+        self.assertTrue(json.loads(user["content"])["is_accessory"])
+        self.assertIn("Fiderio viršūnėlė Delphin Yakuza Feeder", system["content"])
+
     def test_other_languages_keep_generic_prompt(self):
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
             lines = self._prepare("pl", tmp.name)

@@ -51,6 +51,9 @@ class MossAdapter(BaseAdapter):
                 row[key] = value
         return row
 
+    def _is_accessory(self, row: dict[str, Any]) -> bool:
+        return self._text(row.get("IS_ACCESSORY")).lower() in {"true", "1", "yes"}
+
     @staticmethod
     def _normalize_sortiment(value: str) -> str:
         """PL/DE 'SORTIMENT' naudoja ' | ' skirtuką; EN CATEGORYTEXT – '|||'."""
@@ -61,12 +64,28 @@ class MossAdapter(BaseAdapter):
 
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         root = etree.fromstring(payload)
-        for item in root.findall(".//SHOPITEM"):
-            row = self._item_to_row(item)
+        rows = [self._item_to_row(item) for item in root.findall(".//SHOPITEM")]
+        # Priedai (IS_ACCESSORY) grupėje kartu su pagrindine preke dažnai turi
+        # pagrindinės prekės aprašymą (pvz. viršūnėlė – viso rinkinio aprašymą).
+        main_descriptions: dict[str, set[str]] = {}
+        for row in rows:
+            if self._is_accessory(row):
+                continue
+            group = self._text(row.get("VARIANT")) or self._text(row.get("OC"))
+            description = self._text(row.get("DESCRIPTION"))
+            if group and description:
+                main_descriptions.setdefault(group, set()).add(description)
 
+        for row in rows:
             external_id = self._text(row.get("OC"))
             if not external_id:
                 continue
+
+            is_accessory = self._is_accessory(row)
+            description = self._text(row.get("DESCRIPTION"))
+            group = self._text(row.get("VARIANT")) or external_id
+            if is_accessory and description in main_descriptions.get(group, ()):
+                description = ""
 
             variant_parent = self._text(row.get("VARIANT"))
             product_name = self._text(row.get("PRODUCT"))
@@ -102,7 +121,7 @@ class MossAdapter(BaseAdapter):
                 "ean": self._text(row.get("EAN")),
                 "brand_name": self._text(row.get("ZNACKA")),
                 "category_path": category_root,
-                "description": self._text(row.get("DESCRIPTION")),
+                "description": description,
                 "images": images,
                 "videos": videos,
                 "stock": stock,
@@ -132,6 +151,7 @@ class MossAdapter(BaseAdapter):
                     "shipping_depth_cm": shipping_depth_cm,
                     "shipping_weight_kg": shipping_weight_kg,
                     "main_image_url": images[0] if images else "",
+                    "is_accessory": is_accessory,
                 },
                 "raw": row,
             }
@@ -166,6 +186,7 @@ class MossAdapter(BaseAdapter):
             "base_name": self._text(row.get("base_name")),
             "main_image_url": self._text(base_extra.get("main_image_url")),
             "rrp_price": self._text(base_extra.get("rrp_price") or row.get("rrp_price")),
+            "is_accessory": bool(base_extra.get("is_accessory")),
         }
 
         stock = self._to_int(row.get("stock"))
@@ -179,7 +200,9 @@ class MossAdapter(BaseAdapter):
             ean=self._text(row.get("ean") or row.get("EAN")),
             brand_name=self._text(row.get("brand_name") or row.get("ZNACKA")),
             category_path=self._text(row.get("category_path")),
-            description=self._text(row.get("description") or row.get("DESCRIPTION")),
+            description=self._text(
+                row["description"] if "description" in row else row.get("DESCRIPTION")
+            ),
             attributes=filtered_attributes,
             images=self._clean_images(row.get("images")),
             videos=self._clean_videos(row.get("videos")),
