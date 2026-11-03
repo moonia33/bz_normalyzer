@@ -154,6 +154,51 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
 
+        ockert, _ = Supplier.objects.update_or_create(
+            code="ockert",
+            defaults={
+                "name": "Ockert",
+                # HEK svetainėje – neto (data-ws-isUseNetPrices=true).
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "OC-",
+            },
+        )
+        ockert_config = {
+            "username": os.environ.get("OCKERT_USERNAME", ""),
+            "password": os.environ.get("OCKERT_PASSWORD", ""),
+            "request_delay": 0.15,
+            "brand_map": {
+                "Sportex": "Sportex",
+                "TICA": "TICA",
+                "Kryston": "Kryston",
+                # 'Angelschnüre' ir 'Fly Fishing' tile'ai = Climax logotipas.
+                "Angelschnüre": "Climax",
+                "Fly Fishing": "Climax",
+            },
+            # 'Krystonite' valai gyvena Angelschnüre viduje -> Kryston.
+            "brand_by_name_prefix": {"Krystonite": "Kryston", "Kryston": "Kryston"},
+            "default_brand": "Climax",
+        }
+        for feed_name, role, interval in (
+            ("Ockert katalogas (scrape)", FeedRole.CATALOG, 7 * 24 * 60),
+            ("Ockert likučiai ir kainos (scrape)", FeedRole.STOCK, 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=ockert,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.SCRAPER,
+                    "role": role,
+                    "language": languages["en"] if role == FeedRole.CATALOG else None,
+                    "adapter_code": "ockert",
+                    "config": ockert_config,
+                    "sync_interval_minutes": interval,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
         mivardi, _ = Supplier.objects.update_or_create(
             code="mivardi",
             defaults={

@@ -44,6 +44,112 @@ class AdapterNormalizationTests(TestCase):
         self.assertEqual(rows[0]["name"], "Widget")
 
 
+class OckertAdapterTests(TestCase):
+    PAYLOAD = {
+        "items": [
+            {
+                "art_no": "108293",
+                "descriptor": "SK2912",
+                "hek": "139.99",
+                "uvp": "219.95",
+                "availability": "green",
+                "stock_text": "Verfügbar",
+                "ve": "1",
+                "table_title": "Laks RS-2",
+                "specs": {"l (cm)": "292", "l (ft)": "9.5", "wg (gr)": "35", "teile": "2"},
+                "product_url": "/Produkt/Laks-RS-2-16916082",
+                "product_name": "Laks RS-2",
+                "category_path": ["Sportex Ruten", "Salmon Ruten", "Laks Serie"],
+                "image": "https://shop.ockert.net/cust/images/_thumbs/_11/laks.jpg",
+            },
+            {
+                "art_no": "KR-RR1",
+                "descriptor": "20lb 20cm Synx Ronnie Rig #2, 2pc",
+                "hek": "2.75",
+                "availability": "yellow",
+                "stock_text": "Wenig verfügbar",
+                "ve": "10",
+                "table_title": "Ronnie Rig",
+                "specs": {},
+                "product_url": "/Produkt/Kryston-Rigs-9328737",
+                "product_name": "Kryston Rigs",
+                "category_path": ["Kryston", "Rigs"],
+                "image": "",
+            },
+            {
+                "art_no": "8756-10025-010",
+                "hek": "3.99",
+                "availability": "red",
+                "ve": "10",
+                "table_title": "25m",
+                "specs": {"durchm. ø in mm": "0.10", "tragkraft in kg": "1.2"},
+                "product_url": "/Produkt/Max-Fluorocarbon--18655892",
+                "product_name": "Max Fluorocarbon",
+                "category_path": ["Angelschnüre", "Fluorocarbon & HardMono"],
+                "image": "",
+            },
+        ]
+    }
+
+    def _items(self):
+        import json
+
+        from apps.suppliers.adapters.ockert import OckertAdapter
+
+        adapter = OckertAdapter(
+            SimpleNamespace(
+                config={
+                    "brand_map": {"Sportex": "Sportex", "TICA": "TICA", "Kryston": "Kryston"},
+                    "default_brand": "Climax",
+                }
+            )
+        )
+        payload = json.dumps(self.PAYLOAD).encode()
+        return {i.external_id: i for i in map(adapter.normalize, adapter.parse(payload))}
+
+    def test_rod_spec_columns_to_axes(self):
+        items = self._items()
+        rod = items["108293"]
+        self.assertEqual(
+            rod.attributes["axes"],
+            {
+                "rod_length_m": "2.92m",
+                "rod_length_ft": "9.5",
+                "casting_weight": "35g",
+                "sections": "2",
+            },
+        )
+        self.assertEqual(rod.name, "Laks RS-2 SK2912")
+        self.assertEqual(rod.extra["product_group"], "laks-rs-2")
+        self.assertEqual(rod.brand_name, "Sportex")
+        self.assertEqual(str(rod.extra["rrp_price"]), "219.95")
+
+    def test_pack_and_availability(self):
+        items = self._items()
+        # VE>1 -> parduodama tik pakuotėmis; kaina = vieneto × qty.
+        self.assertEqual(items["KR-RR1"].extra["trade_pack_qty"], 10)
+        self.assertTrue(items["KR-RR1"].extra["sold_as_pack"])
+        self.assertNotIn("sold_as_pack", items["108293"].extra)
+        # yellow = 10 (leidžia į krepšį), green = 20, red = 0.
+        self.assertTrue(items["KR-RR1"].is_available)
+        self.assertEqual(items["KR-RR1"].stock, 10)
+        self.assertTrue(items["108293"].is_available)
+        self.assertEqual(items["108293"].stock, 20)
+        self.assertFalse(items["8756-10025-010"].is_available)
+        self.assertEqual(items["8756-10025-010"].stock, 0)
+
+    def test_descriptor_axes_and_line_specs(self):
+        items = self._items()
+        rig = items["KR-RR1"]
+        self.assertEqual(rig.attributes["axes"]["line_strength"], "20lb")
+        self.assertEqual(rig.attributes["axes"]["hook_size"], "2")
+        self.assertEqual(rig.attributes["axes"]["model"], "Ronnie Rig")
+        line = items["8756-10025-010"]
+        self.assertEqual(line.attributes["axes"]["line_diameter"], "0.10mm")
+        self.assertEqual(line.attributes["axes"]["line_strength"], "1.2kg")
+        self.assertEqual(line.brand_name, "Climax")
+
+
 class MossAccessoryTests(TestCase):
     FEED = b"""<SHOP>
 <SHOPITEM><PRODUCT_ID>922</PRODUCT_ID><PRODUCT>Feeder set Delphin YAKUZA 300</PRODUCT>

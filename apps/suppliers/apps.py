@@ -19,5 +19,6 @@ class SuppliersConfig(AppConfig):
             korda_info,
             mivardi,
             moss,
+            ockert,
             shimano,
         )
