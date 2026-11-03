@@ -1302,9 +1302,72 @@ class TranslateLangPrepareTests(TestCase):
         self.assertEqual(fields["supplier_subcategory"], "Mini")
         self.assertNotIn("category", fields)
 
+    def test_accessory_flag_passed_only_for_accessories(self):
+        offer = Offer.objects.get(external_id="SW1")
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        self.assertNotIn("is_accessory", json.loads(lines[0]["body"]["messages"][1]["content"]))
+        offer.extra = {"is_accessory": True}
+        offer.save(update_fields=["extra"])
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        system, user = lines[0]["body"]["messages"]
+        self.assertTrue(json.loads(user["content"])["is_accessory"])
+        self.assertIn("Fiderio viršūnėlė Delphin Yakuza Feeder", system["content"])
+
     def test_other_languages_keep_generic_prompt(self):
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
             lines = self._prepare("pl", tmp.name)
         system = lines[0]["body"]["messages"][0]["content"]
         self.assertIn("lenkų", system)
         self.assertNotIn("atsarginis būgnelis", system)
+
+
+class DescriptionClearedTests(TestCase):
+    def _feed_xml(self, accessory: str, variant: str) -> bytes:
+        return f"""<SHOP>
+<SHOPITEM><PRODUCT_ID>922</PRODUCT_ID><PRODUCT>Feeder set YAKUZA 300</PRODUCT>
+<IS_ACCESSORY>false</IS_ACCESSORY><DESCRIPTION>Complete feeder set</DESCRIPTION>
+<PRICE_VAT>52,94</PRICE_VAT><AVAILABLE>5</AVAILABLE></SHOPITEM>
+<SHOPITEM><PRODUCT_ID>981</PRODUCT_ID><VARIANT>{variant}</VARIANT>
+<PRODUCT>Tip Yakuza Feeder</PRODUCT><IS_ACCESSORY>{accessory}</IS_ACCESSORY>
+<DESCRIPTION>Complete feeder set</DESCRIPTION>
+<PRICE_VAT>4,79</PRICE_VAT><AVAILABLE>3</AVAILABLE></SHOPITEM>
+</SHOP>""".encode()
+
+    def _import(self, payload: bytes) -> None:
+        self.feed.file.save("moss.xml", ContentFile(payload), save=True)
+        run_import(ImportJob.objects.create(supplier=self.supplier, feed=self.feed))
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(code="moss", name="Moss")
+        self.feed = SupplierFeed.objects.create(
+            supplier=self.supplier, name="moss", kind=SourceKind.XML_URL, adapter_code="moss"
+        )
+
+    def test_reimport_clears_inherited_description_of_own_product(self):
+        self._import(self._feed_xml("false", ""))
+        tip = Offer.objects.get(supplier=self.supplier, external_id="981")
+        self.assertEqual(tip.product.description, "Complete feeder set")
+
+        self._import(self._feed_xml("true", "922"))
+        tip.refresh_from_db()
+        main = Offer.objects.get(supplier=self.supplier, external_id="922")
+        self.assertNotEqual(tip.product_id, main.product_id)
+        self.assertEqual(tip.description, "")
+        self.assertEqual(tip.product.description, "")
+        self.assertEqual(main.product.description, "Complete feeder set")
+
+    def test_shared_product_keeps_main_description(self):
+        self._import(self._feed_xml("false", "922"))
+        self._import(self._feed_xml("true", "922"))
+        main = Offer.objects.get(supplier=self.supplier, external_id="922")
+        self.assertEqual(main.product.description, "Complete feeder set")
+
+    def test_other_source_description_not_cleared(self):
+        self._import(self._feed_xml("false", ""))
+        tip = Offer.objects.get(supplier=self.supplier, external_id="981")
+        Product.objects.filter(pk=tip.product_id).update(description="Other supplier text")
+        self._import(self._feed_xml("true", "922"))
+        tip.refresh_from_db()
+        self.assertEqual(tip.product.description, "Other supplier text")

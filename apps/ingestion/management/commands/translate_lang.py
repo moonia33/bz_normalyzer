@@ -72,6 +72,7 @@ Formatavimas:
 LT_SYSTEM_PROMPT = """Tu esi profesionalus vertėjas iš anglų į lietuvių kalbą ir žvejybos reikmenų e-komercijos redaktorius.
 
 ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand.
+Jei įvestyje yra `is_accessory: true` – tai ne pati kategorijos prekė, o jos priedas ar atsarginė dalis (pvz. viršūnėlė, atsarginis būgnelis, signalizatorius rinkiniui, apdangalas palapinei). Tada prekės tipą imk TIK iš `name` tipo žodžio; kategorija nurodo tik, kokiai prekei priedas skirtas.
 
 1. PREKĖS TIPO NUSTATYMAS (svarbiausia)
 Pagrindinis prekės tipo šaltinis yra originali tiekėjo kategorija: `supplier_category` ir `supplier_subcategory` (subkategorija tikslina kategoriją). Prioritetas:
@@ -81,6 +82,7 @@ Pagrindinis prekės tipo šaltinis yra originali tiekėjo kategorija: `supplier_
 - Kai kategorija aiškiai nurodo tipą (pvz. „Swingers“, „Eyed Hooks“, „Baitrunner reels“, „Rods > Feeder rods“, „Reel parts“, „Spools“, „Hooklinks“) – naudok būtent jį ir jo nekeisk savo spėjimu.
 - Tiekėjo kategorija kartais yra serijos pavadinimas („Catana Spinning“ = Catana serijos spiningai, „Tribal Carp/Specimen“ = karpinės meškerės, „Aspire Competition“, „Current“) arba bendrinė („Uncategorized“, „Accessories“, tuščia). Tada tipą nustatyk iš pavadinimo tipo žodžio ir parametrų.
 - Jei kategorija ir pavadinimo tipo žodis prieštarauja (pvz. kategorija „Crankbait Spinning“, o pavadinime „Lure“), rinkis konkretesnį ir aiškiai šaltinyje įvardytą tipą.
+- Jei pavadinimas prasideda priedo / dalies žodžiu (Tip, Tip series, Spare spool, Spare net, Spare legs, Overwrap, „Alarm for set …“, „… tips set“), tai priedas, net jei kategorija yra „Rods“, „Reels“, „Bivvies“ ar „Sets“: „Tip Delphin Yakuza Feeder“ (kat. Rods > Feeder rods) → „Fiderio viršūnėlė Delphin Yakuza Feeder“, ne „meškerė“ ar „rinkinys“; „Alarm for set Delphin TOTEM“ → „Elektroninis kibimo signalizatorius Delphin TOTEM rinkiniui“ (vienas signalizatorius, ne rinkinys); „Overwrap Delphin YURTA NEO“ → „Apdangalas (overwrap) palapinei Delphin YURTA NEO“.
 - Neišgalvok tipo, kurio nepatvirtina nei kategorija, nei pavadinimas. Jei tipas neaiškus – rinkis bendresnį terminą (pvz. „Meškerė“, „Masalas“, „Ritės dalis“).
 
 2. PAVADINIMO STRUKTŪRA (`name`)
@@ -299,6 +301,8 @@ class Command(BaseCommand):
                     "supplier_subcategory": offer.sub_category_raw or "",
                     "brand": offer.brand_name_raw or "",
                 }
+                if (offer.extra or {}).get("is_accessory"):
+                    fields["is_accessory"] = True
                 targets.append((f"o:{offer.id}", offer, fields))
 
         if options["limit"]:

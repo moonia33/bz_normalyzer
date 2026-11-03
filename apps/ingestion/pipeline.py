@@ -377,7 +377,15 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     if item.ean and product.ean != item.ean:
         product.ean = item.ean
         changed_fields.append("ean")
-    if item.description and product.description != item.description:
+    cleared = _cleared_description(item)
+    clear_description = (
+        cleared
+        and product.description == cleared
+        and product.source_external_id == item.external_id
+    )
+    if (
+        item.description or clear_description
+    ) and product.description != item.description:
         product.description = item.description
         changed_fields.append("description")
     if offer.purchase_price is not None and product.purchase_price != offer.purchase_price:
@@ -521,10 +529,28 @@ def _upsert_offer_text(
         defaults=fields,
     )
     if offer.product_id:
-        _propagate_product_text(offer, language, fields)
+        cleared = _cleared_description(item)
+        clear = {"description": cleared} if cleared else {}
+        _propagate_product_text(offer, language, fields, clear)
 
 
-def _propagate_product_text(offer: Offer, language: Language, fields: dict[str, str]) -> None:
+def _cleared_description(item: NormalizedItem) -> str:
+    """Adapterio išmestas paveldėtas aprašymas (pvz. priedas turėjo pagrindinės prekės tekstą).
+
+    Išvalomas tik tas tekstas, kuris sutampa su juo; kitų šaltinių tekstas lieka.
+    """
+    if not isinstance(item.extra, dict):
+        return ""
+    return str(item.extra.get("description_cleared") or "").strip()
+
+
+def _propagate_product_text(
+    offer: Offer,
+    language: Language,
+    fields: dict[str, str],
+    clear: dict[str, str] | None = None,
+) -> None:
+    clear = clear or {}
     from django.utils.text import slugify
 
     text = ProductText.objects.filter(product_id=offer.product_id, language=language).first()
@@ -542,7 +568,10 @@ def _propagate_product_text(offer: Offer, language: Language, fields: dict[str, 
         return
     changed = []
     for key, value in fields.items():
-        if value and getattr(text, key) != value:
+        current = getattr(text, key)
+        if (value and current != value) or (
+            key in clear and current == clear[key] and text.source_offer_id == offer.id
+        ):
             setattr(text, key, value)
             changed.append(key)
     if not text.slug and fields.get("name"):

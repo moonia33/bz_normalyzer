@@ -1,9 +1,11 @@
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.test import TestCase
 
 from apps.suppliers.adapters.base import BaseAdapter
 from apps.suppliers.adapters.generic_excel import GenericExcelAdapter
+from apps.suppliers.adapters.moss import MossAdapter
 from apps.suppliers.adapters.registry import get_adapter, list_adapters
 
 
@@ -40,3 +42,28 @@ class AdapterNormalizationTests(TestCase):
 
         self.assertEqual(rows[0]["price"], "1.234,56")
         self.assertEqual(rows[0]["name"], "Widget")
+
+
+class MossAccessoryTests(TestCase):
+    FEED = b"""<SHOP>
+<SHOPITEM><PRODUCT_ID>922</PRODUCT_ID><PRODUCT>Feeder set Delphin YAKUZA 300</PRODUCT>
+<IS_ACCESSORY>false</IS_ACCESSORY><DESCRIPTION>Complete feeder set</DESCRIPTION>
+<PRICE_VAT>52,94</PRICE_VAT><AVAILABLE>5</AVAILABLE></SHOPITEM>
+<SHOPITEM><PRODUCT_ID>981</PRODUCT_ID><VARIANT>922</VARIANT><PRODUCT>Tip Delphin Yakuza Feeder</PRODUCT>
+<IS_ACCESSORY>true</IS_ACCESSORY><DESCRIPTION>Complete feeder set</DESCRIPTION>
+<PRICE_VAT>4,79</PRICE_VAT><AVAILABLE>3</AVAILABLE></SHOPITEM>
+<SHOPITEM><PRODUCT_ID>982</PRODUCT_ID><VARIANT>922</VARIANT><PRODUCT>Spare spool</PRODUCT>
+<IS_ACCESSORY>true</IS_ACCESSORY><DESCRIPTION>Own spool text</DESCRIPTION>
+<PRICE_VAT>8,10</PRICE_VAT><AVAILABLE>3</AVAILABLE></SHOPITEM>
+</SHOP>"""
+
+    def test_accessory_drops_main_product_description(self):
+        adapter = MossAdapter(SimpleNamespace(config={}))
+        items = {i.external_id: i for i in map(adapter.normalize, adapter.parse(self.FEED))}
+        self.assertEqual(items["922"].description, "Complete feeder set")
+        self.assertFalse(items["922"].extra["is_accessory"])
+        self.assertEqual(items["981"].description, "")
+        self.assertTrue(items["981"].extra["is_accessory"])
+        self.assertEqual(items["981"].extra["description_cleared"], "Complete feeder set")
+        self.assertEqual(items["982"].extra["description_cleared"], "")
+        self.assertEqual(items["982"].description, "Own spool text")
