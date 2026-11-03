@@ -154,4 +154,41 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
 
+        mivardi, _ = Supplier.objects.update_or_create(
+            code="mivardi",
+            defaults={
+                "name": "Mivardi",
+                # Savikaina feed'e nėra – skaičiuojama adapteryje (RRP/PVM/1.5).
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "mivardi-",
+            },
+        )
+        mivardi_config = {
+            "url": "https://www.mivardi.com/xml/mivardivip",
+            "username": os.environ.get("MIVARDI_USERNAME", ""),
+            "password": os.environ.get("MIVARDI_PASSWORD", ""),
+            "brand": "Mivardi",
+            "stock_cap": 50,
+        }
+        for feed_name, role, interval in (
+            ("Mivardi katalogas (XML)", FeedRole.CATALOG, 7 * 24 * 60),
+            ("Mivardi likučiai ir kainos (XML)", FeedRole.STOCK, 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=mivardi,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.XML_URL,
+                    "role": role,
+                    "language": languages["en"] if role == FeedRole.CATALOG else None,
+                    "url": mivardi_config["url"],
+                    "adapter_code": "mivardi",
+                    "config": mivardi_config,
+                    "sync_interval_minutes": interval,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
         self.stdout.write(self.style.SUCCESS("Done."))

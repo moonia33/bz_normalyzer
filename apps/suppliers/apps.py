@@ -17,6 +17,7 @@ class SuppliersConfig(AppConfig):
             generic_xml,
             korda,
             korda_info,
+            mivardi,
             moss,
             shimano,
         )
