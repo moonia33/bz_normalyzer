@@ -126,3 +126,53 @@ class SupplierFeed(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.supplier.code}:{self.name}"
+
+
+class SupplierSchedule(TimeStampedModel):
+    """Automatinio tiekėjo pipeline tvarkaraštis (run_pipeline --due).
+
+    Katalogas – kartą per savaitę naktį (kiekvienas tiekėjas savo dieną),
+    kainos ir likučiai – pagal intervalą, į shop siunčiami tik pasikeitę.
+    """
+
+    class Phase(models.TextChoices):
+        IDLE = "", "—"
+        TRANSLATING = "translating", "Laukia vertimo (OpenAI batch)"
+
+    supplier = models.OneToOneField(
+        Supplier, related_name="schedule", on_delete=models.CASCADE
+    )
+    enabled = models.BooleanField(default=False)
+    catalog_weekday = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Katalogo importo diena: 0=Pr ... 6=Sk. Tuščia – katalogas automatiškai neimportuojamas.",
+    )
+    catalog_hour = models.PositiveSmallIntegerField(
+        default=2, help_text="Valanda (Europe/Vilnius), nuo kurios galima pradėti katalogo importą."
+    )
+    price_interval_hours = models.PositiveIntegerField(
+        default=24, help_text="Kainų sinchronizacijos intervalas valandomis (0 – išjungta)."
+    )
+    stock_interval_minutes = models.PositiveIntegerField(
+        default=60, help_text="Likučių sinchronizacijos intervalas minutėmis (0 – išjungta)."
+    )
+    price_change_guard_pct = models.PositiveIntegerField(
+        default=50,
+        help_text="Didesnis kainos pokytis (%) automatiškai nesiunčiamas – laukia peržiūros (0 – be apsaugos).",
+    )
+    last_catalog_at = models.DateTimeField(null=True, blank=True)
+    last_prices_at = models.DateTimeField(null=True, blank=True)
+    last_stock_at = models.DateTimeField(null=True, blank=True)
+    catalog_phase = models.CharField(
+        max_length=16, choices=Phase.choices, default=Phase.IDLE, blank=True
+    )
+    translation_batch_id = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        verbose_name = "pipeline tvarkaraštis"
+        verbose_name_plural = "pipeline tvarkaraščiai"
+
+    def __str__(self) -> str:
+        return f"{self.supplier.code} schedule"
+

@@ -93,6 +93,7 @@ class OfferAdmin(admin.ModelAdmin):
     ]
     list_filter = [
         "supplier",
+        "price_locked",
         "is_available",
         "is_discontinued",
         "is_published",

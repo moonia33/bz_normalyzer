@@ -118,6 +118,10 @@ class Offer(TimeStampedModel):
         default=False,
         help_text="Pažymi, kad tiekėjas prekę nutraukė (discontinued).",
     )
+    price_locked = models.BooleanField(
+        default=False,
+        help_text="Kaina į shop automatiškai nesiunčiama (pvz. klaidinga tiekėjo kaina).",
+    )
     is_published = models.BooleanField(
         default=False,
         help_text="Tik publikuoti pasiūlymai atiduodami per viešą API.",

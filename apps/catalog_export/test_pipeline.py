@@ -1,0 +1,228 @@
+from datetime import datetime, timedelta
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
+
+from django.test import TestCase
+
+from apps.catalog.models import Category, Product, ProductText
+from apps.catalog_export import pipeline
+from apps.catalog_export.models import ExportRun, PipelineRun
+from apps.corecfg.models import Language
+from apps.ingestion.models import Offer
+from apps.suppliers.models import Supplier, SupplierSchedule
+
+VILNIUS = ZoneInfo("Europe/Vilnius")
+
+
+def _supplier(code="sup"):
+    return Supplier.objects.create(
+        code=code,
+        name=code.upper(),
+        sku_prefix="SP.",
+        vat_rate=Decimal("0.21"),
+        selling_price_includes_vat=True,
+    )
+
+
+class DueTests(TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 11, 2, 2, 30, tzinfo=VILNIUS)
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=_supplier(),
+            enabled=True,
+            catalog_weekday=self.now.weekday(),
+            catalog_hour=2,
+            price_interval_hours=24,
+            stock_interval_minutes=60,
+        )
+
+    def test_catalog_due_once_per_day_after_hour(self):
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.now))
+        self.assertNotIn(
+            "catalog", pipeline.due_stages(self.schedule, self.now - timedelta(hours=1))
+        )
+        self.schedule.last_catalog_at = self.now - timedelta(minutes=20)
+        self.assertNotIn("catalog", pipeline.due_stages(self.schedule, self.now))
+        self.assertNotIn(
+            "catalog", pipeline.due_stages(self.schedule, self.now + timedelta(days=1))
+        )
+
+    def test_translating_phase_resumes_catalog(self):
+        self.schedule.catalog_weekday = None
+        self.schedule.catalog_phase = SupplierSchedule.Phase.TRANSLATING
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.now))
+
+    def test_intervals_with_tolerance(self):
+        self.schedule.last_prices_at = self.now - timedelta(hours=23, minutes=58)
+        self.schedule.last_stock_at = self.now - timedelta(minutes=20)
+        stages = pipeline.due_stages(self.schedule, self.now)
+        self.assertIn("prices", stages)
+        self.assertNotIn("stock", stages)
+        self.schedule.stock_interval_minutes = 0
+        self.schedule.last_stock_at = None
+        self.assertNotIn("stock", pipeline.due_stages(self.schedule, self.now))
+
+    def test_disabled(self):
+        self.schedule.enabled = False
+        self.assertEqual(pipeline.due_stages(self.schedule, self.now), [])
+
+
+class PlanTests(TestCase):
+    def setUp(self):
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.lt = Language.objects.create(code="lt", name="Lietuvių")
+        self.supplier = _supplier()
+        self.schedule = SupplierSchedule.objects.create(supplier=self.supplier)
+        self.category = Category.objects.create(name="Masalai", slug="masalai")
+
+    def _offer(self, sku, product=None, **kw):
+        defaults = dict(
+            supplier=self.supplier,
+            external_id=sku,
+            sku=sku,
+            name=f"Item {sku}",
+            product=product,
+            stock=5,
+            is_available=True,
+            is_published=True,
+            selling_price=Decimal("12.10"),
+            purchase_price=Decimal("5.00"),
+        )
+        defaults.update(kw)
+        return Offer.objects.create(**defaults)
+
+    def _product(self, sku, category=True, lt=True):
+        product = Product.objects.create(
+            sku=sku, name=f"Product {sku}", category=self.category if category else None
+        )
+        if lt:
+            ProductText.objects.create(product=product, language=self.lt, name=f"Prekė {sku}")
+        return product
+
+    def _state(self, rows):
+        return patch.object(pipeline, "fetch_variant_state", return_value=rows)
+
+    def test_plan_stock_only_changed_and_known(self):
+        self._offer("A1", stock=7)
+        self._offer("A2", stock=3, is_discontinued=True)
+        self._offer("A3", stock=1)
+        self._offer("A4", stock=4)
+        state = {
+            "SP.A1": {"code": "SP.A1", "qty": 2},
+            "SP.A2": {"code": "SP.A2", "qty": 3},
+            "SP.A4": {"code": "SP.A4", "qty": 4},
+        }
+        with self._state(state) as mock_state:
+            warehouse, items, stats = pipeline.plan_stock(self.supplier)
+        self.assertEqual(warehouse, "sup")
+        self.assertEqual(mock_state.call_args[0][1], "sup")
+        self.assertEqual(items, [{"code": "SP.A1", "qty": 7}, {"code": "SP.A2", "qty": 0}])
+        self.assertEqual(stats["in_shop"], 3)
+
+    def test_plan_prices_guard_lock_and_unchanged(self):
+        self._offer("A1")  # 12.10 su PVM -> 10.00
+        self._offer("A2", selling_price=Decimal("339.01"))  # -> 280.17
+        self._offer("A3", price_locked=True)
+        self._offer("A4")
+        self._offer("A5")
+        state = {
+            "SP.A1": {"code": "SP.A1", "price_net": "9.00", "cost_net": "5.00"},
+            "SP.A2": {"code": "SP.A2", "price_net": "8.26", "cost_net": None},
+            "SP.A3": {"code": "SP.A3", "price_net": "1.00", "cost_net": None},
+            "SP.A4": {"code": "SP.A4", "price_net": "10.00", "cost_net": "5.00"},
+        }
+        with self._state(state):
+            items, stats = pipeline.plan_prices(self.schedule)
+        self.assertEqual(items, [{"code": "SP.A1", "price_net": "10.00", "cost_net": "5.00"}])
+        self.assertEqual(stats["held"], 1)
+        self.assertEqual(stats["held_sample"][0]["code"], "SP.A2")
+        self.assertEqual(stats["locked"], 1)
+        self.assertEqual(stats["not_in_shop"], 1)
+
+    def test_plan_prices_without_guard(self):
+        self._offer("A2", selling_price=Decimal("339.01"))
+        self.schedule.price_change_guard_pct = 0
+        with self._state({"SP.A2": {"code": "SP.A2", "price_net": "8.26", "cost_net": None}}):
+            items, stats = pipeline.plan_prices(self.schedule)
+        self.assertEqual(items[0]["price_net"], "280.17")
+
+    def test_catalog_delta_gates_and_keeps_shop_prices(self):
+        self._offer("A1", product=self._product("P1"))
+        self._offer("B1", product=self._product("P2", lt=False))
+        self._offer("C1", product=self._product("P3", category=False))
+        self._offer("D1", product=self._product("P4"))
+        state = {"SP.A1": {"code": "SP.A1", "price_net": "9.00", "cost_net": "4.00"}}
+        with self._state(state):
+            payload, hashes, stats = pipeline.plan_catalog_delta(self.supplier)
+        codes = [i["code"] for i in payload["items"]]
+        self.assertEqual(sorted(codes), ["P1", "P4"])
+        self.assertEqual(stats["changed"], 1)
+        self.assertEqual(stats["new"], 1)
+        self.assertEqual(stats["untranslated_sample"], ["P2"])
+        self.assertEqual(stats["unmapped_sample"], ["P3"])
+        p1 = next(i for i in payload["items"] if i["code"] == "P1")
+        self.assertEqual(p1["variants"][0]["price_net"], "9.00")
+        self.assertEqual(p1["variants"][0]["cost_net"], "4.00")
+        p4 = next(i for i in payload["items"] if i["code"] == "P4")
+        self.assertEqual(p4["variants"][0]["price_net"], "10.00")
+
+        Product.objects.filter(sku="P1").update(exported_hash=hashes["P1"])
+        with self._state(state):
+            payload, _, stats = pipeline.plan_catalog_delta(self.supplier)
+        self.assertEqual([i["code"] for i in payload["items"]], ["P4"])
+        self.assertEqual(stats["unchanged"], 1)
+
+    def test_hash_ignores_prices_and_stock(self):
+        item = {"code": "X", "price_net": "1", "variants": [{"code": "v", "price_net": "1", "stock": {"a": 1}}]}
+        other = {"code": "X", "price_net": "2", "variants": [{"code": "v", "price_net": "3", "stock": {"a": 9}}]}
+        self.assertEqual(pipeline.item_hash(item), pipeline.item_hash(other))
+        other["variants"][0]["name"] = "changed"
+        self.assertNotEqual(pipeline.item_hash(item), pipeline.item_hash(other))
+
+    def test_stage_catalog_pushes_and_stores_hash_except_failed(self):
+        self._offer("A1", product=self._product("P1"))
+        self._offer("D1", product=self._product("P4"))
+        export = ExportRun.objects.create(
+            status=ExportRun.Status.PUSHED, shop_response={"id": 5, "failed_items": 1}
+        )
+        with (
+            self._state({}),
+            patch.object(pipeline, "_translation_step", return_value=True),
+            patch.object(pipeline, "run_export", return_value=export) as mock_export,
+            patch.object(pipeline, "_failed_codes", return_value={"P4"}),
+        ):
+            run = pipeline.run_stage(self.supplier, "catalog")
+        self.assertEqual(run.status, PipelineRun.Status.DONE, run.error_message)
+        self.assertEqual(len(mock_export.call_args[0][1]["items"]), 2)
+        self.assertTrue(Product.objects.get(sku="P1").exported_hash)
+        self.assertEqual(Product.objects.get(sku="P4").exported_hash, "")
+        self.schedule.refresh_from_db()
+        self.assertIsNotNone(self.schedule.last_catalog_at)
+
+    def test_stage_failure_is_recorded(self):
+        with patch.object(pipeline, "fetch_variant_state", side_effect=RuntimeError("shop down")):
+            run = pipeline.run_stage(self.supplier, "stock")
+        self.assertEqual(run.status, PipelineRun.Status.FAILED)
+        self.assertIn("shop down", run.error_message)
+
+    def test_translation_waits_then_applies(self):
+        self.schedule.translation_batch_id = "batch_1"
+        self.schedule.catalog_phase = SupplierSchedule.Phase.TRANSLATING
+        self.schedule.save()
+        run = PipelineRun.objects.create(supplier=self.supplier, stage="catalog")
+        response = MagicMock()
+        response.json.return_value = {"status": "in_progress"}
+        tl = "apps.ingestion.management.commands.translate_lang"
+        with (
+            patch(f"{tl}._openai_headers", return_value={}),
+            patch.object(pipeline.requests, "get", return_value=response),
+            patch(f"{tl}.Command._apply") as mock_apply,
+        ):
+            self.assertFalse(pipeline._translation_step(self.schedule, run, False))
+            response.json.return_value = {"status": "completed"}
+            self.assertTrue(pipeline._translation_step(self.schedule, run, False))
+        mock_apply.assert_called_once()
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.catalog_phase, "")
+        self.assertEqual(self.schedule.translation_batch_id, "")

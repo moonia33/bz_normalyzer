@@ -100,6 +100,11 @@ class Product(TimeStampedModel):
     shipping_weight_kg = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
     attributes = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
+    exported_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Paskutinio į shop nusiųsto katalogo įrašo hash (be kainų/likučių).",
+    )
 
     class Meta:
         ordering = ["name"]

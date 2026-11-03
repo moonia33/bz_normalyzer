@@ -184,6 +184,7 @@ class Command(BaseCommand):
             help="Generuoti tik seo_* laukus (name/description neperrašomi; EN rašoma į Product.seo_*)",
         )
         parser.add_argument("--out", default=None, help="Išvesties failas")
+        parser.add_argument("--supplier", default=None, help="Versti tik šio tiekėjo offer'ius")
 
     def _language(self, code: str) -> Language:
         lang = Language.objects.filter(code=code, is_active=True).first()
@@ -225,8 +226,10 @@ class Command(BaseCommand):
 
     # ---------- prepare ----------
 
-    def _offers_to_translate(self, lang, force: bool):
+    def _offers_to_translate(self, lang, force: bool, supplier=None):
         qs = Offer.objects.filter(is_published=True).select_related("product")
+        if supplier:
+            qs = qs.filter(supplier__code=getattr(supplier, "code", supplier))
         if not force:
             qs = qs.exclude(
                 id__in=OfferText.objects.filter(language=lang).values_list("offer_id", flat=True)
@@ -284,7 +287,9 @@ class Command(BaseCommand):
             targets = self._seo_targets(lang, options["force"])
         else:
             targets = []
-            for offer in self._offers_to_translate(lang, options["force"]):
+            for offer in self._offers_to_translate(
+                lang, options["force"], options.get("supplier")
+            ):
                 fields = {
                     "name": offer.name or "",
                     "base_name": offer.base_name or "",
