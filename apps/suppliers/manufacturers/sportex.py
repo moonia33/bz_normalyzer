@@ -150,7 +150,8 @@ def crawl(languages: tuple[str, ...] = ("de", "en", "pl"), delay: float = 0.7, l
         parsed = parse_page(response.content)
         if not parsed["codes"]:
             continue
-        yield "de", url, parsed
+        if "de" in languages:
+            yield "de", url, parsed
         for lang in languages:
             href = parsed["languages"].get(lang)
             if lang == "de" or not href or href == url:
