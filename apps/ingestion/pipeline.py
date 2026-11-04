@@ -583,6 +583,10 @@ def _propagate_product_text(
     # Perrašome tik jei šis offer'is buvo to vertimo šaltinis arba tekstas tuščias.
     if text.source_offer_id not in (None, offer.id):
         return
+    if text.source_offer_id is None and Offer.objects.filter(
+        product_id=offer.product_id, is_published=True
+    ).count() > 1:
+        return  # bendras visų variantų tekstas (translate_lang 'pt:')
     changed = []
     for key, value in fields.items():
         current = getattr(text, key)
