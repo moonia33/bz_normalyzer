@@ -1346,6 +1346,10 @@ class TranslateLangPrepareTests(TestCase):
         )
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
             lines = self._prepare("lt", tmp.name)
+        self.assertNotIn("manufacturer_text", json.loads(lines[0]["body"]["messages"][1]["content"]))
+        Offer.objects.filter(external_id="SW1").update(brand_name_raw="Sportex")
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
         fields = json.loads(lines[0]["body"]["messages"][1]["content"])
         self.assertTrue(fields["manufacturer_text"])
         self.assertIn("Compact feeder series.", fields["description"])

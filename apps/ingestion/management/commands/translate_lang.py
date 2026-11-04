@@ -188,11 +188,12 @@ def _spec_attributes(attributes, name: str = "") -> dict:
 def _manufacturer_source(offer) -> tuple[str, dict] | None:
     """Gamintojo aprašymas (EN, kitaip DE) ir lentelės eilutė pagal prekės kodą."""
     code = str(offer.external_id or "").strip().upper()
-    if not code:
+    source = slugify(offer.brand_name_raw or "")
+    if not code or not source:
         return None
     for lang in ("en", "de"):
         content = (
-            ManufacturerContent.objects.filter(language=lang, codes__contains=[code])
+            ManufacturerContent.objects.filter(source=source, language=lang, codes__contains=[code])
             .order_by("-updated_at")
             .first()
         )
