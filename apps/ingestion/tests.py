@@ -1315,6 +1315,26 @@ class TranslateLangPrepareTests(TestCase):
         self.assertTrue(json.loads(user["content"])["is_accessory"])
         self.assertIn("Fiderio viršūnėlė Delphin Yakuza Feeder", system["content"])
 
+    def test_empty_description_passes_attributes_and_shop_category(self):
+        offer = Offer.objects.get(external_id="SW1")
+        offer.attributes = {
+            "axes": {"line_length": "350m", "color": "", "model": "Mini Swinger"},
+            "weight_kg": 1,
+        }
+        offer.category = Category.objects.create(name="Pinti valai")
+        offer.save(update_fields=["attributes", "category"])
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        fields = json.loads(lines[0]["body"]["messages"][1]["content"])
+        self.assertEqual(fields["shop_category"], "Pinti valai")
+        self.assertEqual(fields["attributes"], {"line_length": "350m"})
+        offer.description = "Strong braid"
+        offer.save(update_fields=["description"])
+        OfferText.objects.all().delete()
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        self.assertNotIn("attributes", json.loads(lines[0]["body"]["messages"][1]["content"]))
+
     def test_other_languages_keep_generic_prompt(self):
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
             lines = self._prepare("pl", tmp.name)
