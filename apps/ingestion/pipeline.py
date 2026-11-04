@@ -583,7 +583,7 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     if changed_fields:
         product.save(update_fields=[*changed_fields, "updated_at"])
 
-    ProductLink.objects.get_or_create(
+    ProductLink.objects.update_or_create(
         supplier=job.supplier,
         external_id=item.external_id,
         defaults={"product": product},
