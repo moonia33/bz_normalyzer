@@ -12,6 +12,7 @@ from apps.ingestion.dto import NormalizedItem
 from apps.ingestion.models import Offer
 from apps.ingestion.pipeline import (
     _apply_reference,
+    _left_split_group,
     _reference_map,
     _reference_variants,
 )
@@ -138,6 +139,20 @@ class PricesheetTests(TestCase):
         self.assertEqual(axes["KR-CL1301"], {"color": "Schwarz", "size": "M"})
         self.assertEqual(axes["KR-CL1302"], {"color": "Schwarz", "size": "L"})
         self.assertEqual(axes["KR-AC6"], {})
+
+
+    def test_split_offer_leaves_old_page_product(self):
+        from types import SimpleNamespace
+
+        old = SimpleNamespace(product_group="seamaster-leader")
+        split = NormalizedItem(external_id="8390-1", name="x",
+                               extra={"split_from_group": "seamaster-leader"})
+        fc = SimpleNamespace(product_group="seamaster-leader-seamaster-fluorocarbon-leader")
+        self.assertTrue(_left_split_group(old, split, fc))
+        new = SimpleNamespace(product_group=fc.product_group)
+        self.assertFalse(_left_split_group(new, split, fc))
+        plain = NormalizedItem(external_id="8382-1", name="x", extra={})
+        self.assertFalse(_left_split_group(old, plain, SimpleNamespace(product_group="other")))
 
 
 class CategoryMarkupRulesTests(TestCase):

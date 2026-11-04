@@ -86,6 +86,7 @@ _WORD_RE = re.compile(r"[^a-z0-9]+")
 _GROUP_LENGTH_RE = re.compile(r"\b\d{1,5}(?:[.,]\d+)?\s*(?:cm|m)\b", re.IGNORECASE)
 _GROUP_SPOOL_RE = re.compile(r"\b\d+\s*/\s*\d+\s*lbs?\b", re.IGNORECASE)
 _GROUP_VARIANT_WORDS = _COLOR_WORDS | {
+    "xs", "s", "m", "l", "xl", "xxl", "xxxl", "3xl", "4xl",
     "oliv", "camou", "camouflage", "silt", "weed", "gravel", "multicolor",
 }
 
@@ -221,6 +222,7 @@ def _split_mixed_pages(rows: list[dict[str, Any]]) -> None:
                 name = f"{product_name} {name}"
             row["page_product_name"] = product_name
             row["product_name"] = name
+            row["split_from_group"] = group
             row["product_group"] = f"{group}-{_slug(key)}"
 
 
@@ -621,6 +623,7 @@ class OckertAdapter(BaseAdapter):
             "identifiers": {"art_no": art_no, "item_id": row.get("item_id")},
             "base_name": base_name,
             "product_group": row.get("product_group", ""),
+            "split_from_group": row.get("split_from_group") or None,
             "sub_category_raw": sub_category,
             "family_raw": family,
             "rrp_price": str(rrp) if rrp is not None else None,

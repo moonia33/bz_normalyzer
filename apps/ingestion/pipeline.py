@@ -429,11 +429,28 @@ def _find_matching_product(
     return None
 
 
+def _left_split_group(product: Product | None, item: NormalizedItem, offer: Offer) -> bool:
+    """Adapteris atskyrė prekę nuo puslapio grupės – senas ryšys nebegalioja."""
+    split_from = _extra_text(item.extra, "split_from_group").lower()
+    group = (offer.product_group or "").lower()
+    return bool(
+        product is not None
+        and split_from
+        and group
+        and group != split_from
+        and (product.product_group or "").lower() == split_from
+    )
+
+
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
     product = (
         _find_matching_product(job.supplier, item.external_id, offer)
         or offer.product
     )
+    if _left_split_group(product, item, offer):
+        product = _find_matching_product(
+            job.supplier, item.external_id, offer, use_links=False, use_identity=False
+        )
     if not product:
         # SKU = tiekėjo art-no; supplier sku_prefix tik kolizijos atveju
         # (tas pats art-no iš kito tiekėjo jau turi produktą).
