@@ -70,6 +70,9 @@ def _html_to_text(body: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
+ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+
+
 @register_adapter
 class ForgottenFlavoursAdapter(BaseAdapter):
     """forgottenflavoursofficial.com (Shopify) viešo katalogo scraper'is.
@@ -111,7 +114,8 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         from apps.suppliers.models import FeedRole
 
         is_stock = getattr(self.feed, "role", "") == FeedRole.STOCK
-        fetch_avail = bool(self.config.get("fetch_availability", is_stock))
+        # Ir katalogo importas rašo likutį – be `available` išparduoti variantai gautų in_stock_qty.
+        fetch_avail = bool(self.config.get("fetch_availability", True)) or is_stock
 
         products = self._products_json(session, base_url, timeout, retries, delay)
         if max_products:
@@ -135,7 +139,22 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                 errors.append({"handle": str(product.get("handle")), "error": str(exc)[:300]})
                 logger.warning("FF produkto klaida %s: %s", product.get("handle"), exc)
 
-        return json.dumps({"items": items, "errors": errors}, ensure_ascii=False).encode("utf-8")
+        payload = {"items": items, "errors": errors}
+        currency = str(self.config.get("currency") or "GBP").upper()
+        if currency != "EUR":
+            payload["currency"] = currency
+            payload["rate_per_eur"] = str(self._ecb_rate(session, currency, timeout))
+        return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    @staticmethod
+    def _ecb_rate(session, currency: str, timeout: int) -> Decimal:
+        """ECB dienos kursas: kiek `currency` vienetų už 1 EUR."""
+        response = session.get(ECB_RATES_URL, timeout=timeout)
+        response.raise_for_status()
+        m = re.search(rf"currency=['\"]{currency}['\"]\s+rate=['\"]([\d.]+)['\"]", response.text)
+        if not m:
+            raise AdapterError(f"Forgotten Flavours: ECB kurso {currency} nėra – kainos nekonvertuojamos.")
+        return Decimal(m.group(1))
 
     # ---------------------------------------------------------------- helpers
 
@@ -256,6 +275,8 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         data = json.loads(payload.decode("utf-8"))
         if isinstance(data, str):
             data = json.loads(data)
+        self.fetch_errors = len(data.get("errors") or [])
+        self._rate = Decimal(data["rate_per_eur"]) if data.get("rate_per_eur") else None
         seen: set[str] = set()
         for row in data.get("items") or []:
             external_id = (row.get("external_id") or "").strip()
@@ -280,11 +301,14 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         in_stock_qty = int(self.config.get("in_stock_qty", DEFAULT_IN_STOCK_QTY))
         available = bool(row.get("available", True))
         rrp = self._to_decimal(row.get("price"))
+        rate = getattr(self, "_rate", None)
+        if rrp is not None and rate:
+            rrp = (rrp / rate).quantize(Decimal("0.01"))
         images = [u for u in (row.get("images") or []) if u]
         grams = row.get("grams")
 
         # Tiekėjo SKU jau turi 'FF-' prefiksą ('FF-PU-MC15') – nuimam,
-        # kad shop kodas būtų 'FF.PU-MC15', ne 'FF.FF-PU-MC15'.
+        # kad shop kodas būtų 'FR.PU-MC15', ne 'FR.FF-PU-MC15'.
         raw_sku = (row.get("sku") or "").strip()
         sku = raw_sku[3:] if raw_sku.upper().startswith("FF-") else raw_sku
 
@@ -318,7 +342,7 @@ class ForgottenFlavoursAdapter(BaseAdapter):
             images=images,
             stock=in_stock_qty if available else 0,
             purchase_price=None,  # pirkimo kainų nėra – tik public retail
-            currency=str(self.config.get("currency") or "GBP"),
+            currency="EUR",
             is_available=available,
             extra={k: v for k, v in extra.items() if v not in (None, "", {})},
             raw=row,

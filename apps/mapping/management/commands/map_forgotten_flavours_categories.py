@@ -16,6 +16,8 @@ from apps.catalog.models import Category
 from apps.ingestion.models import Offer
 from apps.mapping.models import CategoryMapping
 from apps.mapping.services import map_category
+from apps.pricing.engine import compute_selling_price
+from apps.pricing.models import PriceRule
 from apps.suppliers.models import Supplier
 
 SUPPLIER_CODE = "forgotten_flavours"
@@ -114,6 +116,7 @@ class Command(BaseCommand):
         self.stdout.write(f"CategoryMapping: {created} sukurta, {updated} atnaujinta.")
 
         remapped = products_updated = 0
+        rules = list(PriceRule.objects.filter(is_active=True))
         for offer in (
             Offer.objects.filter(supplier=supplier)
             .select_related("product")
@@ -125,6 +128,10 @@ class Command(BaseCommand):
                 offer.category = category
                 changed.append("category")
                 remapped += 1
+            new_price = compute_selling_price(offer, rules)
+            if offer.selling_price != new_price:
+                offer.selling_price = new_price
+                changed.append("selling_price")
             new_published = bool(
                 not offer.is_discontinued
                 and offer.category_id

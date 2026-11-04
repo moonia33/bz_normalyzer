@@ -66,7 +66,7 @@ class TestItems:
         assert n.sku == "PU-EE12"
         assert n.purchase_price is None
         assert n.extra["rrp_price"] == "14.99"
-        assert n.currency == "GBP"
+        assert n.currency == "EUR"
         assert n.attributes == {"axes": {"size": "12mm"}}
         assert n.is_available and n.stock == 10
 
@@ -75,3 +75,16 @@ class TestItems:
         payload = json.dumps({"items": items + items[:1]}).encode()
         rows = list(_adapter().parse(payload))
         assert len(rows) == 2
+
+
+class TestCurrencyAndErrors:
+    def test_gbp_converted_to_eur_and_fetch_errors_counted(self):
+        adapter = _adapter()
+        rows = _adapter()._product_items(_product(), "https://x.com", None)
+        payload = json.dumps(
+            {"items": rows, "errors": [{"handle": "x", "error": "429"}], "rate_per_eur": "0.85"}
+        ).encode()
+        n = adapter.normalize(next(iter(adapter.parse(payload))))
+        assert n.extra["rrp_price"] == "17.64"
+        assert n.currency == "EUR"
+        assert adapter.fetch_errors == 1
