@@ -145,6 +145,9 @@ def run_import(job: ImportJob) -> ImportJob:
             except Exception as exc:
                 stats["errors"] += 1
                 _record_error(stats, row_no, item, exc)
+        # Adapterio fetch metu nepavykę produktai – kaip klaidingos eilutės
+        # (kitaip mark_absent_offers juos nulintų kaip dingusius).
+        stats["errors"] += int(getattr(adapter, "fetch_errors", 0) or 0)
 
         feed.last_success_at = timezone.now()
         feed.save(update_fields=["last_success_at", "updated_at"])
