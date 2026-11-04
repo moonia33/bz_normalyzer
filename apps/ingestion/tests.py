@@ -1338,6 +1338,15 @@ class TranslateLangPrepareTests(TestCase):
             with open(tmp.name, encoding="utf-8") as handle:
                 lines = [json.loads(line) for line in handle]
         self.assertEqual([line["custom_id"] for line in lines], [f"pt:{product.id}"])
+        lang = Language.objects.get(code="lt")
+        ProductText.objects.create(product=product, language=lang, name="Pintas valas X8")
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            call_command(
+                "translate_lang", "--language", "lt", "--prepare", "--products-only",
+                "--out", tmp.name, stdout=StringIO(),
+            )
+            with open(tmp.name, encoding="utf-8") as handle:
+                self.assertEqual(handle.read().strip(), "")
         system, user = lines[0]["body"]["messages"]
         self.assertIn("VISOS PREKĖS TEKSTAS", system["content"])
         fields = json.loads(user["content"])

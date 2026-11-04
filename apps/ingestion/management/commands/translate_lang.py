@@ -320,10 +320,17 @@ class Command(BaseCommand):
         return qs
 
     @staticmethod
-    def _product_targets(product_rows: dict) -> list:
+    def _product_targets(product_rows: dict, lang, force: bool = False) -> list:
         """'pt:<product_id>' – bendras kelių variantų prekės tekstas (ProductText)."""
         targets = []
         ids = [pid for pid in product_rows if pid]
+        if not force:
+            done = set(
+                ProductText.objects.filter(
+                    product_id__in=ids, language=lang, source_offer__isnull=True
+                ).exclude(name="").values_list("product_id", flat=True)
+            )
+            ids = [pid for pid in ids if pid not in done]
         siblings: dict[int, list] = {}
         for sib in Offer.objects.filter(product_id__in=ids, is_published=True).order_by(
             "external_id"
@@ -436,7 +443,7 @@ class Command(BaseCommand):
                 if not options.get("products_only"):
                     targets.append((f"o:{offer.id}", offer, fields))
                 product_rows.setdefault(offer.product_id, (offer, fields))
-            targets.extend(self._product_targets(product_rows))
+            targets.extend(self._product_targets(product_rows, lang, options["force"]))
 
         if options["limit"]:
             targets = targets[: options["limit"]]
