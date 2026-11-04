@@ -1,9 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
-import pytest
-from lxml import html as lxml_html
-
 from apps.suppliers.adapters.ridgemonkey import (
     RidgeMonkeyAdapter,
     _axes_from_label,
