@@ -1,5 +1,6 @@
 import json
 import math
+import re
 
 import requests
 from django.conf import settings
@@ -125,7 +126,7 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
   - `description` – HTML pastraipa <p>…</p>, 1–2 sakiniai TIK iš faktų: prekės tipas, gamintojas, serija/modelis, svarbiausi parametrai iš `attributes` ir `name` (pvz. „<p>Pintas valas Climax X8 multicolor – 350 m ilgio, 0,18 mm skersmens, atsparumas trūkimui 15,5 kg.</p>“). Modelio ar serijos žymėjimų neaiškink (X8, 5x15m, RS-2) – rašyk juos kaip šaltinyje. Serija ar tiekėjo kategorija gali būti paminėta, jei ji yra šaltinyje.
   - po pastraipos tame pačiame `description` – HTML sąrašas <ul><li>Parametras: reikšmė</li></ul> iš `attributes` su lietuviškais pavadinimais: line_length / rod_length_m – Ilgis, line_diameter – Skersmuo, line_strength – Atsparumas trūkimui, casting_weight – Metimo svoris, sections – Dalių skaičius, weight – Svoris, size – Dydis, color – Spalva, model – Modelis, flavor – Skonis, volume – Tūris; rod_length_ft praleisk, jei yra metrai; model įtrauk tik jei jo nėra pavadinime. Reikšmėse dešimtainis kablelis, vienetai kaip šaltinyje („3.000m“ = 3000 m). Parametrą, kurio reikšmė ar vienetas neaiškūs (pvz. vokiškos santrumpos), praleisk. Jei neliko nė vieno parametro – sąrašo nedėk.
   - `technical_description` grąžink tuščią (parametrai jau yra `description`).
-- Jei `manufacturer_text: true` – `description` yra gamintojo aprašymas (anglų arba vokiečių k.). Išversk jį tiksliai ir pilnai HTML pastraipomis <p>…</p> (be reklaminių pagyrų, kurių nėra šaltinyje), o po jo pridėk parametrų sąrašą <ul><li>…</li></ul> iš `attributes` pagal žemiau esančias taisykles. `attributes` raktai gali būti lentelės stulpeliai: Length/Länge cm – Ilgis (cm perskaičiuok į m: 330 → 3,30 m), Sections/Teile – Dalių skaičius, Transport length/Transport-Länge – Transportinis ilgis, C.W./WG – Metimo svoris, Weight/Gewicht – Svoris, Rings/Ringe – Žiedų skaičius, Model/Modell – Modelis; Length ft praleisk; žvaigždutes (**) pašalink.
+- Jei `manufacturer_text: true` – `description` yra gamintojo aprašymas (anglų arba vokiečių k.). Perteik jį lietuviškai kaip parduotuvės aprašymą HTML pastraipomis <p>…</p>: trečiuoju asmeniu (be „mūsų“, „mes“, „jūs“); tik faktai apie ŠIĄ prekę ar jos seriją (medžiagos, konstrukcija, technologijos, spalva, kilmės šalis); praleisk sakinius apie kitas serijas ar prekes (pvz. X4 tekste apie X8), pakuotės ar naujienų frazes („abu nauji produktai“), pasikartojančias antraštes; vertinamuosius ir reklaminius žodžius („revoliucinis“, „tobulas“, „neįtikėtinai“, „itin“, „ypač“, „išskirtinis“, „maksimalus“, „puikus“, „aukštos kokybės“, „elegantiškas“, „galingas“, „specialus“, „puikiai tinka“) praleisk, palik faktą (pvz. „iš Toray anglies pluošto“, „Seaguide SIC žiedeliai“); iki 2 pastraipų ir ~5 sakinių. Po jo pridėk parametrų sąrašą <ul><li>…</li></ul> iš `attributes` pagal žemiau esančias taisykles. `attributes` raktai gali būti lentelės stulpeliai: Length/Länge cm – Ilgis (cm perskaičiuok į m: 330 → 3,30 m), Sections/Teile – Dalių skaičius, Transport length/Transport-Länge – Transportinis ilgis (cm → m: 151 → 1,51 m), C.W./WG – Metimo svoris, Weight/Gewicht – Svoris, Rings/Ringe – Žiedų skaičius, Model/Modell – Modelis; Length ft praleisk; žvaigždutes (**) pašalink.
 - Jei `description` tuščias ir `attributes` nėra, arba description tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
 - Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
 - `technical_description` versk tiksliai; jei tuščias ir nėra `attributes` – grąžink tuščią.
@@ -138,6 +139,9 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
 
 6. KALBA
 Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, kiekiuose ir matavimuose dešimtainis skyriklis visada kablelis (3,66 m, 3,25 lb, 0,5 g, 1,8 gou), ne taškas; modelių kodų, serijų ir kitų identifikatorių (pvz. N1.5, 12SAFLHOSO) nekeisk – juose taškas lieka. Neversk pažodžiui – rašyk taip, kaip rašytų lietuviška žvejybos parduotuvė.
+
+7. GALUTINĖ PATIKRA (prieš atsakydamas)
+Perskaityk `description` ir `seo_description`: jei yra „itin“, „ypač“, „puikus/puikiai“, „išskirtinis“, „maksimalus“, „aukštos kokybės“, „elegantiškas“, „galingas“, „tobulas“, „specialus“, „tinka žvejybai su ...“ (kai to nėra šaltinyje), „mūsų“, „jūs“ – perrašyk sakinį be jų.
 
 IŠVESTIS: tik JSON objektas su laukais "name", "base_name", "description", "technical_description", "seo_title", "seo_description", "seo_keywords"."""
 
@@ -206,6 +210,21 @@ def _manufacturer_source(offer) -> tuple[str, dict] | None:
         if text:
             return text, dict((section.get("rows") or {}).get(code) or {})
     return None
+
+
+_INTENSIFIER = re.compile(
+    r"(?<!\bne\s)(?<!\bnėra\s)\b(?:itin|ypač|ypatingai)\s+(\w)", re.IGNORECASE
+)
+
+
+def _strip_intensifiers(text: str) -> str:
+    """„itin tankiai“ -> „tankiai“; sakinio pradžioje didžioji raidė išlieka."""
+
+    def repl(match):
+        first = match.group(0)[0]
+        return match.group(1).upper() if first.isupper() else match.group(1)
+
+    return _INTENSIFIER.sub(repl, text or "")
 
 
 def _config_key(prefix: str, lang_code: str) -> str:
@@ -587,9 +606,13 @@ class Command(BaseCommand):
         if not choices:
             return None
         try:
-            return json.loads(choices[0]["message"]["content"])
+            content = json.loads(choices[0]["message"]["content"])
         except (json.JSONDecodeError, KeyError, IndexError):
             return None
+        for key in ("description", "seo_description"):
+            if isinstance(content.get(key), str):
+                content[key] = _strip_intensifiers(content[key])
+        return content
 
     @staticmethod
     def _seo_fields(content: dict) -> dict:
