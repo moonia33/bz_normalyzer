@@ -442,6 +442,40 @@ def _left_split_group(product: Product | None, item: NormalizedItem, offer: Offe
     )
 
 
+def _strict_group_product(
+    job: ImportJob, item: NormalizedItem, offer: Offer, product: Product | None
+) -> Product | None:
+    """Adapteris garantuoja product_group – produktas negali maišyti kelių grupių."""
+    extra = item.extra or {}
+    group = offer.product_group or ""
+    if not group or not (extra.get("strict_group") or extra.get("split_from_group")):
+        return product
+
+    def single_group(candidate: Product) -> bool:
+        return not (
+            Offer.objects.filter(product=candidate)
+            .exclude(pk=offer.pk)
+            .exclude(product_group__iexact=group)
+            .exists()
+        )
+
+    if product is not None and single_group(product):
+        return product
+    siblings = (
+        Offer.objects.filter(
+            supplier=job.supplier, product_group__iexact=group, product__isnull=False
+        )
+        .exclude(pk=offer.pk)
+        .exclude(product=product)
+        .select_related("product")
+        .order_by("pk")
+    )
+    for sibling in siblings:
+        if single_group(sibling.product):
+            return sibling.product
+    return None
+
+
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
     product = (
         _find_matching_product(job.supplier, item.external_id, offer)
@@ -451,6 +485,7 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
         product = _find_matching_product(
             job.supplier, item.external_id, offer, use_links=False, use_identity=False
         )
+    product = _strict_group_product(job, item, offer, product)
     if not product:
         # SKU = tiekėjo art-no; supplier sku_prefix tik kolizijos atveju
         # (tas pats art-no iš kito tiekėjo jau turi produktą).
