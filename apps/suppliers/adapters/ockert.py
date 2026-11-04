@@ -559,7 +559,9 @@ class OckertAdapter(BaseAdapter):
         image = (row.get("image") or "").strip()
         images = [image] if image else []
 
-        # VE = Verpackungseinheit – tiekėjas parduoda tik pakais; ir mes.
+        # VE = Verpackungseinheit: tiekėjui užsakome pakais, bet parduodame
+        # po 1 vnt. (HEK/UVP – vieneto kainos). VE lieka trade_pack_qty
+        # (B2B ateičiai), sold_as_pack nenustatomas.
         pack_qty = self._to_int(row.get("ve") or row.get("min_order_qty"))
         extra = {
             "identifiers": {"art_no": art_no, "item_id": row.get("item_id")},
@@ -572,7 +574,6 @@ class OckertAdapter(BaseAdapter):
             "source_url": row.get("product_url"),
             "stock_text": row.get("stock_text") or row.get("availability"),
             "trade_pack_qty": pack_qty if pack_qty > 1 else None,
-            "sold_as_pack": True if pack_qty > 1 else None,
             "min_order_qty": row.get("min_order_qty"),
             "duplicate_art_no": row.get("duplicate_art_no"),
         }
