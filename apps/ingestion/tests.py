@@ -1134,6 +1134,21 @@ class ChangeDetectionTests(TestCase):
         self.assertEqual(offer.purchase_price, Decimal("6.00"))
 
 
+class HeldCodesTests(TestCase):
+    def test_unpublish_codes_from_any_supplier_feed(self):
+        from apps.ingestion.pipeline import _is_held
+
+        supplier = Supplier.objects.create(code="hold", name="Hold")
+        feed = SupplierFeed.objects.create(supplier=supplier, name="cat", kind=SourceKind.JSON_URL)
+        SupplierFeed.objects.create(
+            supplier=supplier, name="stock", kind=SourceKind.JSON_URL,
+            config={"unpublish_codes": ["9910-00022-030"]},
+        )
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        self.assertTrue(_is_held(job, "9910-00022-030 "))
+        self.assertFalse(_is_held(job, "9910-00021-030"))
+
+
 class FeedDueTests(TestCase):
     def test_is_due_and_import_due_feeds(self):
         supplier = Supplier.objects.create(code="demo", name="Demo")
