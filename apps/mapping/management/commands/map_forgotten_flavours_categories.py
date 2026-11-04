@@ -29,6 +29,7 @@ MAPPINGS: list[tuple[str, str, str]] = [
     ("End tackle", "", "Suktukai, stabdžiai, gumytės > Karpiniai aksesuarai"),
     ("Hooks", "", "Kabliukai > Karpiniai kabliukai"),
     ("Apparel", "", "Drabužiai, Palapinės, Baldai, Įrankiai > Apranga ir avalynė"),
+    ("Uncategorized", "", "Nepriskirta"),
 ]
 
 LEAVE_UNMAPPED = {("", "")}
