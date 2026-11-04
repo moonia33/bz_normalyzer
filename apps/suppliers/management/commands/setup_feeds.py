@@ -236,4 +236,42 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
 
+        forgotten, _ = Supplier.objects.update_or_create(
+            code="forgotten_flavours",
+            defaults={
+                "name": "Forgotten Flavours",
+                # Pirkimo kainų nėra – tik public retail (rrp_price);
+                # selling_price iš PriceRule taisyklių nuo rrp bazės.
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "FR.",
+            },
+        )
+        ff_config = {
+            "base_url": "https://forgottenflavoursofficial.com",
+            "currency": "GBP",
+            "request_delay": 1.0,
+            "timeout": 30,
+            "retries": 5,
+            "in_stock_qty": 10,
+        }
+        for feed_name, role, interval in (
+            ("Forgotten Flavours katalogas (scrape)", FeedRole.CATALOG, 7 * 24 * 60),
+            ("Forgotten Flavours likučiai (scrape)", FeedRole.STOCK, 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=forgotten,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.SCRAPER,
+                    "role": role,
+                    "language": languages["en"] if role == FeedRole.CATALOG else None,
+                    "adapter_code": "forgotten_flavours",
+                    "config": ff_config,
+                    "sync_interval_minutes": interval,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
         self.stdout.write(self.style.SUCCESS("Done."))

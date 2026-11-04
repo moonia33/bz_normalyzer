@@ -9,6 +9,7 @@ class SuppliersConfig(AppConfig):
     def ready(self) -> None:
         from apps.suppliers.adapters import (  # noqa: F401
             bounty_fishing,
+            forgotten_flavours,
             fox,
             fox_discontinued,
             fox_stock,
