@@ -20,5 +20,6 @@ class SuppliersConfig(AppConfig):
             mivardi,
             moss,
             ockert,
+            ridgemonkey,
             shimano,
         )

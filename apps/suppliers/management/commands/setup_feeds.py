@@ -236,4 +236,44 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
 
+        ridgemonkey, _ = Supplier.objects.update_or_create(
+            code="ridgemonkey",
+            defaults={
+                "name": "RidgeMonkey",
+                # B2B kainos – EUR be PVM ("19.000 (EUR) excl tax").
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "RM.",
+            },
+        )
+        ridgemonkey_config = {
+            "username": os.environ.get("RIDGEMONKEY_USERNAME", ""),
+            "password": os.environ.get("RIDGEMONKEY_PASSWORD", ""),
+            "request_delay": 0.5,
+            "timeout": 30,
+            "retries": 4,
+            "in_stock_qty": 10,
+        }
+        for feed_name, role, lang_code, feed_group, interval in (
+            ("RidgeMonkey EN katalogas (scrape)", FeedRole.CATALOG, "en", "catalog", 7 * 24 * 60),
+            ("RidgeMonkey PL katalogas (scrape)", FeedRole.CATALOG, "pl", "catalog", 7 * 24 * 60),
+            ("RidgeMonkey DE katalogas (scrape)", FeedRole.CATALOG, "de", "catalog", 7 * 24 * 60),
+            ("RidgeMonkey likučiai ir kainos (scrape)", FeedRole.STOCK, None, "", 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=ridgemonkey,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.SCRAPER,
+                    "role": role,
+                    "language": languages[lang_code] if lang_code else None,
+                    "feed_group": feed_group,
+                    "adapter_code": "ridgemonkey",
+                    "config": ridgemonkey_config,
+                    "sync_interval_minutes": interval,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
         self.stdout.write(self.style.SUCCESS("Done."))
