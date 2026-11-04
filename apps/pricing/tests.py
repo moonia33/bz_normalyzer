@@ -70,3 +70,11 @@ class OnlyWithoutRrpRuleTests(TestCase):
         )
         self.assertEqual(compute_selling_price(plain), Decimal("19.95"))
         self.assertEqual(compute_selling_price(with_rrp), Decimal("24.99"))
+        zero_rrp = Offer.objects.create(
+            supplier=supplier,
+            external_id="c",
+            name="C",
+            purchase_price=Decimal("10.00"),
+            rrp_price=Decimal("0"),
+        )
+        self.assertEqual(compute_selling_price(zero_rrp), Decimal("19.95"))
