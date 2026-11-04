@@ -268,9 +268,8 @@ class HoldCarpAdapter(BaseAdapter):
         name = _clean(tree.xpath("string(//h1)")) or str(product.get("name") or "")
         description = str(product.get("description") or "")
         crumbs = _page_breadcrumbs(page)
-        if crumbs:
-            crumbs = crumbs[:-1] if len(crumbs) > 1 else crumbs
-        crumbs = crumbs or [first["category"]]
+        # Paskutinis breadcrumb – pati prekė (ir kai jis vienintelis).
+        crumbs = crumbs[:-1] or [first["category"]]
         images = self._images(tree, base_url)
 
         out: list[dict[str, Any]] = []
