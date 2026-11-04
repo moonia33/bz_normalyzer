@@ -21,7 +21,7 @@ forgottenflavoursofficial.com (~363 produktai). Be login'o.
 - Public `price` (retail, su PVM) → `offer.rrp_price`.
 - `compute_selling_price`: bazė = rrp → mūsų `selling_price` per
   PriceRule taisykles (pvz. nuolaida nuo retail arba tiesiog rounding).
-- `currency` = GBP (config; patikrinti ar shop rodo EUR).
+- Valiuta nustatoma iš `/cart.js` (Shopify Markets; iš srv2 – EUR). Jei ne EUR – konvertuojama ECB kursu; `currency` config – tik atsarginė reikšmė.
 
 ## Rate limiting
 

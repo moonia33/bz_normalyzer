@@ -140,11 +140,24 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                 logger.warning("FF produkto klaida %s: %s", product.get("handle"), exc)
 
         payload = {"items": items, "errors": errors}
-        currency = str(self.config.get("currency") or "GBP").upper()
+        # Shopify Markets kainas rodo pagal lankytojo šalį (iš srv2 – EUR).
+        currency = self._store_currency(session, base_url, timeout) or str(
+            self.config.get("currency") or "GBP"
+        ).upper()
         if currency != "EUR":
             payload["currency"] = currency
             payload["rate_per_eur"] = str(self._ecb_rate(session, currency, timeout))
         return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    @staticmethod
+    def _store_currency(session, base_url: str, timeout: int) -> str:
+        """Valiuta, kuria ši sesija gauna products.json kainas (/cart.js)."""
+        try:
+            response = session.get(f"{base_url}/cart.js", timeout=timeout)
+            response.raise_for_status()
+            return str(response.json().get("currency") or "").upper()
+        except (requests.RequestException, ValueError):
+            return ""
 
     @staticmethod
     def _ecb_rate(session, currency: str, timeout: int) -> Decimal:
