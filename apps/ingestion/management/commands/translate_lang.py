@@ -121,14 +121,14 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
 - Versk TIK tai, kas yra šaltinyje. Neprisigalvok savybių, paskirties, suderinamumo („tinka ... ritėms“), kokybės („originali“, „patikima“, „aukštos kokybės“), pristatymo, garantijų, kainų ar akcijų.
 - Jei `description` tuščias ir įvestyje yra `attributes`:
   - `description` – HTML pastraipa <p>…</p>, 1–2 sakiniai TIK iš faktų: prekės tipas, gamintojas, serija/modelis, svarbiausi parametrai iš `attributes` ir `name` (pvz. „<p>Pintas valas Climax X8 multicolor – 350 m ilgio, 0,18 mm skersmens, atsparumas trūkimui 15,5 kg.</p>“). Modelio ar serijos žymėjimų neaiškink (X8, 5x15m, RS-2) – rašyk juos kaip šaltinyje. Serija ar tiekėjo kategorija gali būti paminėta, jei ji yra šaltinyje.
-  - `technical_description` – HTML sąrašas <ul><li>Parametras: reikšmė</li></ul> iš `attributes` su lietuviškais pavadinimais: line_length / rod_length_m – Ilgis, line_diameter – Skersmuo, line_strength – Atsparumas trūkimui, casting_weight – Metimo svoris, sections – Dalių skaičius, weight – Svoris, size – Dydis, color – Spalva, model – Modelis, flavor – Skonis, volume – Tūris; rod_length_ft praleisk, jei yra metrai; model praleisk, jei jis jau yra pavadinime. Reikšmėse dešimtainis kablelis, vienetai kaip šaltinyje („3.000m“ = 3000 m). Parametrą, kurio reikšmė ar vienetas neaiškūs (pvz. vokiškos santrumpos), praleisk.
+  - `technical_description` – HTML sąrašas <ul><li>Parametras: reikšmė</li></ul> iš `attributes` su lietuviškais pavadinimais: line_length / rod_length_m – Ilgis, line_diameter – Skersmuo, line_strength – Atsparumas trūkimui, casting_weight – Metimo svoris, sections – Dalių skaičius, weight – Svoris, size – Dydis, color – Spalva, model – Modelis, flavor – Skonis, volume – Tūris; rod_length_ft praleisk, jei yra metrai; model įtrauk tik jei jo nėra pavadinime. Reikšmėse dešimtainis kablelis, vienetai kaip šaltinyje („3.000m“ = 3000 m). Parametrą, kurio reikšmė ar vienetas neaiškūs (pvz. vokiškos santrumpos), praleisk.
 - Jei `description` tuščias ir `attributes` nėra, arba description tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
 - Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
 - `technical_description` versk tiksliai; jei tuščias ir nėra `attributes` – grąžink tuščią.
 
 5. SEO
 - seo_title: iki 60 simbolių; lietuviškas prekės tipas + gamintojas + modelis (+ svarbiausias parametras, jei telpa).
-- seo_description: 50–160 simbolių, vienas ar du natūralūs sakiniai TIK iš šaltinyje esančių faktų (tipas, gamintojas, serija, parametrai, spalva, savybės iš aprašymo). Kai faktų mažai (pvz. ritės dalis, sekcija) – rašyk trumpai ir nieko nepridėk; trumpas ir tikslas geriau nei ilgas.
+- seo_description: 50–160 simbolių, vienas ar du natūralūs sakiniai TIK iš šaltinyje esančių faktų, be vertinamųjų būdvardžių („patogus“, „puikus“, „kokybiškas“) (tipas, gamintojas, serija, parametrai, spalva, savybės iš aprašymo). Kai faktų mažai (pvz. ritės dalis, sekcija) – rašyk trumpai ir nieko nepridėk; trumpas ir tikslas geriau nei ilgas.
 - DRAUDŽIAMA SEO ir aprašymuose (jei to nėra šaltinyje): „patikimas“, „puikus pasirinkimas“, „puikiai tinka“, „tinka įvairioms/įvairiems ...“, „universalus“, „patogus“, „aukštos kokybės“, „kokybiškas“, „originali“, „patogus sprendimas“, „<gamintojas> kokybė“, „greitas pristatymas“; suderinamumo teiginiai („skirta Shimano ritėms“, „tinka ... modeliams“), paskirtis („tinka remontui“, „jūrinei žvejybai“), žuvų rūšys ar technikos, kurių šaltinyje nėra.
 - seo_keywords: 5–10 raktažodžių kableliais, lietuviškai (gali būti lietuviškai išversta tiekėjo kategorija ar serija; vokiškų kategorijų nekopijuok); gali būti ir originalus angliškas terminas (pvz. „baitrunner“, „swinger“), be EAN/prekės kodų; žuvų rūšių ar technikų, kurių nėra šaltinyje, nedėk.
 
@@ -163,8 +163,12 @@ def _openai_headers() -> dict:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
-def _spec_attributes(attributes) -> dict:
-    """Prekės parametrai vertimui (aprašymui be šaltinio teksto)."""
+def _spec_attributes(attributes, name: str = "") -> dict:
+    """Prekės parametrai vertimui (aprašymui be šaltinio teksto).
+
+    `model`, kurio reikšmė jau yra pavadinime, praleidžiamas – kitaip
+    techniniame aprašyme lieka tuščias „Modelis: <pavadinimo dalis>“.
+    """
     if not isinstance(attributes, dict):
         return {}
     out: dict = {}
@@ -172,6 +176,9 @@ def _spec_attributes(attributes) -> dict:
         values = attributes.get(key)
         if isinstance(values, dict):
             out.update({k: v for k, v in values.items() if v not in (None, "")})
+    model = str(out.get("model") or "").strip().lower()
+    if model and model in (name or "").lower():
+        out.pop("model")
     return out
 
 
@@ -322,7 +329,7 @@ class Command(BaseCommand):
                     fields["is_accessory"] = True
                 if offer.category_id:
                     fields["shop_category"] = offer.category.name
-                attributes = _spec_attributes(offer.attributes)
+                attributes = _spec_attributes(offer.attributes, offer.name or "")
                 if attributes and not (offer.description or "").strip():
                     fields["attributes"] = attributes
                 targets.append((f"o:{offer.id}", offer, fields))

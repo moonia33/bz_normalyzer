@@ -1317,7 +1317,10 @@ class TranslateLangPrepareTests(TestCase):
 
     def test_empty_description_passes_attributes_and_shop_category(self):
         offer = Offer.objects.get(external_id="SW1")
-        offer.attributes = {"axes": {"line_length": "350m", "color": ""}, "weight_kg": 1}
+        offer.attributes = {
+            "axes": {"line_length": "350m", "color": "", "model": "Mini Swinger"},
+            "weight_kg": 1,
+        }
         offer.category = Category.objects.create(name="Pinti valai")
         offer.save(update_fields=["attributes", "category"])
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
