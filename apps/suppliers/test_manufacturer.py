@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.suppliers.manufacturers.sportex import parse_page
 
@@ -35,3 +35,17 @@ class SportexParseTests(SimpleTestCase):
         self.assertEqual(section["rows"]["162334"], {"Modell": "LF3324", "Teile": "2+3"})
         self.assertEqual(page["languages"]["pl"], "https://www.sportex.de/pl/rf/")
         self.assertEqual(page["images"], ["https://www.sportex.de/wp-content/uploads/2025/10/rf.jpg"])
+
+
+class ClimaxSeriesMatchTests(TestCase):
+    def test_codes_by_series_tokens(self):
+        from apps.ingestion.models import Offer
+        from apps.suppliers.management.commands.scrape_manufacturer import _series_codes
+        from apps.suppliers.models import Supplier
+
+        supplier = Supplier.objects.create(code="ockert", name="Ockert")
+        Offer.objects.create(supplier=supplier, external_id="a1", name="x", brand_name_raw="Climax",
+                             base_name="Climax Seamaster Fluorocarbon", sub_category_raw="Seamaster")
+        Offer.objects.create(supplier=supplier, external_id="b1", name="x", brand_name_raw="Climax",
+                             base_name="Climax Seamaster Braid", sub_category_raw="Seamaster")
+        self.assertEqual(_series_codes("climax", "SEAMASTER Fluorocarbon"), ["A1"])
