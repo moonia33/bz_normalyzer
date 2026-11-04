@@ -204,3 +204,36 @@ class SupplierReferenceItem(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.supplier.code}:{self.code}"
+
+
+class ManufacturerContent(TimeStampedModel):
+    """Gamintojo svetainės serijos puslapis vienai kalbai (pvz. sportex.de).
+
+    `codes` – prekių kodai (Art.-Nr.), kuriuos puslapis aprašo; `specs` –
+    {"sections": [{"heading", "text", "rows": {code: {stulpelis: reikšmė}}}]}.
+    """
+
+    source = models.SlugField(max_length=64)
+    url = models.URLField(max_length=500)
+    language = models.CharField(max_length=8)
+    series = models.CharField(max_length=300, blank=True)
+    description = models.TextField(blank=True)
+    specs = models.JSONField(default=dict, blank=True)
+    codes = models.JSONField(default=list, blank=True)
+    images = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["source", "url"], name="uniq_manufacturer_content_url")
+        ]
+        verbose_name = "gamintojo turinys"
+        verbose_name_plural = "gamintojo turinys"
+
+    def __str__(self) -> str:
+        return f"{self.source}:{self.language}:{self.series}"
+
+    def section_for(self, code: str) -> dict | None:
+        for section in (self.specs or {}).get("sections", []):
+            if code in (section.get("rows") or {}):
+                return section
+        return None
