@@ -142,6 +142,23 @@ class OckertAdapterTests(TestCase):
         item = adapter.normalize(self.PAYLOAD["items"][0])
         self.assertEqual(item.category_path, "Sportex Ruten > Salmon Ruten > Laks Serie")
 
+    def test_thousands_separator_line_length(self):
+        from apps.suppliers.adapters.ockert import OckertAdapter, _descriptor_axes
+
+        adapter = OckertAdapter(SimpleNamespace(config={"default_brand": "Climax"}))
+        row = dict(
+            self.PAYLOAD["items"][0],
+            product_name="X8 multicolor",
+            table_title="X8 multicolor 3.500m",
+            specs={},
+        )
+        self.assertEqual(adapter.normalize(row).attributes["axes"]["line_length"], "3500m")
+        row["table_title"] = "X8 multicolor 350m"
+        self.assertEqual(adapter.normalize(row).attributes["axes"]["line_length"], "350m")
+        axes: dict = {}
+        _descriptor_axes("Cult Carp 1.000m 0,30mm", axes)
+        self.assertEqual(axes["line_length"], "1000m")
+
     def test_pack_and_availability(self):
         items = self._items()
         # VE>1 -> trade_pack_qty (B2B), bet parduodama po 1 vnt.
