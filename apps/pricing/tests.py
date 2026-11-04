@@ -45,3 +45,28 @@ class PriceEngineTests(TestCase):
         )
         price = compute_selling_price(self.offer)
         self.assertEqual(price, Decimal("10.00"))
+
+
+class OnlyWithoutRrpRuleTests(TestCase):
+    def test_rule_skips_offers_with_rrp(self):
+        supplier = Supplier.objects.create(code="oc", name="Oc")
+        PriceRule.objects.create(
+            name="x2",
+            supplier=supplier,
+            action=PriceAction.MARKUP_PERCENT,
+            value=Decimal("100"),
+            rounding=RoundingMode.END_95,
+            only_without_rrp=True,
+        )
+        plain = Offer.objects.create(
+            supplier=supplier, external_id="a", name="A", purchase_price=Decimal("10.00")
+        )
+        with_rrp = Offer.objects.create(
+            supplier=supplier,
+            external_id="b",
+            name="B",
+            purchase_price=Decimal("10.00"),
+            rrp_price=Decimal("24.99"),
+        )
+        self.assertEqual(compute_selling_price(plain), Decimal("19.95"))
+        self.assertEqual(compute_selling_price(with_rrp), Decimal("24.99"))

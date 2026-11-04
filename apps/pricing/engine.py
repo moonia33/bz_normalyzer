@@ -25,6 +25,8 @@ def rule_matches(rule: PriceRule, offer: Offer) -> bool:
         return False
     if rule.brand_id and rule.brand_id != offer.brand_id:
         return False
+    if rule.only_without_rrp and offer.rrp_price is not None:
+        return False
     price = offer.purchase_price
     if rule.min_purchase_price is not None:
         if price is None or price < rule.min_purchase_price:

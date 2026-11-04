@@ -19,7 +19,7 @@ from apps.mapping.services import linked_product, map_brand, map_category
 from apps.pricing.engine import compute_selling_price
 from apps.suppliers.adapters.base import AdapterError
 from apps.suppliers.adapters.resolver import resolve_adapter
-from apps.suppliers.models import FeedRole, Supplier, SupplierFeed
+from apps.suppliers.models import FeedRole, Supplier, SupplierFeed, SupplierReferenceItem
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +127,12 @@ def run_import(job: ImportJob) -> ImportJob:
         adapter = resolve_adapter(feed)
         uploaded = job.uploaded_file.path if job.uploaded_file else None
         payload = adapter.fetch(uploaded_path=uploaded)
+        references = {} if ctx.is_translation else _reference_map(job.supplier)
 
         for row_no, item in enumerate(adapter.iter_items(payload), start=1):
             stats["normalized"] += 1
             try:
+                _apply_reference(item, references)
                 with transaction.atomic():
                     _store_raw(job, item)
                     offer = _upsert_offer(job, item, stats, ctx)
@@ -155,6 +157,21 @@ def run_import(job: ImportJob) -> ImportJob:
         job.save(update_fields=["stats", "status", "error_message", "finished_at", "updated_at"])
         raise
     return job
+
+
+def _reference_map(supplier: Supplier) -> dict[str, SupplierReferenceItem]:
+    return {ref.code: ref for ref in SupplierReferenceItem.objects.filter(supplier=supplier)}
+
+
+def _apply_reference(item: NormalizedItem, references: dict[str, SupplierReferenceItem]) -> None:
+    """Kainoraščio eilutė papildo tik tai, ko feed'as neturi (EAN, UVP)."""
+    ref = references.get(str(item.external_id).strip().upper()) if references else None
+    if ref is None:
+        return
+    if not item.ean and ref.ean:
+        item.ean = ref.ean
+    if ref.rrp_price is not None and _extra_decimal(item.extra, "rrp_price") is None:
+        item.extra = {**(item.extra or {}), "rrp_price": str(ref.rrp_price.quantize(Decimal("0.01")))}
 
 
 def _record_error(stats: dict, row_no: int, item: NormalizedItem, exc: Exception) -> None:

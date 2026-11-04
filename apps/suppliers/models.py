@@ -176,3 +176,31 @@ class SupplierSchedule(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.supplier.code} schedule"
 
+
+
+class SupplierReferenceItem(TimeStampedModel):
+    """Tiekėjo kainoraščio / užsakymo lapo eilutė (pvz. Ockert Excel).
+
+    Importe papildo feed'o prekę trūkstamais EAN ir UVP (rrp_price).
+    """
+
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.CASCADE, related_name="reference_items"
+    )
+    code = models.CharField(max_length=128, help_text="Tiekėjo prekės kodas (didžiosiomis).")
+    name = models.CharField(max_length=500, blank=True)
+    ean = models.CharField(max_length=64, blank=True)
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    rrp_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
+    trade_pack_qty = models.PositiveIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=200, blank=True, help_text="Failas / lapas.")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["supplier", "code"], name="uniq_supplier_reference_code")
+        ]
+        verbose_name = "tiekėjo kainoraščio eilutė"
+        verbose_name_plural = "tiekėjo kainoraščio eilutės"
+
+    def __str__(self) -> str:
+        return f"{self.supplier.code}:{self.code}"
