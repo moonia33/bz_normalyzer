@@ -337,10 +337,9 @@ class Command(BaseCommand):
             variants = []
             for sib in offers:
                 attrs = _spec_attributes(sib.attributes, sib.name or "")
-                if attrs and attrs not in variants:
-                    variants.append(attrs)
-            if not variants:
-                continue
+                entry = attrs or {"name": sib.name or ""}
+                if entry not in variants:
+                    variants.append(entry)
             fields = {
                 key: value
                 for key, value in offer_fields.items()
