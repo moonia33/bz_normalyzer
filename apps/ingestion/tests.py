@@ -1315,6 +1315,53 @@ class TranslateLangPrepareTests(TestCase):
         self.assertTrue(json.loads(user["content"])["is_accessory"])
         self.assertIn("Fiderio viršūnėlė Delphin Yakuza Feeder", system["content"])
 
+    def _variant_product(self):
+        product = Product.objects.create(sku="x8", name="Climax X8 multicolor")
+        supplier = Supplier.objects.get(code="fox")
+        offers = []
+        for eid, length, dia in (("X8-1", "350m", "0.16mm"), ("X8-2", "3500m", "0.30mm")):
+            offers.append(Offer.objects.create(
+                supplier=supplier, external_id=eid, sku=eid, product=product,
+                name=f"X8 multicolor {length}", base_name="Climax X8 multicolor",
+                is_published=True, selling_price=Decimal("10.00"), product_group="x8",
+                attributes={"axes": {"line_length": length, "line_diameter": dia}},
+            ))
+        return product, offers
+
+    def test_multi_variant_product_gets_generic_text_row(self):
+        product, _ = self._variant_product()
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            call_command(
+                "translate_lang", "--language", "lt", "--prepare", "--products-only",
+                "--out", tmp.name, stdout=StringIO(),
+            )
+            with open(tmp.name, encoding="utf-8") as handle:
+                lines = [json.loads(line) for line in handle]
+        self.assertEqual([line["custom_id"] for line in lines], [f"pt:{product.id}"])
+        system, user = lines[0]["body"]["messages"]
+        self.assertIn("VISOS PREKĖS TEKSTAS", system["content"])
+        fields = json.loads(user["content"])
+        self.assertEqual(fields["name"], "Climax X8 multicolor")
+        self.assertEqual(
+            fields["variants"],
+            [
+                {"line_length": "350m", "line_diameter": "0.16mm"},
+                {"line_length": "3500m", "line_diameter": "0.30mm"},
+            ],
+        )
+
+    def test_variant_translation_does_not_overwrite_product_text(self):
+        from apps.ingestion.management.commands.translate_lang import Command
+
+        product, offers = self._variant_product()
+        lang = Language.objects.get(code="lt")
+        command = Command()
+        command._write_product_text(product.id, lang, {"name": "Pintas valas Climax X8 multicolor"})
+        command._propagate_to_product(offers[0], lang, {"name": "Pintas valas X8, 350 m"})
+        text = ProductText.objects.get(product=product, language=lang)
+        self.assertEqual(text.name, "Pintas valas Climax X8 multicolor")
+        self.assertIsNone(text.source_offer_id)
+
     def test_empty_description_passes_attributes_and_shop_category(self):
         offer = Offer.objects.get(external_id="SW1")
         offer.attributes = {

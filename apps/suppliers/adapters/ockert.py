@@ -69,7 +69,8 @@ _SHADE_MODIFIERS = {"dark", "light", "dunkel", "hell", "matte", "matt"}
 _SIZE_TAIL_RE = re.compile(r"\bsize\s+([A-Za-z0-9]+)\b", re.I)
 _HOOK_RE = re.compile(r"#\s*(\d+(?:\s*/\s*\d+)?)\b")
 _LB_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*lbs?\b", re.I)
-_METER_RE = re.compile(r"\b(\d{2,4})\s*m\b", re.I)
+# '3.500m' / '1,000m' – tūkstančių skyriklis (DE), ne dešimtainė dalis.
+_METER_RE = re.compile(r"\b(\d{1,2}[.,]\d{3}|\d{2,4})\s*m\b", re.I)
 _MM_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*mm\b", re.I)
 
 _SLUG_ID_RE = re.compile(r"-(\d+)(?:/)?$")
@@ -161,7 +162,7 @@ def _descriptor_axes(descriptor: str, axes: dict[str, str]) -> None:
         axes.setdefault("line_strength", f"{match.group(1)}lb")
     match = _METER_RE.search(descriptor)
     if match:
-        axes.setdefault("line_length", f"{match.group(1)}m")
+        axes.setdefault("line_length", f"{re.sub(r'[.,]', '', match.group(1))}m")
     match = _MM_RE.search(descriptor)
     if match:
         axes.setdefault("line_diameter", f"{match.group(1)}mm")
@@ -661,6 +662,8 @@ class OckertAdapter(BaseAdapter):
             match = re.search(r"\b(\d{1,5})(?:[.,](\d+))?\s*(cm|m)\b", rest)
             if match:
                 value = f"{match.group(1)}{'.' + match.group(2) if match.group(2) else ''}"
+                if match.group(3) == "m" and match.group(2) and len(match.group(2)) == 3:
+                    value = f"{match.group(1)}{match.group(2)}"  # '3.500m' = 3500 m
                 if match.group(3) == "cm":
                     number = self._to_decimal(value)
                     if number is not None:

@@ -143,6 +143,13 @@ Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, 
 7. GALUTINĖ PATIKRA (prieš atsakydamas)
 Perskaityk `description` ir `seo_description`: jei yra „itin“, „ypač“, „puikus/puikiai“, „išskirtinis“, „maksimalus“, „aukštos kokybės“, „elegantiškas“, „galingas“, „tobulas“, „specialus“, „tinka žvejybai su ...“ (kai to nėra šaltinyje), „mūsų“, „jūs“ – perrašyk sakinį be jų.
 
+8. VISOS PREKĖS TEKSTAS (kai įvestyje yra `variants`)
+Tai bendras visos prekės tekstas, kuris rodomas visiems jos variantams (`variants` – kiekvieno varianto parametrai).
+- `name` ir `base_name`: prekės tipas + gamintojas + serija/modelis BE varianto parametrų (ilgio, skersmens, atsparumo, ritės dydžio 800/1000/2500, spalvos, dydžio, kiekio). Parametrą dėk tik jei jis vienodas visiems variantams.
+- `description`: pastraipa apie prekę (iš `description`, jei yra, pagal 4 skyrių) ir sąrašas <ul><li>Parametras: reikšmės</li></ul>, kuriame KIEKVIENAM parametrui išvardytos visos `variants` reikšmės arba intervalas (pvz. „Skersmuo: 0,16–0,30 mm“, „Ilgis: 350 m, 3500 m“, „Dydis: 1500, 2500, 3000, 4000“). Vieno varianto reikšmių nerašyk kaip visos prekės. Pastraipoje parametrų intervalus gali paminėti, bet konkretaus varianto – ne.
+- Ilgis metrais be tūkstančių skyriklio: „3.500m“ = 3500 m.
+- `seo_title`, `seo_description` – be varianto parametrų.
+
 IŠVESTIS: tik JSON objektas su laukais "name", "base_name", "description", "technical_description", "seo_title", "seo_description", "seo_keywords"."""
 
 # SEO-only režimas: turimus (bet kurios kalbos) tekstus paimame kaip kontekstą
@@ -250,6 +257,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Riboti eilučių skaičių")
         parser.add_argument("--force", action="store_true", help="Versti viską iš naujo")
         parser.add_argument(
+            "--products-only",
+            action="store_true",
+            help="Tik bendri kelių variantų prekių tekstai ('pt:'), be variantų OfferText",
+        )
+        parser.add_argument(
             "--seo-only",
             action="store_true",
             help="Generuoti tik seo_* laukus (name/description neperrašomi; EN rašoma į Product.seo_*)",
@@ -307,6 +319,38 @@ class Command(BaseCommand):
             )
         return qs
 
+    @staticmethod
+    def _product_targets(product_rows: dict) -> list:
+        """'pt:<product_id>' – bendras kelių variantų prekės tekstas (ProductText)."""
+        targets = []
+        ids = [pid for pid in product_rows if pid]
+        siblings: dict[int, list] = {}
+        for sib in Offer.objects.filter(product_id__in=ids, is_published=True).order_by(
+            "external_id"
+        ):
+            siblings.setdefault(sib.product_id, []).append(sib)
+        for product_id in ids:
+            offers = siblings.get(product_id) or []
+            if len(offers) < 2:
+                continue
+            offer, offer_fields = product_rows[product_id]
+            variants = []
+            for sib in offers:
+                attrs = _spec_attributes(sib.attributes, sib.name or "")
+                if attrs and attrs not in variants:
+                    variants.append(attrs)
+            if not variants:
+                continue
+            fields = {
+                key: value
+                for key, value in offer_fields.items()
+                if key not in ("name", "attributes", "technical_description")
+            }
+            fields["name"] = offer.base_name or offer.name or ""
+            fields["variants"] = variants[:80]
+            targets.append((f"pt:{product_id}", offer, fields))
+        return targets
+
     def _seo_targets(self, lang, force: bool):
         """`custom_id` prefiksas nusako taikinį: 'ot:<id>' OfferText, 'p:<id>' Product.
 
@@ -358,6 +402,7 @@ class Command(BaseCommand):
             targets = self._seo_targets(lang, options["force"])
         else:
             targets = []
+            product_rows: dict = {}
             for offer in self._offers_to_translate(
                 lang, options["force"], options.get("supplier")
             ):
@@ -387,7 +432,10 @@ class Command(BaseCommand):
                     or not ((offer.description or "").strip() or (offer.technical_description or "").strip())
                 ):
                     fields["attributes"] = attributes
-                targets.append((f"o:{offer.id}", offer, fields))
+                if not options.get("products_only"):
+                    targets.append((f"o:{offer.id}", offer, fields))
+                product_rows.setdefault(offer.product_id, (offer, fields))
+            targets.extend(self._product_targets(product_rows))
 
         if options["limit"]:
             targets = targets[: options["limit"]]
@@ -529,7 +577,7 @@ class Command(BaseCommand):
                 continue
             if prefix == "ot":
                 text_ids.append(int(raw_id))
-            elif prefix == "p":
+            elif prefix in ("p", "pt"):
                 product_ids.append(int(raw_id))
             else:
                 offer_ids.append(int(raw_id))
@@ -561,6 +609,19 @@ class Command(BaseCommand):
                     if value:
                         setattr(product, key, value)
                 product.save(update_fields=list(seo.keys()) + ["updated_at"])
+                ok += 1
+                continue
+
+            if prefix == "pt":
+                if int(raw_id) not in products:
+                    errors += 1
+                    continue
+                self._write_product_text(int(raw_id), lang, {
+                    "name": (content.get("name") or "").strip(),
+                    "base_name": (content.get("base_name") or "").strip(),
+                    "description": (content.get("description") or "").strip(),
+                    **seo,
+                })
                 ok += 1
                 continue
 
@@ -622,7 +683,25 @@ class Command(BaseCommand):
             "seo_keywords": (content.get("seo_keywords") or "").strip()[:255],
         }
 
+    @staticmethod
+    def _has_variants(product_id) -> bool:
+        """Kelių variantų prekės tekstą rašo tik 'pt' eilutė (ne vienas variantas)."""
+        return Offer.objects.filter(product_id=product_id, is_published=True).count() > 1
+
+    @staticmethod
+    def _write_product_text(product_id: int, lang, fields: dict) -> None:
+        values = {k: v for k, v in fields.items() if v}
+        if values.get("name"):
+            values["slug"] = slugify(values["name"])[:220]
+        ProductText.objects.update_or_create(
+            product_id=product_id,
+            language=lang,
+            defaults={**values, "source_offer": None},
+        )
+
     def _propagate_seo_to_product(self, offer, lang, seo):
+        if self._has_variants(offer.product_id):
+            return
         text = ProductText.objects.filter(
             product_id=offer.product_id, language=lang
         ).first()
@@ -644,8 +723,8 @@ class Command(BaseCommand):
             text.save(update_fields=[*changed, "source_offer", "updated_at"])
 
     def _propagate_to_product(self, offer, lang, fields):
-        from django.utils.text import slugify
-
+        if self._has_variants(offer.product_id):
+            return
         text = ProductText.objects.filter(
             product_id=offer.product_id, language=lang
         ).first()
