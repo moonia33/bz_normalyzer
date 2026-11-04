@@ -25,7 +25,7 @@ SUPPLIER_CODE = "ridgemonkey"
 MAPPINGS: list[tuple[str, str, str]] = [
     # ---- Terminal Tackle (Connexion) ----
     ("Terminal Tackle", "Hooks", "Kabliukai > Karpiniai kabliukai"),
-    ("Terminal Tackle", "Hooklinks", "Valai ir pavadėliai > Pavadėliai ir pavadėliniai valai > Karpiniai pavadėliniai valai"),
+    ("Terminal Tackle", "Hooklinks", "Valai ir pavadėliai > Pavadėliai ir pavadėliniai valai > Valai pavadėliams > Karpiniai pavadėliniai valai"),
     ("Terminal Tackle", "Leaders", "Valai ir pavadėliai > Pavadėliai ir pavadėliniai valai"),
     ("Terminal Tackle", "Rock Bottom", "Valai ir pavadėliai > Pavadėliai ir pavadėliniai valai"),
     ("Terminal Tackle", "Mainlines", "Valai ir pavadėliai"),
