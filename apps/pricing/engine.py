@@ -18,12 +18,18 @@ def _round_price(amount: Decimal, mode: str) -> Decimal:
     return amount.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
+def _has_rrp(offer: Offer) -> bool:
+    return offer.rrp_price is not None and offer.rrp_price > 0
+
+
 def rule_matches(rule: PriceRule, offer: Offer) -> bool:
     if rule.supplier_id and rule.supplier_id != offer.supplier_id:
         return False
     if rule.category_id and rule.category_id != offer.category_id:
         return False
     if rule.brand_id and rule.brand_id != offer.brand_id:
+        return False
+    if rule.only_without_rrp and _has_rrp(offer):
         return False
     price = offer.purchase_price
     if rule.min_purchase_price is not None:
@@ -54,7 +60,7 @@ def apply_rule(rule: PriceRule, current: Decimal) -> Decimal:
 def compute_selling_price(offer: Offer, rules: list[PriceRule] | None = None) -> Decimal | None:
     # Pardavimo bazė: RRP (jei yra – pvz. FOX 'RRP EUR' su PVM),
     # kitaip savikaina + markup taisyklės.
-    base = offer.rrp_price if offer.rrp_price is not None else offer.purchase_price
+    base = offer.rrp_price if _has_rrp(offer) else offer.purchase_price
     if base is None:
         return None
     current = base

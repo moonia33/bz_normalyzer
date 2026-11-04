@@ -14,9 +14,10 @@ class PriceRuleAdmin(admin.ModelAdmin):
         "supplier",
         "category",
         "brand",
+        "only_without_rrp",
         "is_active",
     ]
-    list_filter = ["is_active", "action", "supplier"]
+    list_filter = ["is_active", "action", "supplier", "only_without_rrp"]
     list_display_links = ["name"]
     list_editable = ["priority", "is_active"]
     actions = ["recalculate_all"]

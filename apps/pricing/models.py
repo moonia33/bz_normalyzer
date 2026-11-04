@@ -54,6 +54,10 @@ class PriceRule(TimeStampedModel):
         choices=RoundingMode.choices,
         default=RoundingMode.NONE,
     )
+    only_without_rrp = models.BooleanField(
+        default=False,
+        help_text="Taikoma tik prekėms be tiekėjo RRP/UVP (kaina skaičiuojama nuo savikainos).",
+    )
 
     class Meta:
         ordering = ["priority", "id"]
