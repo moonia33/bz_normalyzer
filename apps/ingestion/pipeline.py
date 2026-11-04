@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -129,7 +130,10 @@ def run_import(job: ImportJob) -> ImportJob:
         payload = adapter.fetch(uploaded_path=uploaded)
         references = {} if ctx.is_translation else _reference_map(job.supplier)
 
-        for row_no, item in enumerate(adapter.iter_items(payload), start=1):
+        items = adapter.iter_items(payload)
+        if references:
+            items = _reference_variants(list(items), references)
+        for row_no, item in enumerate(items, start=1):
             stats["normalized"] += 1
             try:
                 _apply_reference(item, references)
@@ -172,6 +176,87 @@ def _apply_reference(item: NormalizedItem, references: dict[str, SupplierReferen
         item.ean = ref.ean
     if ref.rrp_price is not None and _extra_decimal(item.extra, "rrp_price") is None:
         item.extra = {**(item.extra or {}), "rrp_price": str(ref.rrp_price.quantize(Decimal("0.01")))}
+    _reference_axes(item, ref.name)
+
+
+# Kainoraščio aprašymas ('280m 0,40mm 40kg Catfish strong weiß') -> tik
+# trūkstamos ašys (svetainės lentelėje jų nėra arba '0.00').
+_REF_AXIS_RULES = (
+    ("line_length", re.compile(r"(?<![\dx.,])(\d{1,2}[.,]\d{3}|\d+)\s?m\b", re.IGNORECASE), "m"),
+    ("line_diameter", re.compile(r"(?<![\d.,])(\d+[.,]\d+(?:\s?-\s?\d+[.,]\d+)?)\s?mm\b", re.IGNORECASE), "mm"),
+    ("line_strength", re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s?kg\b", re.IGNORECASE), "kg"),
+    ("weight", re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s?g\b", re.IGNORECASE), "g"),
+)
+
+
+def _reference_axes(item: NormalizedItem, text: str) -> None:
+    if not text:
+        return
+    attributes = dict(item.attributes or {})
+    axes = dict(attributes.get("axes") or {})
+    added = False
+    for axis, pattern, unit in _REF_AXIS_RULES:
+        if axes.get(axis) or (axis == "line_strength" and axes.get("line_strength")):
+            continue
+        match = pattern.search(text)
+        if not match:
+            continue
+        value = match.group(1).replace(" ", "")
+        if axis == "line_length":
+            value = re.sub(r"[.,]", "", value)
+        else:
+            value = value.replace(",", ".")
+        axes[axis] = f"{value}{unit}"
+        added = True
+    if added:
+        attributes["axes"] = axes
+        item.attributes = attributes
+
+
+_REF_SIZE_WORDS = {"xs", "s", "m", "l", "xl", "xxl", "xxxl", "small", "medium", "large"}
+
+
+def _reference_variants(
+    items: list[NormalizedItem], references: dict[str, SupplierReferenceItem]
+) -> list[NormalizedItem]:
+    """Vienodų ašių variantams grupėje skirtumas iš kainoraščio aprašymo.
+
+    'Line Aligner / short brown, 10pc' vs '... short weed, 10pc' -> model brown / weed.
+    """
+    groups: dict[str, list[NormalizedItem]] = {}
+    for item in items:
+        _apply_reference(item, references)
+        group = str((item.extra or {}).get("product_group") or "")
+        if group:
+            groups.setdefault(group, []).append(item)
+    for members in groups.values():
+        same: dict[str, list[NormalizedItem]] = {}
+        for item in members:
+            axes = (item.attributes or {}).get("axes") or {}
+            same.setdefault(json.dumps(axes, sort_keys=True), []).append(item)
+        for twins in same.values():
+            names = [
+                getattr(references.get(str(i.external_id).strip().upper()), "name", "") or ""
+                for i in twins
+            ]
+            if len(twins) < 2 or not all(names) or len({n.lower() for n in names}) < 2:
+                continue
+            tokens = [[t for t in re.split(r"[\s,/]+", n) if t] for n in names]
+            common = set.intersection(*({t.lower() for t in toks} for toks in tokens))
+            for item, toks in zip(twins, tokens):
+                diff = [t for t in toks if t.lower() not in common]
+                if not diff:
+                    continue
+                attributes = dict(item.attributes or {})
+                axes = dict(attributes.get("axes") or {})
+                label = " ".join(diff)
+                if all(t.lower() in _REF_SIZE_WORDS for t in diff) and not axes.get("size"):
+                    axes["size"] = label
+                else:
+                    axes["model"] = f"{axes['model']} {label}" if axes.get("model") else label
+                attributes["axes"] = axes
+                item.attributes = attributes
+    return items
 
 
 def _record_error(stats: dict, row_no: int, item: NormalizedItem, exc: Exception) -> None:
@@ -344,11 +429,28 @@ def _find_matching_product(
     return None
 
 
+def _left_split_group(product: Product | None, item: NormalizedItem, offer: Offer) -> bool:
+    """Adapteris atskyrė prekę nuo puslapio grupės – senas ryšys nebegalioja."""
+    split_from = _extra_text(item.extra, "split_from_group").lower()
+    group = (offer.product_group or "").lower()
+    return bool(
+        product is not None
+        and split_from
+        and group
+        and group != split_from
+        and (product.product_group or "").lower() == split_from
+    )
+
+
 def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Product:
     product = (
         _find_matching_product(job.supplier, item.external_id, offer)
         or offer.product
     )
+    if _left_split_group(product, item, offer):
+        product = _find_matching_product(
+            job.supplier, item.external_id, offer, use_links=False, use_identity=False
+        )
     if not product:
         # SKU = tiekėjo art-no; supplier sku_prefix tik kolizijos atveju
         # (tas pats art-no iš kito tiekėjo jau turi produktą).
@@ -481,7 +583,7 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     if changed_fields:
         product.save(update_fields=[*changed_fields, "updated_at"])
 
-    ProductLink.objects.get_or_create(
+    ProductLink.objects.update_or_create(
         supplier=job.supplier,
         external_id=item.external_id,
         defaults={"product": product},

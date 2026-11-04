@@ -142,6 +142,51 @@ class OckertAdapterTests(TestCase):
         item = adapter.normalize(self.PAYLOAD["items"][0])
         self.assertEqual(item.category_path, "Sportex Ruten > Salmon Ruten > Laks Serie")
 
+    def test_mixed_page_tables_split_into_products(self):
+        import json
+
+        from apps.suppliers.adapters.ockert import OckertAdapter
+
+        def row(art, h2, url, name, path):
+            return {"art_no": art, "table_title": h2, "specs": {}, "product_url": url,
+                    "product_name": name, "category_path": path}
+
+        lines = ["Angelschnüre", "Seamaster"]
+        payload = {"items": [
+            row("8381-1", "Seamaster Extreme Leader", "/Produkt/Seamaster-Leader-9222645", "Seamaster Leader", lines),
+            row("8382-1", "Seamaster Leader", "/Produkt/Seamaster-Leader-9222645", "Seamaster Leader", lines),
+            row("8390-1", "Seamaster Fluorocarbon Leader", "/Produkt/Seamaster-Leader-9222645", "Seamaster Leader", lines),
+            row("9687-1", "Hard Mono", "/Produkt/Cult-Catfish-Leader-1", "Cult Catfish Leader", lines),
+            row("9687-2", "Kevlar Leader", "/Produkt/Cult-Catfish-Leader-1", "Cult Catfish Leader", lines),
+            row("9151-1", "Weiß", "/Produkt/Cult-Catfish-Strong-9327471", "Cult Catfish Strong", lines),
+            row("9151-2", "Braun", "/Produkt/Cult-Catfish-Strong-9327471", "Cult Catfish Strong", lines),
+            row("8785-1", "3.000m", "/Produkt/X8-multicolor-1", "X8 multicolor", lines),
+            row("8785-2", "350m", "/Produkt/X8-multicolor-1", "X8 multicolor", lines),
+            row("9794-1", "1/4 lbs", "/Produkt/Deep-Purple-1", "Cult Carp Deep Purple", lines),
+            row("9794-2", "3.000m", "/Produkt/Deep-Purple-1", "Cult Carp Deep Purple", lines),
+            row("9802-1", "Silt", "/Produkt/Cult-Lead-Core-1", "Cult Lead Core", lines),
+            row("9802-2", "Weed", "/Produkt/Cult-Lead-Core-1", "Cult Lead Core", lines),
+            row("KR-AC1", "Tungsten Sinkers", "/Produkt/Terminal-Tackle-1", "Terminal Tackle", ["Kryston", "Terminal Tackle"]),
+            row("KR-AC24", "Line Aligner", "/Produkt/Terminal-Tackle-1", "Terminal Tackle", ["Kryston", "Terminal Tackle"]),
+            row("159182", "JIG-Xpert Zander", "/Produkt/JIG-Xpert-1", "JIG-Xpert", ["Sportex Ruten", "Auslauf Ruten"]),
+            row("159190", "JIG-Xpert Barsch", "/Produkt/JIG-Xpert-1", "JIG-Xpert", ["Sportex Ruten", "Auslauf Ruten"]),
+        ]}
+        adapter = OckertAdapter(SimpleNamespace(config={"brand_map": {"Kryston": "Kryston"}, "default_brand": "Climax"}))
+        items = {i.external_id: i for i in map(adapter.normalize, adapter.parse(json.dumps(payload).encode()))}
+
+        def group(art):
+            return items[art].extra["product_group"], items[art].extra["base_name"]
+
+        self.assertEqual(group("8382-1"), ("seamaster-leader", "Climax Seamaster Leader"))
+        self.assertEqual(group("8381-1"), ("seamaster-leader-seamaster-extreme-leader", "Climax Seamaster Extreme Leader"))
+        self.assertEqual(group("8390-1")[1], "Climax Seamaster Fluorocarbon Leader")
+        self.assertEqual(group("9687-1")[1], "Climax Cult Catfish Leader Hard Mono")
+        self.assertEqual(group("KR-AC24")[1], "Kryston Line Aligner")
+        for a, b in (("9151-1", "9151-2"), ("8785-1", "8785-2"), ("9794-1", "9794-2"),
+                     ("9802-1", "9802-2"), ("159182", "159190")):
+            self.assertEqual(group(a), group(b))
+        self.assertNotIn("model", items["8381-1"].attributes.get("axes", {}))
+
     def test_thousands_separator_line_length(self):
         from apps.suppliers.adapters.ockert import OckertAdapter, _descriptor_axes
 

@@ -29,7 +29,7 @@ DEFAULT_CATALOG_PATH = "/Kataloge"
 DEFAULT_STOCK_BY_STATUS = {"green": 20, "yellow": 10}
 
 # Stulpeliai, kurie nėra atributai (identifikatoriai/komercija/UI).
-_LABEL_ART = re.compile(r"^art[.\-\s]?n?r?\.?$", re.I)
+_LABEL_ART = re.compile(r"^art[.\-\s]?n?r?\.?$", re.IGNORECASE)
 _LABEL_DESCRIPTOR = {
     "modell nr.", "bezeichnung", "kurz bezeichnung", "bez.", "modell",
 }
@@ -38,8 +38,8 @@ _LABEL_SKIP = re.compile(
     r"hek|anzahl|merkl\.?|merkliste|ve)$",
     re.I,
 )
-_LABEL_VE = re.compile(r"^ve$", re.I)
-_LABEL_UVP = re.compile(r"^uvp$", re.I)
+_LABEL_VE = re.compile(r"^ve$", re.IGNORECASE)
+_LABEL_UVP = re.compile(r"^uvp$", re.IGNORECASE)
 
 # Spec stulpelio label regex -> axis. Vienetas imamas iš label, jei reikšmė
 # jo neturi ('Tragkraft in kg' -> '1.2kg', 'Tragkraft in lbs' -> '8lb').
@@ -51,7 +51,7 @@ _SPEC_AXIS_RULES: list[tuple[str, str]] = [
     (r"tragkraft", "line_strength"),
     (r"^wg \(gr\)$", "_wg"),              # >20 g casting_weight, <=20 lb testcurve
 ]
-_UNIT_RE = re.compile(r"\b(kg|lbs?|lb|mm|cm|m)\s*$", re.I)
+_UNIT_RE = re.compile(r"\b(kg|lbs?|lb|mm|cm|m)\s*$", re.IGNORECASE)
 _NONZERO_VALUE_RE = re.compile(r"[a-zA-Z]")
 
 # Spalvų žodynas (DE+EN) – h2/descriptor uodegos -> 'color' ašis.
@@ -66,12 +66,12 @@ _COLOR_WORDS = {
 _SHADE_MODIFIERS = {"dark", "light", "dunkel", "hell", "matte", "matt"}
 
 # 'Kurz Bezeichnung' / 'Bezeichnung' tekstai -> ašys.
-_SIZE_TAIL_RE = re.compile(r"\bsize\s+([A-Za-z0-9]+)\b", re.I)
+_SIZE_TAIL_RE = re.compile(r"\bsize\s+([A-Za-z0-9]+)\b", re.IGNORECASE)
 _HOOK_RE = re.compile(r"#\s*(\d+(?:\s*/\s*\d+)?)\b")
-_LB_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*lbs?\b", re.I)
+_LB_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*lbs?\b", re.IGNORECASE)
 # '3.500m' / '1,000m' – tūkstančių skyriklis (DE), ne dešimtainė dalis.
-_METER_RE = re.compile(r"\b(\d{1,2}[.,]\d{3}|\d{2,4})\s*m\b", re.I)
-_MM_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*mm\b", re.I)
+_METER_RE = re.compile(r"\b(\d{1,2}[.,]\d{3}|\d{2,4})\s*m\b", re.IGNORECASE)
+_MM_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*mm\b", re.IGNORECASE)
 
 _SLUG_ID_RE = re.compile(r"-(\d+)(?:/)?$")
 
@@ -79,6 +79,16 @@ _SLUG_ID_RE = re.compile(r"-(\d+)(?:/)?$")
 _H2_NOISE = {"inkl. quetschhülsen", "inkl quetschhülsen"}
 
 _WORD_RE = re.compile(r"[^a-z0-9]+")
+
+# Vieno puslapio lentelės (h2), kurios skiriasi ne tik spalva / ilgiu / ritės
+# dydžiu, yra atskiros prekės ('Seamaster Extreme Leader' vs 'Seamaster
+# Fluorocarbon Leader'); meškerių serijų lentelės lieka variantais.
+_GROUP_LENGTH_RE = re.compile(r"\b\d{1,5}(?:[.,]\d+)?\s*(?:cm|m)\b", re.IGNORECASE)
+_GROUP_SPOOL_RE = re.compile(r"\b\d+\s*/\s*\d+\s*lbs?\b", re.IGNORECASE)
+_GROUP_VARIANT_WORDS = _COLOR_WORDS | {
+    "xs", "s", "m", "l", "xl", "xxl", "xxxl", "3xl", "4xl",
+    "oliv", "camou", "camouflage", "silt", "weed", "gravel", "multicolor",
+}
 
 # Outlet ('Auslauf') meškerės svetainėje neturi serijos kategorijos – tipas
 # imamas iš pavadinimo (pirmas atitikmuo laimi).
@@ -104,7 +114,7 @@ def _is_outlet(label: str) -> bool:
 
 def _outlet_rod_type(name: str) -> str:
     for pattern, rod_type in DEFAULT_OUTLET_ROD_TYPES:
-        if re.search(pattern, name, re.I):
+        if re.search(pattern, name, re.IGNORECASE):
             return rod_type
     return DEFAULT_OUTLET_ROD_FALLBACK
 
@@ -172,6 +182,48 @@ def _descriptor_axes(descriptor: str, axes: dict[str, str]) -> None:
     _rest, color = _pop_color(descriptor)
     if color:
         axes.setdefault("color", color)
+
+
+def _h2_product_words(h2: str) -> list[str]:
+    """h2 be ilgio, ritės dydžio ir spalvų – žodžiai, kurie įvardija prekę."""
+    text = _GROUP_SPOOL_RE.sub(" ", _GROUP_LENGTH_RE.sub(" ", h2 or ""))
+    return [
+        w for w in text.split()
+        if w.lower().strip('"') not in _GROUP_VARIANT_WORDS and w not in {"-", "–"}
+    ]
+
+
+def _split_mixed_pages(rows: list[dict[str, Any]]) -> None:
+    """Skirtingų prekių lentelės viename puslapyje -> atskiri product_group."""
+    pages: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        pages[row.get("product_group") or ""].append(row)
+    for group, page_rows in pages.items():
+        crumbs = [c for c in (page_rows[0].get("category_path") or []) if c]
+        catalog = (crumbs[0] if crumbs else "").lower()
+        if not group or catalog.endswith("ruten"):
+            continue
+        keys = {
+            " ".join(_h2_product_words(r.get("table_title") or "")).lower()
+            for r in page_rows
+        }
+        if len(keys) < 2:
+            continue
+        for row in page_rows:
+            words = _h2_product_words(row.get("table_title") or "")
+            key = " ".join(words).lower()
+            product_name = (row.get("product_name") or "").strip()
+            if not key or key == product_name.lower():
+                continue
+            name = " ".join(words)
+            overlap = set(key.split()) & set(product_name.lower().split())
+            generic = catalog.startswith("kryston") or "bekleidung" in catalog
+            if not overlap and not generic and product_name:
+                name = f"{product_name} {name}"
+            row["page_product_name"] = product_name
+            row["product_name"] = name
+            row["split_from_group"] = group
+            row["product_group"] = f"{group}-{_slug(key)}"
 
 
 @register_adapter
@@ -501,6 +553,7 @@ class OckertAdapter(BaseAdapter):
         if isinstance(data, str):
             data = json.loads(data)
         seen: set[str] = set()
+        rows: list[dict[str, Any]] = []
         for row in data.get("items") or []:
             art_no = (row.get("art_no") or "").strip()
             if not art_no:
@@ -509,7 +562,9 @@ class OckertAdapter(BaseAdapter):
                 row["duplicate_art_no"] = True
             seen.add(art_no)
             row["product_group"] = _product_group_from_url(row.get("product_url") or "")
-            yield row
+            rows.append(row)
+        _split_mixed_pages(rows)
+        yield from rows
 
     # --------------------------------------------------------------- normalize
 
@@ -568,6 +623,7 @@ class OckertAdapter(BaseAdapter):
             "identifiers": {"art_no": art_no, "item_id": row.get("item_id")},
             "base_name": base_name,
             "product_group": row.get("product_group", ""),
+            "split_from_group": row.get("split_from_group") or None,
             "sub_category_raw": sub_category,
             "family_raw": family,
             "rrp_price": str(rrp) if rrp is not None else None,
