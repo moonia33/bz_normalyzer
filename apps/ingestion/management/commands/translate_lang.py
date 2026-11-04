@@ -331,7 +331,9 @@ class Command(BaseCommand):
                 if offer.category_id:
                     fields["shop_category"] = offer.category.name
                 attributes = _spec_attributes(offer.attributes, offer.name or "")
-                if attributes and not (offer.description or "").strip():
+                if attributes and not (offer.description or "").strip() and not (
+                    offer.technical_description or ""
+                ).strip():
                     fields["attributes"] = attributes
                 targets.append((f"o:{offer.id}", offer, fields))
 
