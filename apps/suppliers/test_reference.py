@@ -2,12 +2,13 @@ import tempfile
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from django.core.management import call_command
 from django.test import TestCase
 from openpyxl import Workbook
 
-from apps.catalog.models import Category
+from apps.catalog.models import Category, Product
 from apps.ingestion.dto import NormalizedItem
 from apps.ingestion.models import Offer
 from apps.ingestion.pipeline import (
@@ -15,6 +16,7 @@ from apps.ingestion.pipeline import (
     _left_split_group,
     _reference_map,
     _reference_variants,
+    _strict_group_product,
 )
 from apps.pricing.models import PriceRule
 from apps.suppliers.models import Supplier, SupplierReferenceItem
@@ -153,6 +155,27 @@ class PricesheetTests(TestCase):
         self.assertFalse(_left_split_group(new, split, fc))
         plain = NormalizedItem(external_id="8382-1", name="x", extra={})
         self.assertFalse(_left_split_group(old, plain, SimpleNamespace(product_group="other")))
+
+
+class StrictGroupProductTests(TestCase):
+    def test_product_never_mixes_adapter_groups(self):
+        supplier = Supplier.objects.create(code="ockert", name="Ockert")
+        mixed = Product.objects.create(sku="P-1", name="Hardmono Leader")
+        Offer.objects.create(supplier=supplier, external_id="a1", name="a",
+                             product=mixed, product_group="hardmono-leader")
+        light = Offer.objects.create(supplier=supplier, external_id="b1", name="b",
+                                     product=mixed, product_group="leader-light-hardmono")
+        job = SimpleNamespace(supplier=supplier)
+        item = NormalizedItem(external_id="b1", name="b", extra={"strict_group": True})
+        self.assertIsNone(_strict_group_product(job, item, light, mixed))
+
+        own = Product.objects.create(sku="P-2", name="Hardmono Leader Light")
+        Offer.objects.create(supplier=supplier, external_id="b2", name="b",
+                             product=own, product_group="leader-light-hardmono")
+        self.assertEqual(_strict_group_product(job, item, light, mixed), own)
+
+        plain = NormalizedItem(external_id="b1", name="b", extra={})
+        self.assertEqual(_strict_group_product(job, plain, light, mixed), mixed)
 
 
 class CategoryMarkupRulesTests(TestCase):

@@ -624,6 +624,7 @@ class OckertAdapter(BaseAdapter):
             "base_name": base_name,
             "product_group": row.get("product_group", ""),
             "split_from_group": row.get("split_from_group") or None,
+            "strict_group": True,
             "sub_category_raw": sub_category,
             "family_raw": family,
             "rrp_price": str(rrp) if rrp is not None else None,
