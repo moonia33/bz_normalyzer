@@ -404,7 +404,9 @@ class Command(BaseCommand):
             targets = []
             product_rows: dict = {}
             for offer in self._offers_to_translate(
-                lang, options["force"], options.get("supplier")
+                lang,
+                options["force"] or options.get("products_only"),
+                options.get("supplier"),
             ):
                 fields = {
                     "name": offer.name or "",
