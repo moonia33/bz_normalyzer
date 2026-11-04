@@ -12,10 +12,10 @@ import time
 import requests
 from lxml import html as lxml_html
 
-SITEMAPS = (
-    "https://www.climax-fishingline.de/post-sitemap1.xml",
-    "https://www.climax-fishingline.de/post-sitemap2.xml",
-)
+BASE = "https://www.climax-fishingline.de/"
+SITEMAPS = (BASE + "post-sitemap1.xml", BASE + "post-sitemap2.xml")
+OVERVIEW_SITEMAP = BASE + "page-sitemap.xml"
+_LOCALIZED = re.compile(r"/(en|fr)/")
 USER_AGENT = "Mozilla/5.0 (compatible; bz-normalyzer/1.0)"
 
 
@@ -32,7 +32,8 @@ def parse_page(content: bytes) -> dict:
     languages = {
         lang: href
         for lang, href in zip(
-            tree.xpath("//link[@hreflang]/@hreflang"), tree.xpath("//link[@hreflang]/@href")
+            tree.xpath("//link[@hreflang]/@hreflang"),
+            tree.xpath("//link[@hreflang]/@href"),
         )
         if lang != "x-default"
     }
@@ -43,10 +44,12 @@ def parse_page(content: bytes) -> dict:
     paragraphs = [
         _clean(p.text_content())
         for p in root.xpath(".//p")
-        if len(_clean(p.text_content())) >= 40 and not _clean(p.text_content()).startswith("Ø")
+        if len(_clean(p.text_content())) >= 40
+        and not _clean(p.text_content()).startswith("Ø")
     ]
     images = [
-        src for src in root.xpath(".//img/@src")
+        src
+        for src in root.xpath(".//img/@src")
         if "/wp-content/uploads/" in src and not re.search(r"-\d+x\d+\.", src)
     ]
     return {
@@ -57,15 +60,43 @@ def parse_page(content: bytes) -> dict:
     }
 
 
-def crawl(languages: tuple[str, ...] = ("de", "en"), delay: float = 0.7, limit: int = 0):
+def _locs(session: requests.Session, sitemap: str) -> list[str]:
+    response = session.get(sitemap, timeout=30)
+    return (
+        re.findall(r"<loc>([^<]+)</loc>", response.text)
+        if response.status_code == 200
+        else []
+    )
+
+
+def discover_urls(session: requests.Session, delay: float = 0.5) -> list[str]:
+    """Serijų puslapiai: post sitemap'ai + nuorodos iš apžvalgos puslapių (cult-carp/, ...)."""
+    urls = [u for sitemap in SITEMAPS for u in _locs(session, sitemap)]
+    for overview in _locs(session, OVERVIEW_SITEMAP):
+        if _LOCALIZED.search(overview) or overview.rstrip("/") == BASE.rstrip("/"):
+            continue
+        response = session.get(overview, timeout=30)
+        time.sleep(delay)
+        if response.status_code != 200:
+            continue
+        tree = lxml_html.fromstring(response.content.decode("utf-8", errors="replace"))
+        for href in tree.xpath("//main//a/@href"):
+            href = href.split("#")[0]
+            if (
+                href.startswith(BASE)
+                and href.count("/") == 4
+                and "/wp-content/" not in href
+            ):
+                urls.append(href)
+    return [u for u in dict.fromkeys(urls) if not _LOCALIZED.search(u)]
+
+
+def crawl(
+    languages: tuple[str, ...] = ("de", "en"), delay: float = 0.7, limit: int = 0
+):
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
-    urls: list[str] = []
-    for sitemap in SITEMAPS:
-        response = session.get(sitemap, timeout=30)
-        if response.status_code == 200:
-            urls += re.findall(r"<loc>([^<]+)</loc>", response.text)
-    urls = [u for u in urls if not re.search(r"/(en|fr)/", u)]
+    urls = discover_urls(session)
     if limit:
         urls = urls[:limit]
     for url in urls:
@@ -85,4 +116,6 @@ def crawl(languages: tuple[str, ...] = ("de", "en"), delay: float = 0.7, limit: 
             localized = session.get(href, timeout=30)
             time.sleep(delay)
             if localized.status_code == 200:
-                yield lang, href, parse_page(localized.content)
+                page = parse_page(localized.content)
+                page["series_de"] = parsed["series"]
+                yield lang, href, page
