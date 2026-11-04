@@ -69,9 +69,9 @@ Formatavimas:
 - Jei sąrašas – išlaikyk struktūrą; nepersistenk su skyryba."""
 
 # Lietuvių kalbai – atskiras promptas su tiekėjo kategorijų prioritetu ir LT terminų žodynu.
-LT_SYSTEM_PROMPT = """Tu esi profesionalus vertėjas iš anglų į lietuvių kalbą ir žvejybos reikmenų e-komercijos redaktorius.
+LT_SYSTEM_PROMPT = """Tu esi profesionalus vertėjas iš anglų (kartais vokiečių) į lietuvių kalbą ir žvejybos reikmenų e-komercijos redaktorius.
 
-ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand.
+ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand; nebūtini: shop_category, attributes.
 Jei įvestyje yra `is_accessory: true` – tai ne pati kategorijos prekė, o jos priedas ar atsarginė dalis (pvz. viršūnėlė, atsarginis būgnelis, signalizatorius rinkiniui, apdangalas palapinei). Tada prekės tipą imk TIK iš `name` tipo žodžio; kategorija nurodo tik, kokiai prekei priedas skirtas.
 
 1. PREKĖS TIPO NUSTATYMAS (svarbiausia)
@@ -83,6 +83,8 @@ Pagrindinis prekės tipo šaltinis yra originali tiekėjo kategorija: `supplier_
 - Tiekėjo kategorija kartais yra serijos pavadinimas („Catana Spinning“ = Catana serijos spiningai, „Tribal Carp/Specimen“ = karpinės meškerės, „Aspire Competition“, „Current“) arba bendrinė („Uncategorized“, „Accessories“, tuščia). Tada tipą nustatyk iš pavadinimo tipo žodžio ir parametrų.
 - Jei kategorija ir pavadinimo tipo žodis prieštarauja (pvz. kategorija „Crankbait Spinning“, o pavadinime „Lure“), rinkis konkretesnį ir aiškiai šaltinyje įvardytą tipą.
 - Jei pavadinimas prasideda priedo / dalies žodžiu (Tip, Tip series, Spare spool, Spare net, Spare legs, Overwrap, „Alarm for set …“, „… tips set“), tai priedas, net jei kategorija yra „Rods“, „Reels“, „Bivvies“ ar „Sets“: „Tip Delphin Yakuza Feeder“ (kat. Rods > Feeder rods) → „Fiderio viršūnėlė Delphin Yakuza Feeder“, ne „meškerė“ ar „rinkinys“; „Alarm for set Delphin TOTEM“ → „Elektroninis kibimo signalizatorius Delphin TOTEM rinkiniui“ (vienas signalizatorius, ne rinkinys); „Overwrap Delphin YURTA NEO“ → „Apdangalas (overwrap) palapinei Delphin YURTA NEO“.
+- `shop_category` – lietuviška mūsų parduotuvės kategorija, į kurią prekė jau priskirta (pvz. „Pinti valai“, „Paruoštos sistemėlės“, „Karpiniai aksesuarai“). Ji patvirtina prekės tipą: pavadinime naudok jos vienaskaitos formą („Pintas valas …“, „Paruošta sistemėlė …“), nebent pavadinimo tipo žodis konkretesnis (pvz. „Swivel“ kategorijoje „Karpiniai aksesuarai“ → „Karpinis suktukas“).
+- Tiekėjo kategorija gali būti vokiškai: Angelschnüre = valai, Geflochtene Schnüre = pinti valai, Monofil = monofilamentinis valas, Vorfach/Vorfächer = pavadėliai, Ruten = meškerės, Spinnruten = spiningai, Karpfenruten = karpinės meškerės, Feeder Ruten = fiderio meškerės, Meeresruten = jūrinės meškerės, Rollen = ritės, Zubehör = priedai, Bekleidung = apranga, Taschen = krepšiai, Kescher = graibštai, Auslauf = išparduodama serija (pavadinime nenaudok).
 - Neišgalvok tipo, kurio nepatvirtina nei kategorija, nei pavadinimas. Jei tipas neaiškus – rinkis bendresnį terminą (pvz. „Meškerė“, „Masalas“, „Ritės dalis“).
 
 2. PAVADINIMO STRUKTŪRA (`name`)
@@ -117,15 +119,18 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
 
 4. APRAŠYMAI
 - Versk TIK tai, kas yra šaltinyje. Neprisigalvok savybių, paskirties, suderinamumo („tinka ... ritėms“), kokybės („originali“, „patikima“, „aukštos kokybės“), pristatymo, garantijų, kainų ar akcijų.
-- Jei `description` tuščias arba tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
+- Jei `description` tuščias ir įvestyje yra `attributes`:
+  - `description` – HTML pastraipa <p>…</p>, 1–2 sakiniai TIK iš faktų: prekės tipas, gamintojas, serija/modelis, svarbiausi parametrai iš `attributes` ir `name` (pvz. „<p>Pintas valas Climax X8 multicolor – 8 gijų pintas valas, 350 m ilgio, 0,18 mm skersmens, atsparumas trūkimui 15,5 kg.</p>“). Serija ar tiekėjo kategorija gali būti paminėta, jei ji yra šaltinyje.
+  - `technical_description` – HTML sąrašas <ul><li>Parametras: reikšmė</li></ul> iš `attributes` su lietuviškais pavadinimais: line_length / rod_length_m – Ilgis, line_diameter – Skersmuo, line_strength – Atsparumas trūkimui, casting_weight – Metimo svoris, sections – Dalių skaičius, weight – Svoris, size – Dydis, color – Spalva, model – Modelis, flavor – Skonis, volume – Tūris; rod_length_ft praleisk, jei yra metrai. Reikšmėse dešimtainis kablelis, vienetai kaip šaltinyje („3.000m“ = 3000 m). Parametrą, kurio reikšmė ar vienetas neaiškūs (pvz. vokiškos santrumpos), praleisk.
+- Jei `description` tuščias ir `attributes` nėra, arba description tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
 - Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
-- `technical_description` versk tiksliai; jei tuščias – grąžink tuščią.
+- `technical_description` versk tiksliai; jei tuščias ir nėra `attributes` – grąžink tuščią.
 
 5. SEO
 - seo_title: iki 60 simbolių; lietuviškas prekės tipas + gamintojas + modelis (+ svarbiausias parametras, jei telpa).
 - seo_description: 50–160 simbolių, vienas ar du natūralūs sakiniai TIK iš šaltinyje esančių faktų (tipas, gamintojas, serija, parametrai, spalva, savybės iš aprašymo). Kai faktų mažai (pvz. ritės dalis, sekcija) – rašyk trumpai ir nieko nepridėk; trumpas ir tikslas geriau nei ilgas.
 - DRAUDŽIAMA SEO ir aprašymuose (jei to nėra šaltinyje): „patikimas“, „puikus pasirinkimas“, „puikiai tinka“, „tinka įvairioms/įvairiems ...“, „universalus“, „aukštos kokybės“, „kokybiškas“, „originali“, „patogus sprendimas“, „<gamintojas> kokybė“, „greitas pristatymas“; suderinamumo teiginiai („skirta Shimano ritėms“, „tinka ... modeliams“), paskirtis („tinka remontui“, „jūrinei žvejybai“), žuvų rūšys ar technikos, kurių šaltinyje nėra.
-- seo_keywords: 5–10 raktažodžių kableliais, lietuviškai; gali būti ir originalus angliškas terminas (pvz. „baitrunner“, „swinger“), be EAN/prekės kodų; žuvų rūšių ar technikų, kurių nėra šaltinyje, nedėk.
+- seo_keywords: 5–10 raktažodžių kableliais, lietuviškai (gali būti išversta tiekėjo kategorija ar serija); gali būti ir originalus angliškas terminas (pvz. „baitrunner“, „swinger“), be EAN/prekės kodų; žuvų rūšių ar technikų, kurių nėra šaltinyje, nedėk.
 
 6. KALBA
 Taisyklinga lietuvių kalba: linksniai, giminės derinimas, kabutės „...“, kiekiuose ir matavimuose dešimtainis skyriklis visada kablelis (3,66 m, 3,25 lb, 0,5 g, 1,8 gou), ne taškas; modelių kodų, serijų ir kitų identifikatorių (pvz. N1.5, 12SAFLHOSO) nekeisk – juose taškas lieka. Neversk pažodžiui – rašyk taip, kaip rašytų lietuviška žvejybos parduotuvė.
@@ -156,6 +161,18 @@ def _openai_headers() -> dict:
     if not key:
         raise CommandError("OPENAI_API_KEY nenustatytas (.env).")
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+
+def _spec_attributes(attributes) -> dict:
+    """Prekės parametrai vertimui (aprašymui be šaltinio teksto)."""
+    if not isinstance(attributes, dict):
+        return {}
+    out: dict = {}
+    for key in ("axes", "specs"):
+        values = attributes.get(key)
+        if isinstance(values, dict):
+            out.update({k: v for k, v in values.items() if v not in (None, "")})
+    return out
 
 
 def _config_key(prefix: str, lang_code: str) -> str:
@@ -229,7 +246,7 @@ class Command(BaseCommand):
     # ---------- prepare ----------
 
     def _offers_to_translate(self, lang, force: bool, supplier=None):
-        qs = Offer.objects.filter(is_published=True).select_related("product")
+        qs = Offer.objects.filter(is_published=True).select_related("product", "category")
         if supplier:
             qs = qs.filter(supplier__code=getattr(supplier, "code", supplier))
         if not force:
@@ -303,6 +320,11 @@ class Command(BaseCommand):
                 }
                 if (offer.extra or {}).get("is_accessory"):
                     fields["is_accessory"] = True
+                if offer.category_id:
+                    fields["shop_category"] = offer.category.name
+                attributes = _spec_attributes(offer.attributes)
+                if attributes and not (offer.description or "").strip():
+                    fields["attributes"] = attributes
                 targets.append((f"o:{offer.id}", offer, fields))
 
         if options["limit"]:
