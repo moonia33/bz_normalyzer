@@ -87,7 +87,10 @@ class KeepMostSpecificTests(TestCase):
             row("https://x/strylon/", 1),
             row("https://x/strylon-aqua/", 2),
         )
-        self.assertEqual(_keep_most_specific("climax"), 1)
+        stale = row("https://x/strylon-aqua-old/", 3)
+        self.assertEqual(_keep_most_specific("climax", {general.url, specific.url}), 1)
+        stale.refresh_from_db()
+        self.assertEqual(stale.codes, ["A1"])
         general.refresh_from_db()
         specific.refresh_from_db()
         self.assertEqual(general.codes, [])

@@ -23,8 +23,10 @@ def _series_codes(brand: str, series: str) -> list[str]:
     return sorted(codes)
 
 
-def _keep_most_specific(source: str) -> int:
-    """Prekė priskiriama tik tiksliausiai serijai (daugiausia sutampančių žodžių)."""
+def _keep_most_specific(source: str, urls: set[str]) -> int:
+    """Prekė priskiriama tik tiksliausiai serijai (daugiausia sutampančių žodžių).
+
+    Lyginami tik šio paleidimo atnaujinti puslapiai (`urls`), kad seni sąrašai nepersvertų naujų."""
     dropped = 0
     for language in (
         ManufacturerContent.objects.filter(source=source)
@@ -32,7 +34,9 @@ def _keep_most_specific(source: str) -> int:
         .distinct()
     ):
         rows = list(
-            ManufacturerContent.objects.filter(source=source, language=language)
+            ManufacturerContent.objects.filter(
+                source=source, language=language, url__in=urls
+            )
         )
         best: dict[str, int] = {}
         for row in rows:
@@ -74,6 +78,7 @@ class Command(BaseCommand):
             code.strip() for code in opts["languages"].split(",") if code.strip()
         )
         stats = {"pages": 0, "codes": 0}
+        seen: set[str] = set()
         for lang, url, parsed in module.crawl(languages, opts["delay"], opts["limit"]):
             if "codes" not in parsed:
                 codes = _series_codes(
@@ -105,9 +110,17 @@ class Command(BaseCommand):
                     "images": parsed["images"],
                 },
             )
+            seen.add(url)
             stats["pages"] += 1
             if lang == "de":
                 stats["codes"] += len(parsed["codes"])
         if module is climax:
-            stats["dropped"] = _keep_most_specific(opts["source"])
+            if not opts["limit"]:
+                stats["stale"] = (
+                    ManufacturerContent.objects.filter(source=opts["source"])
+                    .exclude(url__in=seen)
+                    .exclude(codes=[])
+                    .update(codes=[])
+                )
+            stats["dropped"] = _keep_most_specific(opts["source"], seen)
         self.stdout.write(" ".join(f"{k}={v}" for k, v in stats.items()))
