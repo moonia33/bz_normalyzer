@@ -613,7 +613,7 @@ def _plan_variants(
     #   feature + selektorius).
     demoted: dict[str, str] = {}
     variant_features: dict[int, dict[str, dict]] = {offer.id: {} for offer in offers}
-    for ax in all_axes:
+    for ax in sorted(all_axes):
         varying_ax = ax in varying
         for oid, axes in raw.items():
             if ax not in axes:
