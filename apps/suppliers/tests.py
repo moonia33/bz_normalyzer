@@ -144,9 +144,9 @@ class OckertAdapterTests(TestCase):
 
     def test_pack_and_availability(self):
         items = self._items()
-        # VE>1 -> parduodama tik pakuotėmis; kaina = vieneto × qty.
+        # VE>1 -> trade_pack_qty (B2B), bet parduodama po 1 vnt.
         self.assertEqual(items["KR-RR1"].extra["trade_pack_qty"], 10)
-        self.assertTrue(items["KR-RR1"].extra["sold_as_pack"])
+        self.assertNotIn("sold_as_pack", items["KR-RR1"].extra)
         self.assertNotIn("sold_as_pack", items["108293"].extra)
         # yellow = 10 (leidžia į krepšį), green = 20, red = 0.
         self.assertTrue(items["KR-RR1"].is_available)
