@@ -5,6 +5,7 @@ import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from django.utils.text import slugify
 
 from apps.catalog.models import ProductText
 from apps.corecfg.models import ConfigEntry, Language, get_config
