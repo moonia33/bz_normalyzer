@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 from types import SimpleNamespace
 
 from apps.suppliers.adapters.forgotten_flavours import (

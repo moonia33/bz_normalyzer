@@ -4,7 +4,6 @@ import json
 import logging
 import re
 import time
-import urllib.parse
 from collections.abc import Iterator
 from decimal import Decimal
 from typing import Any
@@ -34,7 +33,7 @@ _SIZE_LETTERS = {
 _COLOR_WORDS = {
     "green", "black", "camo", "olive", "grey", "gray", "red", "blue",
     "white", "yellow", "orange", "pink", "purple", "brown", "khaki",
-    "navy", "denim", "charcoal", "beige", "cream", "sand", "brown",
+    "navy", "denim", "charcoal", "beige", "cream", "sand",
 }
 _WS_RE = re.compile(r"\s+")
 _TAG_RE = re.compile(r"<[^>]+>")
