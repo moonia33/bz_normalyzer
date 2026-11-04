@@ -1425,3 +1425,5 @@ class StripIntensifiersTests(SimpleTestCase):
             "<p>Glotnus valas, tankiai supintas.</p>",
         )
         self.assertEqual(_strip_intensifiers("Lytinis ženklas"), "Lytinis ženklas")
+        self.assertEqual(_strip_intensifiers("ne itin storas"), "ne itin storas")
+        self.assertEqual(_strip_intensifiers("Nėra ypač sunkus"), "Nėra ypač sunkus")

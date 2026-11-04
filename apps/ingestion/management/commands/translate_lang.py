@@ -212,7 +212,9 @@ def _manufacturer_source(offer) -> tuple[str, dict] | None:
     return None
 
 
-_INTENSIFIER = re.compile(r"\b(?:itin|ypač|ypatingai)\s+(\w)", re.IGNORECASE)
+_INTENSIFIER = re.compile(
+    r"(?<!\bne\s)(?<!\bnėra\s)\b(?:itin|ypač|ypatingai)\s+(\w)", re.IGNORECASE
+)
 
 
 def _strip_intensifiers(text: str) -> str:
