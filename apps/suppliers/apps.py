@@ -16,6 +16,7 @@ class SuppliersConfig(AppConfig):
             generic_excel,
             generic_json,
             generic_xml,
+            holdcarp,
             korda,
             korda_info,
             mivardi,
