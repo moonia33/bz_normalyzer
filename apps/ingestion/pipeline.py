@@ -903,7 +903,7 @@ def _upsert_offer(
     spare_part = bool((item.attributes or {}).get("spare_part")) or (
         offer.product_group == "" and offer.supplier.code in ("fox", "ccm")
     )
-    if is_discontinued or spare_part:
+    if is_discontinued or spare_part or _is_held(job, item.external_id):
         offer.is_available = False if is_discontinued else offer.is_available
         if is_discontinued:
             offer.stock = 0
@@ -920,6 +920,19 @@ def _upsert_offer(
         offer.is_published = False
     offer.save()
     return offer
+
+
+def _is_held(job: ImportJob, external_id: str) -> bool:
+    """Tiekėjo feed'ų config `unpublish_codes` – rankiniu būdu sulaikytos prekės."""
+    held = getattr(job, "_held_codes", None)
+    if held is None:
+        held = {
+            str(code).strip().upper()
+            for feed in job.supplier.feeds.all()
+            for code in (feed.config or {}).get("unpublish_codes") or []
+        }
+        job._held_codes = held
+    return str(external_id).strip().upper() in held
 
 
 def _merge_video_lists(existing: list | None, incoming: list | None) -> list[dict]:
