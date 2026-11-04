@@ -129,3 +129,26 @@ class TestParsePage:
         assert item.extra["axes"] if "axes" in item.extra else item.attributes == {
             "axes": {"size": "4"}
         }
+
+
+class TestNormalizeFixes:
+    URL = "https://b2b.ridgemonkey.co.uk/ape-x"
+
+    def test_pack_share_unit_has_no_carton_ean(self):
+        row = _adapter()._parse_product_page(_PAGE_HTML, self.URL)[0]
+        item = _adapter().normalize(row)
+        assert item.ean == ""
+        assert item.extra["pack_ean"] == "5056210616185"
+        assert item.extra["sub_category_raw"] == "Hooks"
+
+    def test_root_only_category_has_no_sub(self):
+        row = dict(
+            _adapter()._parse_product_page(_PAGE_HTML, self.URL)[0],
+            category_path=["Bivvies"],
+        )
+        item = _adapter().normalize(row)
+        assert item.category_path == "Bivvies"
+        assert "sub_category_raw" not in item.extra
+
+    def test_multiword_colour(self):
+        assert _axes_from_label("Weed Green") == {"color": "Weed Green"}

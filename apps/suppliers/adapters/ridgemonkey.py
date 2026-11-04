@@ -122,9 +122,10 @@ def _axes_from_label(label: str) -> dict[str, str]:
         return {"size": m.group(1)}
     low = label.lower()
     words = low.split()
-    for n in (3, 2, 1):
-        if len(words) >= n and " ".join(words[-n:]) in _COLOR_WORDS:
-            return {"color": " ".join(words[-n:]).title()}
+    for n in range(len(words), 0, -1):
+        tail = words[-n:]
+        if " ".join(tail) in _COLOR_WORDS or all(w in _COLOR_WORDS for w in tail):
+            return {"color": " ".join(tail).title()}
     if _MEAS_TAIL_RE.match(low):
         return {"variantas": label}
     return {"variantas": label}
@@ -181,6 +182,7 @@ class RidgeMonkeyAdapter(BaseAdapter):
         session = requests.Session()
         session.headers.update({"User-Agent": USER_AGENT})
         self._relogins = 0
+        self._lang = feed_lang
         self._login(session, base_url, username, password, timeout)
         if feed_lang != "en":
             self._set_language(session, base_url, feed_lang, timeout, retries)
@@ -265,6 +267,8 @@ class RidgeMonkeyAdapter(BaseAdapter):
                     username = str(self.config.get("username") or "")
                     password = str(self.config.get("password") or "")
                     self._login(session, base_url, username, password, timeout)
+                    if getattr(self, "_lang", "en") != "en":
+                        self._set_language(session, base_url, self._lang, timeout, 1)
                     continue
                 return text
             except AdapterError:
@@ -306,7 +310,9 @@ class RidgeMonkeyAdapter(BaseAdapter):
                 '//div[contains(@class,"breadcrumb")]//*[@itemprop="name"]//text()'
             ) if _clean(t)
         ]
-        crumbs = [c for c in crumbs if c.lower() != "home"][:-1] or []
+        crumbs = [c for c in crumbs if c.lower() != "home"]
+        if crumbs and crumbs[-1].lower() in {h1.lower(), product_name.lower()}:
+            crumbs = crumbs[:-1]
 
         images: list[str] = []
         for src in tree.xpath("//@data-fullsize"):
@@ -463,13 +469,19 @@ class RidgeMonkeyAdapter(BaseAdapter):
         pack_qty = self._to_int(row.get("trade_pack_qty"))
         pack_price = self._to_decimal(row.get("pack_price"))
         images = [u for u in (row.get("images") or []) if u]
+        ean = (row.get("ean") or "").strip()
+        # Pakuotės barkodas netinka vienetui – lieka tik extra.
+        pack_ean = ean if row.get("unit_basis") == "pack_share" else ""
+        if pack_ean:
+            ean = ""
 
         extra = {
+            "pack_ean": pack_ean,
             "identifiers": {"art_no": art_no, "nop_row_id": row.get("nop_row_id")},
             "supplier_sku": row.get("supplier_sku"),
             "base_name": row.get("base_name") or name,
             "product_group": row.get("product_group"),
-            "sub_category_raw": crumbs[-1] if crumbs else "",
+            "sub_category_raw": crumbs[-1] if len(crumbs) > 1 else "",
             "family_raw": crumbs[-2] if len(crumbs) > 1 else "",
             "variant_label": row.get("variant_label"),
             "row_type": row.get("row_type"),
@@ -484,7 +496,7 @@ class RidgeMonkeyAdapter(BaseAdapter):
             external_id=art_no,
             sku=art_no,
             name=name,
-            ean=(row.get("ean") or "").strip(),
+            ean=ean,
             brand_name=str(self.config.get("brand") or "RidgeMonkey"),
             category_path=category_path,
             description=(row.get("description") or "").strip(),
