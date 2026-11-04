@@ -89,18 +89,23 @@ def parse_pricesheet(path: Path) -> list[dict]:
             code = _code(cell("code"))
             if not code or code == "0":
                 continue
-            rows.setdefault(
-                code,
-                {
-                    "code": code,
-                    "name": str(cell("name") or "").strip()[:500],
-                    "ean": _ean(cell("ean")),
-                    "purchase_price": _decimal(cell("hek")),
-                    "rrp_price": _decimal(cell("uvp")),
-                    "trade_pack_qty": _int(cell("ve")),
-                    "source": f"{path.name}:{sheet.title}"[:200],
-                },
-            )
+            row = {
+                "code": code,
+                "name": str(cell("name") or "").strip()[:500],
+                "ean": _ean(cell("ean")),
+                "purchase_price": _decimal(cell("hek")),
+                "rrp_price": _decimal(cell("uvp")),
+                "trade_pack_qty": _int(cell("ve")),
+                "source": f"{path.name}:{sheet.title}"[:200],
+            }
+            existing = rows.get(code)
+            if existing is None:
+                rows[code] = row
+            else:
+                # Pasikartojantis kodas: pirmoji eilutė lieka, trūkstami laukai papildomi.
+                for key, value in row.items():
+                    if value not in (None, "") and existing.get(key) in (None, ""):
+                        existing[key] = value
     return list(rows.values())
 
 

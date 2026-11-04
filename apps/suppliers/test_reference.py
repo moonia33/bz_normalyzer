@@ -24,6 +24,7 @@ def _sheet(path: Path) -> None:
                "UVP/RRP 2027", "EAN/Barcode", "VE / TP"])
     ws.append([100532, "Speedfädel", 6.25, 6.25, 12.95, "4048855357425", 10])
     ws.append(["KR-AC1", "Tungsten Sinkers", 2.79, 2.79, 0, 4048855408653, 10])
+    ws.append(["KR-AC1", "Tungsten Sinkers", 2.79, 2.79, 5.95, "", 10])
     ws.append([0, 0, 0])
     wb.save(path)
 
@@ -49,7 +50,7 @@ class PricesheetTests(TestCase):
         self.assertIn("rows=2", out.getvalue())
         ref = SupplierReferenceItem.objects.get(supplier=self.supplier, code="KR-AC1")
         self.assertEqual(ref.ean, "4048855408653")
-        self.assertIsNone(ref.rrp_price)
+        self.assertEqual(ref.rrp_price, Decimal("5.9500"))
         self.assertEqual(ref.trade_pack_qty, 10)
         self.with_uvp.refresh_from_db()
         self.no_uvp.refresh_from_db()
@@ -57,7 +58,7 @@ class PricesheetTests(TestCase):
         self.assertEqual(self.with_uvp.rrp_price, Decimal("12.95"))
         self.assertEqual(self.with_uvp.selling_price, Decimal("12.95"))
         self.assertEqual(self.no_uvp.ean, "4048855408653")
-        self.assertIsNone(self.no_uvp.rrp_price)
+        self.assertEqual(self.no_uvp.rrp_price, Decimal("5.9500"))
 
     def test_apply_reference_fills_only_missing(self):
         SupplierReferenceItem.objects.create(
