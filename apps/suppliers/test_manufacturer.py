@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.suppliers.manufacturers.sportex import parse_page
 
@@ -32,6 +32,66 @@ class SportexParseTests(SimpleTestCase):
         self.assertEqual(section["heading"], "Rapid Feeder Light ``XS`` RS-2")
         self.assertNotIn("Seaguide", page["intro"] + section["text"])
         self.assertIn("japanischem", section["text"])
-        self.assertEqual(section["rows"]["162334"], {"Modell": "LF3324", "Teile": "2+3"})
+        self.assertEqual(
+            section["rows"]["162334"], {"Modell": "LF3324", "Teile": "2+3"}
+        )
         self.assertEqual(page["languages"]["pl"], "https://www.sportex.de/pl/rf/")
-        self.assertEqual(page["images"], ["https://www.sportex.de/wp-content/uploads/2025/10/rf.jpg"])
+        self.assertEqual(
+            page["images"], ["https://www.sportex.de/wp-content/uploads/2025/10/rf.jpg"]
+        )
+
+
+class ClimaxSeriesMatchTests(TestCase):
+    def test_codes_by_series_tokens(self):
+        from apps.ingestion.models import Offer
+        from apps.suppliers.management.commands.scrape_manufacturer import _series_codes
+        from apps.suppliers.models import Supplier
+
+        supplier = Supplier.objects.create(code="ockert", name="Ockert")
+        Offer.objects.create(
+            supplier=supplier,
+            external_id="a1",
+            name="x",
+            brand_name_raw="Climax",
+            base_name="Climax Seamaster Fluorocarbon",
+            sub_category_raw="Seamaster",
+        )
+        Offer.objects.create(
+            supplier=supplier,
+            external_id="b1",
+            name="x",
+            brand_name_raw="Climax",
+            base_name="Climax Seamaster Braid",
+            sub_category_raw="Seamaster",
+        )
+        self.assertEqual(_series_codes("climax", "SEAMASTER Fluorocarbon"), ["A1"])
+
+
+class KeepMostSpecificTests(TestCase):
+    def test_code_kept_on_longest_series(self):
+        from apps.suppliers.management.commands.scrape_manufacturer import (
+            _keep_most_specific,
+        )
+        from apps.suppliers.models import ManufacturerContent
+
+        def row(url, tokens):
+            return ManufacturerContent.objects.create(
+                source="climax",
+                url=url,
+                language="de",
+                codes=["A1"],
+                specs={"series_tokens": tokens, "sections": [{"rows": {"A1": {}}}]},
+            )
+
+        general, specific = (
+            row("https://x/strylon/", 1),
+            row("https://x/strylon-aqua/", 2),
+        )
+        stale = row("https://x/strylon-aqua-old/", 3)
+        self.assertEqual(_keep_most_specific("climax", {general.url, specific.url}), 1)
+        stale.refresh_from_db()
+        self.assertEqual(stale.codes, ["A1"])
+        general.refresh_from_db()
+        specific.refresh_from_db()
+        self.assertEqual(general.codes, [])
+        self.assertEqual(specific.codes, ["A1"])
