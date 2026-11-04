@@ -1,7 +1,13 @@
 from django.contrib import admin
 from django.db.models import Count, Max, Q
 
-from apps.suppliers.models import Supplier, SupplierFeed, SupplierReferenceItem, SupplierSchedule
+from apps.suppliers.models import (
+    ManufacturerContent,
+    Supplier,
+    SupplierFeed,
+    SupplierReferenceItem,
+    SupplierSchedule,
+)
 
 
 class SupplierFeedInline(admin.TabularInline):
@@ -96,3 +102,10 @@ class SupplierReferenceItemAdmin(admin.ModelAdmin):
     list_display = ["supplier", "code", "name", "ean", "purchase_price", "rrp_price", "trade_pack_qty", "source"]
     list_filter = ["supplier", "source"]
     search_fields = ["code", "name", "ean"]
+
+
+@admin.register(ManufacturerContent)
+class ManufacturerContentAdmin(admin.ModelAdmin):
+    list_display = ["source", "language", "series", "url", "updated_at"]
+    list_filter = ["source", "language"]
+    search_fields = ["series", "url", "description"]

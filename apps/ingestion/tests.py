@@ -1335,6 +1335,23 @@ class TranslateLangPrepareTests(TestCase):
             lines = self._prepare("lt", tmp.name)
         self.assertNotIn("attributes", json.loads(lines[0]["body"]["messages"][1]["content"]))
 
+    def test_manufacturer_text_used_when_description_empty(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="sportex", url="https://x/en/rf/", language="en", series="Rapid Feeder",
+            description="Compact feeder series.", codes=["SW1"],
+            specs={"sections": [{"heading": "Light", "text": "Light model.",
+                                 "rows": {"SW1": {"Length cm": "330", "Rings": "14"}}}]},
+        )
+        with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
+            lines = self._prepare("lt", tmp.name)
+        fields = json.loads(lines[0]["body"]["messages"][1]["content"])
+        self.assertTrue(fields["manufacturer_text"])
+        self.assertIn("Compact feeder series.", fields["description"])
+        self.assertIn("Light model.", fields["description"])
+        self.assertEqual(fields["attributes"], {"Length cm": "330", "Rings": "14"})
+
     def test_other_languages_keep_generic_prompt(self):
         with tempfile.NamedTemporaryFile(suffix=".jsonl") as tmp:
             lines = self._prepare("pl", tmp.name)

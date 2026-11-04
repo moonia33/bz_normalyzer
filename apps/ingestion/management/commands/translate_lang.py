@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.catalog.models import ProductText
 from apps.corecfg.models import ConfigEntry, Language, get_config
 from apps.ingestion.models import Offer, OfferText
+from apps.suppliers.models import ManufacturerContent
 
 OPENAI_API_URL = "https://api.openai.com/v1"
 BATCH_ENDPOINT = f"{OPENAI_API_URL}/batches"
@@ -71,7 +72,7 @@ Formatavimas:
 # Lietuvių kalbai – atskiras promptas su tiekėjo kategorijų prioritetu ir LT terminų žodynu.
 LT_SYSTEM_PROMPT = """Tu esi profesionalus vertėjas iš anglų (kartais vokiečių) į lietuvių kalbą ir žvejybos reikmenų e-komercijos redaktorius.
 
-ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand; nebūtini: shop_category, attributes.
+ĮVESTIS (JSON): name, base_name, description, technical_description, supplier_category, supplier_subcategory, brand; nebūtini: shop_category, attributes, manufacturer_text.
 Jei įvestyje yra `is_accessory: true` – tai ne pati kategorijos prekė, o jos priedas ar atsarginė dalis (pvz. viršūnėlė, atsarginis būgnelis, signalizatorius rinkiniui, apdangalas palapinei). Tada prekės tipą imk TIK iš `name` tipo žodžio; kategorija nurodo tik, kokiai prekei priedas skirtas.
 
 1. PREKĖS TIPO NUSTATYMAS (svarbiausia)
@@ -123,6 +124,7 @@ Kita: landing net = graibštas; keepnet = matas žuvims; bankstick = kuoliukas; 
   - `description` – HTML pastraipa <p>…</p>, 1–2 sakiniai TIK iš faktų: prekės tipas, gamintojas, serija/modelis, svarbiausi parametrai iš `attributes` ir `name` (pvz. „<p>Pintas valas Climax X8 multicolor – 350 m ilgio, 0,18 mm skersmens, atsparumas trūkimui 15,5 kg.</p>“). Modelio ar serijos žymėjimų neaiškink (X8, 5x15m, RS-2) – rašyk juos kaip šaltinyje. Serija ar tiekėjo kategorija gali būti paminėta, jei ji yra šaltinyje.
   - po pastraipos tame pačiame `description` – HTML sąrašas <ul><li>Parametras: reikšmė</li></ul> iš `attributes` su lietuviškais pavadinimais: line_length / rod_length_m – Ilgis, line_diameter – Skersmuo, line_strength – Atsparumas trūkimui, casting_weight – Metimo svoris, sections – Dalių skaičius, weight – Svoris, size – Dydis, color – Spalva, model – Modelis, flavor – Skonis, volume – Tūris; rod_length_ft praleisk, jei yra metrai; model įtrauk tik jei jo nėra pavadinime. Reikšmėse dešimtainis kablelis, vienetai kaip šaltinyje („3.000m“ = 3000 m). Parametrą, kurio reikšmė ar vienetas neaiškūs (pvz. vokiškos santrumpos), praleisk. Jei neliko nė vieno parametro – sąrašo nedėk.
   - `technical_description` grąžink tuščią (parametrai jau yra `description`).
+- Jei `manufacturer_text: true` – `description` yra gamintojo aprašymas (anglų arba vokiečių k.). Išversk jį tiksliai ir pilnai HTML pastraipomis <p>…</p> (be reklaminių pagyrų, kurių nėra šaltinyje), o po jo pridėk parametrų sąrašą <ul><li>…</li></ul> iš `attributes` pagal žemiau esančias taisykles. `attributes` raktai gali būti lentelės stulpeliai: Length/Länge cm – Ilgis (cm perskaičiuok į m: 330 → 3,30 m), Sections/Teile – Dalių skaičius, Transport length/Transport-Länge – Transportinis ilgis, C.W./WG – Metimo svoris, Weight/Gewicht – Svoris, Rings/Ringe – Žiedų skaičius, Model/Modell – Modelis; Length ft praleisk; žvaigždutes (**) pašalink.
 - Jei `description` tuščias ir `attributes` nėra, arba description tik pakartoja `name` – `description` grąžink lygiai tokį patį kaip išverstą `name` (be papildomų sakinių). Jei trumpas aprašymas turi faktų, kurių nėra pavadinime (pvz. „Waterproof“), juos išversk.
 - Jei tekstas HTML – žymes išlaikyk nepakeistas. Sąrašų struktūrą išlaikyk.
 - `technical_description` versk tiksliai; jei tuščias ir nėra `attributes` – grąžink tuščią.
@@ -181,6 +183,27 @@ def _spec_attributes(attributes, name: str = "") -> dict:
     if model and model in (name or "").lower():
         out.pop("model")
     return out
+
+
+def _manufacturer_source(offer) -> tuple[str, dict] | None:
+    """Gamintojo aprašymas (EN, kitaip DE) ir lentelės eilutė pagal prekės kodą."""
+    code = str(offer.external_id or "").strip().upper()
+    if not code:
+        return None
+    for lang in ("en", "de"):
+        content = (
+            ManufacturerContent.objects.filter(language=lang, codes__contains=[code])
+            .order_by("-updated_at")
+            .first()
+        )
+        if content is None:
+            continue
+        section = content.section_for(code) or {}
+        parts = [content.description, section.get("heading", ""), section.get("text", "")]
+        text = "\n".join(part for part in parts if part)
+        if text:
+            return text, dict((section.get("rows") or {}).get(code) or {})
+    return None
 
 
 def _config_key(prefix: str, lang_code: str) -> str:
@@ -331,9 +354,17 @@ class Command(BaseCommand):
                 if offer.category_id:
                     fields["shop_category"] = offer.category.name
                 attributes = _spec_attributes(offer.attributes, offer.name or "")
-                if attributes and not (offer.description or "").strip() and not (
-                    offer.technical_description or ""
-                ).strip():
+                manufacturer = None
+                if not (offer.description or "").strip():
+                    manufacturer = _manufacturer_source(offer)
+                if manufacturer:
+                    fields["description"], specs = manufacturer
+                    fields["manufacturer_text"] = True
+                    attributes = {**attributes, **specs}
+                if attributes and (
+                    manufacturer
+                    or not ((offer.description or "").strip() or (offer.technical_description or "").strip())
+                ):
                     fields["attributes"] = attributes
                 targets.append((f"o:{offer.id}", offer, fields))
 
