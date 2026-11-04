@@ -1416,7 +1416,9 @@ class DescriptionClearedTests(TestCase):
 
 class StripIntensifiersTests(SimpleTestCase):
     def test_strip(self):
-        from apps.ingestion.management.commands.translate_lang import _strip_intensifiers
+        from apps.ingestion.management.commands.translate_lang import (
+            _strip_intensifiers,
+        )
 
         self.assertEqual(
             _strip_intensifiers("<p>Itin glotnus valas, ypač tankiai supintas.</p>"),
