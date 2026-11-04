@@ -6,7 +6,7 @@ from io import BytesIO, StringIO
 
 from django.core.files.base import ContentFile
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from openpyxl import Workbook
 
 from apps.catalog.models import Brand, Category, Product, ProductText
@@ -1412,3 +1412,14 @@ class DescriptionClearedTests(TestCase):
         self._import(self._feed_xml("true", "922"))
         tip.refresh_from_db()
         self.assertEqual(tip.product.description, "Other supplier text")
+
+
+class StripIntensifiersTests(SimpleTestCase):
+    def test_strip(self):
+        from apps.ingestion.management.commands.translate_lang import _strip_intensifiers
+
+        self.assertEqual(
+            _strip_intensifiers("<p>Itin glotnus valas, ypač tankiai supintas.</p>"),
+            "<p>Glotnus valas, tankiai supintas.</p>",
+        )
+        self.assertEqual(_strip_intensifiers("Lytinis ženklas"), "Lytinis ženklas")
