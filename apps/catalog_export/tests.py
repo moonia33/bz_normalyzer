@@ -460,6 +460,17 @@ class ExportPayloadTests(TestCase):
         p2.pop("generated_at")
         self.assertEqual(payload_sha256(p1), payload_sha256(p2))
 
+    def test_variant_features_order_independent_of_axis_iteration(self):
+        from apps.catalog_export.services import _new_variant
+
+        offer = Offer.objects.filter(product=self.product).first()
+        a = {"label": "0,20 mm", "num": Decimal("0.2"), "unit": "mm"}
+        b = {"label": "3,8 kg", "num": Decimal("3.8"), "unit": "kg"}
+        v1 = _new_variant(offer, {}, {"line-diameter": a, "line-strength": b})
+        v2 = _new_variant(offer, {}, {"line-strength": b, "line-diameter": a})
+        self.assertEqual(v1["features"], v2["features"])
+        self.assertEqual([f["code"] for f in v1["features"]], ["line-diameter", "line-strength"])
+
 
 class PushAsyncTests(TestCase):
     PAYLOAD = {"format_version": 1, "items": []}

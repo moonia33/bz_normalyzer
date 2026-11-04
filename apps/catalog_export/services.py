@@ -857,7 +857,7 @@ def _new_variant(
                 "unit": m.get("unit") or "",
                 "datatype": m.get("datatype") or "text",
             }
-            for ax, m in (variant_features or {}).items()
+            for ax, m in sorted((variant_features or {}).items())
             if m.get("label")
         ],
         "price_net": str(price_net) if price_net is not None else None,
@@ -914,7 +914,7 @@ def _merge_variant(dst: dict, src: dict) -> None:
     for f in src.get("features", []):
         existing.setdefault(f["code"], f)
     if existing:
-        dst["features"] = list(existing.values())
+        dst["features"] = sorted(existing.values(), key=lambda f: f["code"])
 
 
 def _generated_variant_name(
