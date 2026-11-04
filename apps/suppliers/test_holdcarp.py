@@ -96,3 +96,26 @@ class TestBreadcrumbJson:
     def test_links(self):
         text = '"breadcrumb":{"links":[{"title":"Home","url":"a"},{"title":"Markers","url":"b"},{"title":"LED Light","url":"c"}]}'
         assert _page_breadcrumbs(text) == ["Markers", "LED Light"]
+
+
+class TestCombinationFixes:
+    def test_blank_combo_reference_keeps_variants_apart(self):
+        product = json.loads(json.dumps(_PRODUCT))
+        product["attributes"]["2"]["reference"] = ""
+        a = _adapter()._make_item(_combo("68"), product, "X", "", ["Markers"], [], "")
+        b = _adapter()._make_item(_combo("69"), product, "X", "", ["Markers"], [], "")
+        assert a["external_id"] == "50695023-68"
+        assert b["external_id"] == "50695023-69"
+
+    def test_malformed_refresh_returns_none(self):
+        adapter = _adapter()
+        adapter._get = lambda *a, **k: SimpleNamespace(
+            json=lambda: {"product_details": "<div>nothing</div>"}
+        )
+        assert adapter._combo_data(None, "u", "24", "68", 1, 0) is None
+
+    def test_fetch_errors_counted(self):
+        adapter = _adapter()
+        payload = json.dumps({"items": [], "errors": [{"id_product": "1", "error": "x"}]})
+        list(adapter.parse(payload.encode()))
+        assert adapter.fetch_errors == 1

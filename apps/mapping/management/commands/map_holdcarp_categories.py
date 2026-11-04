@@ -16,6 +16,8 @@ from apps.catalog.models import Category
 from apps.ingestion.models import Offer
 from apps.mapping.models import CategoryMapping
 from apps.mapping.services import map_category
+from apps.pricing.engine import compute_selling_price
+from apps.pricing.models import PriceRule
 from apps.suppliers.models import Supplier
 
 SUPPLIER_CODE = "holdcarp"
@@ -80,6 +82,12 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(err))
             raise CommandError("Nepavyko rezoliuoti visų tikslinių kategorijų.")
 
+        # Gilesni breadcrumb'ai paveldi šakninės kategorijos mapingą.
+        for cat_raw, sub_raw in list(offer_counts):
+            root = (cat_raw or "").split(">")[0].strip()
+            if (cat_raw, sub_raw) not in targets and ">" in (cat_raw or "") and (root, "") in targets:
+                targets[(cat_raw, sub_raw)] = targets[(root, "")]
+
         self.stdout.write("source -> target (offers):")
         mapped_offers = 0
         for (source_cat, source_sub), category in sorted(
@@ -116,6 +124,7 @@ class Command(BaseCommand):
         self.stdout.write(f"CategoryMapping: {created} sukurta, {updated} atnaujinta.")
 
         remapped = products_updated = 0
+        rules = list(PriceRule.objects.filter(is_active=True))
         for offer in (
             Offer.objects.filter(supplier=supplier)
             .select_related("product")
@@ -127,6 +136,10 @@ class Command(BaseCommand):
                 offer.category = category
                 changed.append("category")
                 remapped += 1
+            new_price = compute_selling_price(offer, rules)
+            if offer.selling_price != new_price:
+                offer.selling_price = new_price
+                changed.append("selling_price")
             new_published = bool(
                 not offer.is_discontinued
                 and offer.category_id

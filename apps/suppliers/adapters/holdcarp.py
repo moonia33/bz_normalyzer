@@ -306,6 +306,8 @@ class HoldCarpAdapter(BaseAdapter):
             return None
         details = str(data.get("product_details") or "")
         decoded = _decode_data_product(details)
+        if not decoded:
+            return None
         if decoded is not None:
             decoded["_preorder"] = "schema.org/PreOrder" in details
         return decoded
@@ -327,6 +329,9 @@ class HoldCarpAdapter(BaseAdapter):
             combo_ean = str(attr.get("ean13") or "") or combo_ean
 
         reference = combo_ref or str(product.get("reference") or "")
+        if not combo_ref and combo["id_product_attribute"] != "0":
+            # Kombinacija be savo kodo – bendras produkto kodas sutrauktų variantus.
+            reference = f"{reference or combo['id_product']}-{combo['id_product_attribute']}"
         external_id = reference or (
             f"{combo['id_product']}-{combo['id_product_attribute']}"
             if combo["id_product_attribute"] != "0" else str(product.get("id") or "")
@@ -380,6 +385,7 @@ class HoldCarpAdapter(BaseAdapter):
         data = json.loads(payload.decode("utf-8"))
         if isinstance(data, str):
             data = json.loads(data)
+        self.fetch_errors = len(data.get("errors") or [])
         seen: set[str] = set()
         for row in data.get("items") or []:
             external_id = (row.get("external_id") or "").strip()

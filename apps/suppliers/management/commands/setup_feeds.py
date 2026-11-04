@@ -154,6 +154,42 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
 
+        holdcarp, _ = Supplier.objects.update_or_create(
+            code="holdcarp",
+            defaults={
+                "name": "HoldCarp",
+                # Pirkimo kainų nėra – viešas retail EUR (rrp_price).
+                "purchase_price_includes_vat": False,
+                "selling_price_includes_vat": True,
+                "sku_prefix": "HC.",
+            },
+        )
+        holdcarp_config = {
+            "base_url": "https://holdcarp.sk/gb",
+            "request_delay": 0.4,
+            "timeout": 30,
+            "retries": 4,
+            "in_stock_qty": 10,
+        }
+        for feed_name, role, interval in (
+            ("HoldCarp katalogas (scrape)", FeedRole.CATALOG, 7 * 24 * 60),
+            ("HoldCarp likučiai (scrape)", FeedRole.STOCK, 24 * 60),
+        ):
+            feed, created = SupplierFeed.objects.update_or_create(
+                supplier=holdcarp,
+                name=feed_name,
+                defaults={
+                    "kind": SourceKind.SCRAPER,
+                    "role": role,
+                    "language": languages["en"] if role == FeedRole.CATALOG else None,
+                    "adapter_code": "holdcarp",
+                    "config": holdcarp_config,
+                    "sync_interval_minutes": interval,
+                    "is_active": True,
+                },
+            )
+            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
+
         ockert, _ = Supplier.objects.update_or_create(
             code="ockert",
             defaults={
@@ -230,42 +266,6 @@ class Command(BaseCommand):
                     "url": mivardi_config["url"],
                     "adapter_code": "mivardi",
                     "config": mivardi_config,
-                    "sync_interval_minutes": interval,
-                    "is_active": True,
-                },
-            )
-            self.stdout.write(f"Feed {feed}: {'created' if created else 'updated'}")
-
-        holdcarp, _ = Supplier.objects.update_or_create(
-            code="holdcarp",
-            defaults={
-                "name": "HoldCarp",
-                # Pirkimo kainų nėra – viešas retail EUR (rrp_price).
-                "purchase_price_includes_vat": False,
-                "selling_price_includes_vat": True,
-                "sku_prefix": "HC.",
-            },
-        )
-        holdcarp_config = {
-            "base_url": "https://holdcarp.sk/gb",
-            "request_delay": 0.4,
-            "timeout": 30,
-            "retries": 4,
-            "in_stock_qty": 10,
-        }
-        for feed_name, role, interval in (
-            ("HoldCarp katalogas (scrape)", FeedRole.CATALOG, 7 * 24 * 60),
-            ("HoldCarp likučiai (scrape)", FeedRole.STOCK, 24 * 60),
-        ):
-            feed, created = SupplierFeed.objects.update_or_create(
-                supplier=holdcarp,
-                name=feed_name,
-                defaults={
-                    "kind": SourceKind.SCRAPER,
-                    "role": role,
-                    "language": languages["en"] if role == FeedRole.CATALOG else None,
-                    "adapter_code": "holdcarp",
-                    "config": holdcarp_config,
                     "sync_interval_minutes": interval,
                     "is_active": True,
                 },
