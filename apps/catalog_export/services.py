@@ -751,6 +751,18 @@ def _videos(product: Product) -> list[dict]:
     return result
 
 
+SHOP_CODE_MAX = 64
+
+
+def _group_code(group: str | None) -> str:
+    """Shop'o product_group_code – iki 64 simbolių; ilgesni sutrumpinami su stabiliu hash."""
+    group = group or ""
+    if len(group) <= SHOP_CODE_MAX:
+        return group
+    digest = hashlib.sha1(group.encode()).hexdigest()[:8]
+    return f"{group[: SHOP_CODE_MAX - 9].rstrip('-')}-{digest}"
+
+
 def _offer_variant_code(offer: Offer) -> str:
     """Variant code = shop Variant.sku – unikalus globaliai.
 
@@ -828,7 +840,7 @@ def _new_variant(
         "code": _offer_variant_code(offer),
         "name": name,
         "supplier_code": offer.external_id,
-        "product_group_code": offer.product_group or "",
+        "product_group_code": _group_code(offer.product_group),
         "ean": offer.ean or offer.pack_barcode or "",
         "options": options,
         "features": [
@@ -1054,7 +1066,7 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 items.append(
                     {
                         "code": product.sku,
-                        "product_group_code": product.product_group or "",
+                        "product_group_code": _group_code(product.product_group),
                         "ean": product.ean or "",
                         "brand_code": product.brand.slug if product.brand_id else "",
                         "brand_name": product.brand.name if product.brand_id else "",

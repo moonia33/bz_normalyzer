@@ -75,6 +75,17 @@ class ExportPayloadTests(TestCase):
             attributes={"specs": {"Color": "Black/Grey"}},
         )
 
+    def test_long_product_group_code_fits_shop(self):
+        from apps.catalog_export.services import _group_code
+
+        long = "cult-catfish-bungee-original-k-derfisch-rig-haar-montage-big-u-pose"
+        code = _group_code(long)
+        self.assertEqual(len(code), 64)
+        self.assertEqual(code, _group_code(long))
+        self.assertNotEqual(code, _group_code(long + "-x"))
+        self.assertEqual(_group_code("GRP-1"), "GRP-1")
+        self.assertEqual(_group_code(None), "")
+
     def test_catalog_payload_shape_and_vat_math(self):
         payload = build_catalog_payload()
         self.assertEqual(payload["format_version"], 2)
