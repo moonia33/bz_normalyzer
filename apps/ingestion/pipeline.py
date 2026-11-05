@@ -649,6 +649,9 @@ def _content_hash(item: NormalizedItem) -> str:
             if k not in {"status", "raw_date", "is_available"}
         },
     }
+    if item.discount_percent is not None:
+        # tik kai yra – kitaip pasikeistų visų esamų offer'ių hash'ai
+        payload["discount_percent"] = item.discount_percent
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
     ).hexdigest()
