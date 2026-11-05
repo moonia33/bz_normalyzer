@@ -9,7 +9,7 @@
 > | Per-sandėlio kaina / savikaina / nuolaida % (normalyzer → BE) | ✅ normalyzer #35, BE #13 (prod) |
 > | Prekių badge'ai (admin, taisyklės, importas, API, Typesense, FE) | ✅ BE #14/#15, FE #5 (prod) |
 > | Normalyzer eksportas siunčia `badges` | ✅ `NormalizedItem.badges` → `Offer.badges` → katalogo `badges` |
-> | Adapteris `albatros` (Stock Excel) | ❌ |
+> | Adapteris `albatros` (Stock Excel) | ✅ `apps/suppliers/adapters/albatros.py` (be variantų grupavimo) |
 > | Gamintojų scraper'iai | ❌ |
 > | PS prekių re-key, kategorijų mapingas, vertimas, eksportas | ❌ |
 > | Prod importas | ❌ **tik gavus vartotojo patvirtinimą**, po dry-run ataskaitos |
@@ -32,7 +32,7 @@
 
 | Tipas | Pavyzdys | Stulpeliai | Rolė |
 |---|---|---|---|
-| **Stock (pagrindinis, pilnas)** | `Stock 10.21.xlsx`: 10 399 kodų (6 588 su 0), 110 skyrių | A žymė (`""` / `New 2027`), Code, Item, `be PVM, export`, `SALE`, `Q-ty`, Order, Catalogue, `FOTO` | **Katalogas + savikaina + likučiai.** Importuojama **viskas**, įskaitant 0. Kito Stock importo metu nerastas kodas → likutis 0 |
+| **Stock (pagrindinis, pilnas)** | `Stock 10.21.xlsx`: 10 398 kodų (visi su likučiu ≥ 1; 6 588 be SALE), 110 skyrių | A žymė (`""` / `New 2027`), Code, Item, `be PVM, export`, `SALE`, `Q-ty`, Order, Catalogue, `FOTO` | **Katalogas + savikaina + likučiai.** Importuojama **viskas**, įskaitant 0. Kito Stock importo metu nerastas kodas → likutis 0 |
 | Raw Stock | `Raw Stock 10.26.xlsx` (~30 800 kodų) | A skyrius, kodas, pavadinimas, kaina be PVM, likutis | **Nenaudojamas** kaip šaltinis (tik informacija analizei) |
 | Naujienos | `2027 NEW.xlsx` (382) | Code, Item, su PVM, export, nuolaida, FOTO (salsify) | Naujienų žymė + nuotraukos; **nenulina** |
 | Gamintojo kainoraščiai | `TiCA 2024`, `Crazy Fish Softlures 2024`, `Outdoors Adventures 2024` (Humminbird/Jobe/RAM: EAN, RRP, foto) | skiriasi | Papildomi duomenys (EAN, RRP, foto); **nenulina** |
@@ -211,7 +211,11 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 ## Kas toliau (eilės tvarka)
 
-1. Adapteris `albatros` + testai (skyrius „Testai“).
+1. Supplier `albatros` (prefiksas `AL.`, `selling_price_includes_vat=False`, warehouse
+   `albatros` = „Centrinis sandėlis“) + upload feed'as (role `catalog`, adapter `albatros`);
+   **jokių `PriceRule` šiam tiekėjui** – kaina jau RRP bazėje (export × 1,5).
+   Variantų grupavimas – iš gamintojų puslapių (2 žingsnis); `extra.photo_group` (bendra FOTO)
+   – užuomina grupavimui.
 2. Gamintojų scraper'iai: pradėti nuo savagegear.com, dam.de, store.mepps.com (randama pagal kodą).
 3. Dry-run ataskaita vartotojui (kiekiai, kainų pavyzdžiai, susiejimas su esamomis prekėmis).
 4. Tik po patvirtinimo: BE backup → PS re-key → eksportas → Typesense patikra.
