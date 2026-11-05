@@ -278,3 +278,21 @@ class BrandSourceTests(SimpleTestCase):
         with patch:
             urls = [url for _, url, _ in source.crawl(languages=("de", "en"), limit=1)]
         self.assertEqual(urls, ["https://s/1"])
+
+
+class ShopifyIncompleteTests(SimpleTestCase):
+    def _result(self, payload):
+        s = mock.Mock()
+        response = _response()
+        response.json.return_value = payload
+        s.get.return_value = response
+        gen = shopify.crawl("https://x", s=s, sleep=lambda _: None)
+        with self.assertRaises(StopIteration) as stop:
+            next(gen)
+        return stop.exception.value
+
+    def test_missing_products_key_is_incomplete(self):
+        self.assertFalse(self._result({"errors": "x"}))
+
+    def test_empty_first_page_is_incomplete(self):
+        self.assertFalse(self._result({"products": []}))

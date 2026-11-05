@@ -79,8 +79,10 @@ def crawl(base: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, slee
         if response is None or response.status_code != 200:
             return False
         try:
-            products = response.json().get("products") or []
-        except ValueError:
+            products = response.json()["products"]
+        except (ValueError, KeyError, TypeError):
+            return False
+        if not isinstance(products, list) or (not products and page == 1):
             return False
         if not products:
             return True
