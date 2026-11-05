@@ -51,7 +51,7 @@ def sitemap_index(xml: str) -> dict[str, list[tuple[str, str]]]:
 
 
 def candidates(code: str, index: dict[str, list[tuple[str, str]]]) -> list[str]:
-    """Prekių URL, kurių slug'e kodas yra atskira dalis (pradžioje, viduryje ar gale)."""
+    """Prekių URL, kurių slug'e kodas yra atskira dalis; prasidedantys kodu – pirmi."""
     code_slug = _slug(code)
     if not code_slug:
         return []
@@ -63,7 +63,10 @@ def candidates(code: str, index: dict[str, list[tuple[str, str]]]) -> list[str]:
         or slug.endswith("-" + code_slug)
         or f"-{code_slug}-" in slug
     ]
-    return list(dict.fromkeys(urls))[:MAX_CANDIDATES]
+    urls = list(dict.fromkeys(urls))
+    # Pavadinimas prasideda kodu -> ir slug'as dažniausiai; tokie tikrinami pirmi.
+    urls.sort(key=lambda url: not _page_slug(url).startswith(code_slug))
+    return urls[:MAX_CANDIDATES]
 
 
 def _product_ld(content: str) -> dict:

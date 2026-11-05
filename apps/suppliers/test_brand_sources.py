@@ -379,6 +379,15 @@ class ZuklysParseTests(SimpleTestCase):
         )
         self.assertEqual(zuklys.candidates("99999", index), [])
 
+    def test_candidates_starting_with_code_come_first(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        slugs = ["a-143803-x", "b-143803-y", "c-143803", "143803-tica-lustre"]
+        xml = "".join(f"<loc>https://zuklys.lt/lt/{s}-lt.html</loc>" for s in slugs)
+        found = zuklys.candidates("143803", zuklys.sitemap_index(xml))
+        self.assertEqual(len(found), zuklys.MAX_CANDIDATES)
+        self.assertEqual(found[0], "https://zuklys.lt/lt/143803-tica-lustre-lt.html")
+
     def test_crawl_uses_sitemap_and_tries_candidates_until_code_matches(self):
         from apps.suppliers.manufacturers import zuklys
 
