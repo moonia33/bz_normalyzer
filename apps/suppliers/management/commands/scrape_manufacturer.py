@@ -29,11 +29,19 @@ def _zuklys_codes(path: str | None) -> list[str]:
     if path:
         with open(path, encoding="utf-8") as fh:
             return [line.strip().upper() for line in fh if line.strip()]
+    from django.utils.text import slugify
+
     covered = set()
-    for codes in ManufacturerContent.objects.exclude(codes=[]).values_list("codes", flat=True):
-        covered.update(codes)
-    codes = Offer.objects.filter(supplier__code="albatros").values_list("external_id", flat=True)
-    return sorted({str(c).strip().upper() for c in codes} - covered)
+    for source, codes in ManufacturerContent.objects.exclude(codes=[]).values_list("source", "codes"):
+        covered.update((source, code) for code in codes)
+    offers = Offer.objects.filter(supplier__code="albatros").values_list("external_id", "brand_name_raw")
+    return sorted(
+        {
+            code
+            for code, brand in ((str(c).strip().upper(), b) for c, b in offers)
+            if (zuklys.SOURCE, code) not in covered and (slugify(brand or ""), code) not in covered
+        }
+    )
 
 
 def _keep_most_specific(source: str, urls: set[str]) -> int:
