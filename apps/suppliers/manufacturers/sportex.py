@@ -25,7 +25,8 @@ def parse_page(content: bytes) -> dict:
     languages = {
         lang: href
         for lang, href in zip(
-            tree.xpath('//link[@hreflang]/@hreflang'), tree.xpath('//link[@hreflang]/@href')
+            tree.xpath("//link[@hreflang]/@hreflang"),
+            tree.xpath("//link[@hreflang]/@href"),
         )
         if lang != "x-default"
     }
@@ -75,12 +76,17 @@ def parse_page(content: bytes) -> dict:
             rows = _table_rows(node)
             if rows:
                 sections.append(
-                    {"heading": heading, "text": _closest_block(heading, blocks), "rows": rows}
+                    {
+                        "heading": heading,
+                        "text": _closest_block(heading, blocks),
+                        "rows": rows,
+                    }
                 )
     close_block()
     codes = sorted({code for section in sections for code in section["rows"]})
     images = [
-        src for src in root.xpath(".//img/@src")
+        src
+        for src in root.xpath(".//img/@src")
         if "/wp-content/uploads/" in src and not re.search(r"-\d+x\d+\.", src)
     ]
     return {
@@ -124,7 +130,10 @@ def _table_rows(table) -> dict[str, dict[str, str]]:
         rows[cells[code_idx].upper()] = {
             header[i]: value
             for i, value in enumerate(cells)
-            if i < len(header) and i != code_idx and value and not _SKIP_HEADER.search(header[i])
+            if i < len(header)
+            and i != code_idx
+            and value
+            and not _SKIP_HEADER.search(header[i])
         }
     return rows
 
@@ -135,7 +144,9 @@ def series_urls(session: requests.Session) -> list[str]:
     return re.findall(r"<loc>([^<]+)</loc>", response.text)
 
 
-def crawl(languages: tuple[str, ...] = ("de", "en", "pl"), delay: float = 0.7, limit: int = 0):
+def crawl(
+    languages: tuple[str, ...] = ("de", "en", "pl"), delay: float = 0.7, limit: int = 0
+):
     """Generuoja (language, url, parsed) – tik puslapiai su prekių lentelėmis."""
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
