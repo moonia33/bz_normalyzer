@@ -247,6 +247,10 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
   ašys = puslapio eilutės laukai (be `name`), EAN iš `specs.eans`, nuotraukos = Stock FOTO + gamintojo.
 - Grupės variantams su vienodomis ašimis (sportfishtackle eilutės be ašių) `model` = Stock
   pavadinimo žodžių skirtumas (`Exorus 1000 … 210g` / `Exorus 2500 … 260g` → `1000 210g` / `2500 260g`).
+- `extra.strict_group = True`: bendras EAN ar kodas nesujungia skirtingų puslapių į vieną prekę.
+- Jei gamintojo turinys atsiranda **po** importo (pvz. Mepps), esami offer'iai lieka susieti su
+  senomis prekėmis: po `scrape_manufacturer` + importo paleisti
+  `relink_variant_products --supplier albatros` (dry-run) → `--apply`.
 - Kodas be gamintojo puslapio (vartotojo sprendimas „kol kas kaip turime“) – atskira prekė su
   Stock pavadinimu ir FOTO.
 
