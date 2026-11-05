@@ -355,42 +355,68 @@ class ZuklysParseTests(SimpleTestCase):
 
         self.assertIsNone(zuklys.parse_page(_ZUKLYS_PAGE.encode(), "49-40"))
 
-    def test_search_urls_strip_query(self):
+    def test_sitemap_candidates_match_code_as_slug_part(self):
         from apps.suppliers.manufacturers import zuklys
 
-        text = '<div class="name name-product"><a href="https://zuklys.lt/a-lt.html?search=1&amp;x=2">'
-        self.assertEqual(zuklys.search_urls(text), ["https://zuklys.lt/a-lt.html"])
-
-    def test_search_urls_keep_product_id(self):
-        from apps.suppliers.manufacturers import zuklys
-
-        text = '<p class="name name-product"><a href="https://zuklys.lt/index.php?route=product/product&amp;product_id=42&amp;search=1">'
+        xml = "<urlset>" + "".join(
+            f"<url><loc>{u}</loc></url>"
+            for u in (
+                "https://zuklys.lt/lt/a/143803-spiningine-rite-tica-wild-fox-lt.html",
+                "https://zuklys.lt/lt/a/49-40-30d-6-guminukai-crazy-fish-nimble-49-40-30d-6-lt.html",
+                "https://zuklys.lt/lt/a/1438030-kita-preke-lt.html",
+                "http://169.254.169.254/143803-x-lt.html",
+                "https://zuklys.lt.evil.com/143803-x-lt.html",
+            )
+        ) + "</urlset>"
+        index = zuklys.sitemap_index(xml)
         self.assertEqual(
-            zuklys.search_urls(text),
-            ["https://zuklys.lt/index.php?route=product/product&product_id=42"],
+            zuklys.candidates("143803", index),
+            ["https://zuklys.lt/lt/a/143803-spiningine-rite-tica-wild-fox-lt.html"],
         )
+        self.assertEqual(
+            zuklys.candidates("49-40-30D-6", index),
+            ["https://zuklys.lt/lt/a/49-40-30d-6-guminukai-crazy-fish-nimble-49-40-30d-6-lt.html"],
+        )
+        self.assertEqual(zuklys.candidates("99999", index), [])
 
-    def test_search_urls_ignore_other_hosts(self):
+    def test_candidates_starting_with_code_come_first(self):
         from apps.suppliers.manufacturers import zuklys
 
-        text = '<p class="name name-product"><a href="http://169.254.169.254/latest">'
-        text += '<p class="name name-product"><a href="https://zuklys.lt.evil.com/a.html">'
-        self.assertEqual(zuklys.search_urls(text), [])
+        slugs = ["a-143803-x", "b-143803-y", "c-143803", "143803-tica-lustre"]
+        xml = "".join(f"<loc>https://zuklys.lt/lt/{s}-lt.html</loc>" for s in slugs)
+        found = zuklys.candidates("143803", zuklys.sitemap_index(xml))
+        self.assertEqual(len(found), zuklys.MAX_CANDIDATES)
+        self.assertEqual(found[0], "https://zuklys.lt/lt/143803-tica-lustre-lt.html")
 
-    def test_crawl_tries_results_until_code_matches(self):
+    def test_crawl_uses_sitemap_and_tries_candidates_until_code_matches(self):
         from apps.suppliers.manufacturers import zuklys
 
-        search = '<p class="name name-product"><a href="https://zuklys.lt/x.html">'
-        search += '<p class="name name-product"><a href="https://zuklys.lt/y.html">'
+        xml = (
+            "<urlset><url><loc>https://zuklys.lt/lt/x/49-40-30d-6-a-lt.html</loc></url>"
+            "<url><loc>https://zuklys.lt/lt/x/49-40-30d-6-b-lt.html</loc></url></urlset>"
+        )
         pages = [
-            _response(text=search),
+            _response(text=xml),
             _response(content=b"<html></html>"),
             _response(content=_ZUKLYS_PAGE.encode()),
         ]
+        urls = []
 
         class S:
             def get(self, url, **kw):
+                urls.append(url)
                 return pages.pop(0)
 
         out = list(zuklys.crawl(["49-40-30d-6"], s=S(), sleep=lambda *_: None))
-        self.assertEqual([url for _, url, _ in out], ["https://zuklys.lt/y.html"])
+        self.assertEqual([url for _, url, _ in out], ["https://zuklys.lt/lt/x/49-40-30d-6-b-lt.html"])
+        self.assertEqual(urls[0], zuklys.SITEMAP)
+        self.assertFalse(any("route=product/search" in u for u in urls))
+
+    def test_crawl_without_sitemap_yields_nothing(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        class S:
+            def get(self, url, **kw):
+                return _response(status=503)
+
+        self.assertEqual(list(zuklys.crawl(["1"], s=S(), sleep=lambda *_: None)), [])
