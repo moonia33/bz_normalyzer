@@ -1,7 +1,7 @@
 """zuklys.lt (LT e-parduotuvė su Albatros prekėmis) -> ManufacturerContent(source="zuklys", language="lt").
 
-Atsarginis šaltinis kodams be gamintojo turinio: paieška pagal Albatros kodą, prekės
-pavadinimas prasideda kodu. Imama nuotrauka ir parametrų lentelė (aprašymo dažniausiai nėra).
+Atsarginis šaltinis kodams be gamintojo turinio: kodas ieškomas sitemap.xml prekių URL
+(paieška robots.txt uždrausta), puslapis priimamas tik jei prekės pavadinimas prasideda kodu. Imama nuotrauka ir parametrų lentelė (aprašymo dažniausiai nėra).
 Vartotojas leido naudoti šį turinį.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import urlsplit
 
 from lxml import html as lxml_html
 
@@ -18,31 +18,48 @@ from apps.suppliers.manufacturers import http
 
 SOURCE = "zuklys"
 LANGUAGE = "lt"
-SEARCH = "https://zuklys.lt/index.php?route=product/search&search={}"
-_RESULT = re.compile(r'class="name name-product"[^>]*>\s*<a href="([^"]+)"')
-
-
-def _clean(text: str) -> str:
-    return " ".join((text or "").split())
-
-
+SITEMAP = "https://zuklys.lt/sitemap.xml"
 HOSTS = {"zuklys.lt", "www.zuklys.lt"}
+MAX_CANDIDATES = 3
+_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 
 
-def _product_url(href: str) -> str | None:
-    """Tik zuklys.lt nuorodos (ne svetimi/vidiniai adresai), be paieškos parametrų."""
-    parts = urlsplit(html_lib.unescape(href))
-    if parts.scheme not in ("http", "https") or parts.hostname not in HOSTS:
-        return None
-    product_id = parse_qs(parts.query).get("product_id")
-    if product_id:
-        return f"https://{parts.hostname}{parts.path}?route=product/product&product_id={product_id[0]}"
-    return f"https://{parts.hostname}{parts.path}"
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def search_urls(text: str, limit: int = 3) -> list[str]:
-    urls = (_product_url(u) for u in _RESULT.findall(text))
-    return list(dict.fromkeys(u for u in urls if u))[:limit]
+def _page_slug(url: str) -> str:
+    return url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html").removesuffix("-lt")
+
+
+def sitemap_index(xml: str) -> dict[str, list[tuple[str, str]]]:
+    """Žodis iš prekės URL slug'o -> [(slug, url)]; tik zuklys.lt adresai."""
+    index: dict[str, list[tuple[str, str]]] = {}
+    for loc in _LOC.findall(xml):
+        url = html_lib.unescape(loc)
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https") or parts.hostname not in HOSTS:
+            continue
+        slug = _page_slug(url)
+        for token in set(slug.split("-")):
+            index.setdefault(token, []).append((slug, url))
+    return index
+
+
+def candidates(code: str, index: dict[str, list[tuple[str, str]]]) -> list[str]:
+    """Prekių URL, kurių slug'e kodas yra atskira dalis (pradžioje, viduryje ar gale)."""
+    code_slug = _slug(code)
+    if not code_slug:
+        return []
+    urls = [
+        url
+        for slug, url in index.get(code_slug.split("-")[0], [])
+        if slug == code_slug
+        or slug.startswith(code_slug + "-")
+        or slug.endswith("-" + code_slug)
+        or f"-{code_slug}-" in slug
+    ]
+    return list(dict.fromkeys(urls))[:MAX_CANDIDATES]
 
 
 def _product_ld(content: str) -> dict:
@@ -94,16 +111,17 @@ def parse_page(content: bytes, code: str) -> dict | None:
 
 
 def crawl(codes, delay: float = http.MIN_DELAY, limit: int = 0, s=None, sleep=None):
-    """Kiekvienam kodui: paieška -> iki 3 rezultatų puslapių, kol randamas kodas."""
+    """Sitemap (robots.txt draudžia paiešką) -> kiekvienam kodui iki 3 puslapių, kol randamas kodas."""
     s = s or http.session()
     kwargs = {"sleep": sleep} if sleep else {}
+    response = http.get(s, SITEMAP, delay, **kwargs)
+    if response is None or response.status_code != 200:
+        return False
+    index = sitemap_index(response.text)
     for n, code in enumerate(codes):
         if limit and n >= limit:
             return False
-        response = http.get(s, SEARCH.format(quote(code)), delay, **kwargs)
-        if response is None or response.status_code != 200:
-            continue
-        for url in search_urls(response.text):
+        for url in candidates(code, index):
             page = http.get(s, url, delay, **kwargs)
             if page is None or page.status_code != 200:
                 continue

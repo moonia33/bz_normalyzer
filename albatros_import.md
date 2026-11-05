@@ -254,10 +254,11 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 - Kodas be gamintojo puslapio (vartotojo sprendimas „kol kas kaip turime“, publikuojama ir be
   nuotraukos – vėliau peržiūrima rankiniu būdu) – Stock pavadinimas ir FOTO, papildomai:
   - **zuklys.lt** (`scrape_manufacturer --source zuklys [--codes-file]`, vartotojas leido):
-    paieška pagal Albatros kodą, puslapis priimamas tik jei JSON-LD `name` prasideda kodu.
+    kodas ieškomas `sitemap.xml` prekių URL slug'uose (robots.txt draudžia
+    `route=product/search`), puslapis priimamas tik jei JSON-LD `name` prasideda kodu.
     `ManufacturerContent(source="zuklys", language="lt")`; adapteris ima tik nuotraukas ir
     parametrų lentelę (`attributes.specs`), **negrupuoja**. Be `--codes-file` – `albatros` offer'ių
-    kodai be jokio turinio. ~3 užklausos kodui, `--delay 1.5` → ~7 500 kodų ≈ 9 h.
+    kodai be jokio turinio. 1 sitemap + ≤3 puslapiai kodui (tik slug'o atitikmenims; ~3 000 iš 7 573).
   - **Bendra FOTO** (`apply_photo_groups`, išjungiama `photo_groups: false`): tas pats ženklas +
     skyrius + Stock FOTO → `product_group = "<ženklas>:photo:<sha1[:12]>"`, `base_name` = bendra
     pavadinimo pradžia, ašis `model` = pavadinimo skirtumas. Nejungiama, jei bendra pradžia tik ženklas
