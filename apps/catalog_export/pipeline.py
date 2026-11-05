@@ -540,6 +540,9 @@ def plan_prices(schedule: SupplierSchedule) -> tuple[list[dict], dict]:
         if offer.price_locked:
             locked += 1
             continue
+        if offer.shop_variant_code:
+            # papildomas sandėlis: kaina keliauja tik kaip sandėlio sąlygos
+            continue
         desired[_offer_variant_code(offer)] = (_dec(price), _dec(cost))
     state = fetch_variant_state(desired)
     guard = Decimal(schedule.price_change_guard_pct or 0)
