@@ -65,6 +65,11 @@ class ShopifyParseTests(SimpleTestCase):
         self.assertEqual(parsed["intro"], "Lifelike herring.\n3D scan\nABS lip")
         self.assertEqual(parsed["category"], "Swimbaits")
 
+    def test_svs_prefix_is_stripped_to_albatros_code(self):
+        self.assertEqual(shopify.albatros_code(" svs65045 "), "65045")
+        self.assertEqual(shopify.albatros_code("SVSX1"), "SVSX1")
+        self.assertEqual(shopify.albatros_code("1652720"), "1652720")
+
     def test_default_title_option_is_dropped(self):
         product = {
             "title": "Rod",
@@ -72,7 +77,7 @@ class ShopifyParseTests(SimpleTestCase):
             "variants": [{"sku": "SVS72812", "option1": "Default Title"}],
         }
         parsed = shopify.parse_product(product, "https://x")
-        self.assertEqual(parsed["sections"][0]["rows"], {"SVS72812": {}})
+        self.assertEqual(parsed["sections"][0]["rows"], {"72812": {}})
 
     def test_crawl_pages_until_empty(self):
         s = mock.Mock()

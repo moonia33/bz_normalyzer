@@ -145,7 +145,7 @@ Vienas `source` jungia kelis puslapių šaltinius (`apps/suppliers/manufacturers
 
 | Modulis | Svetainė | Kalba | Kas gaunama |
 |---|---|---|---|
-| `shopify.py` | savagegear.com, dam.de, prologicfishing.com, madcat-fishing.com (`/products.json`) | en | prekė = bazinė prekė; `variant.sku` = kodas; option'ai (Color, Size…) = varianto eilutė; nuotraukos; aprašymas; `product_type` |
+| `shopify.py` | savagegear.com, dam.de, prologicfishing.com, madcat-fishing.com (`/products.json`) | en | prekė = bazinė prekė; `variant.sku` = kodas (`SVS65045` → `65045`); option'ai (Color, Size…) = varianto eilutė; nuotraukos; aprašymas; `product_type` |
 | `sportfishtackle.py` | sportfishtackle.de/de/artiklar/<slug>.html (sąrašas iš sportfiskeprylar.se sitemap, slug prasideda ženklu) | de | JSON-LD `offers[].sku` = kodas, `gtin12` = EAN (`specs.eans`), varianto pavadinimas; `TeknSpec` lentelė → sekcijos tekstas; zoom nuotraukos |
 | `http.py` | – | – | User-Agent, pauzė ≥ 1 s, 429/5xx → backoff (Retry-After), klaida → `None` (crawl tęsiasi) |
 

@@ -17,6 +17,7 @@ SITES = {
     "madcat": "https://www.madcat-fishing.com",
 }
 LANGUAGE = "en"
+SKU_PREFIX = "SVS"
 PAGE_SIZE = 250
 
 
@@ -32,11 +33,22 @@ def _text(body_html: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def albatros_code(sku) -> str:
+    """DAM grupės SKU `SVS65045` = Albatros kodas `65045`."""
+    code = str(sku or "").strip().upper()
+    if (
+        code.startswith(SKU_PREFIX)
+        and code[len(SKU_PREFIX) : len(SKU_PREFIX) + 1].isdigit()
+    ):
+        return code[len(SKU_PREFIX) :]
+    return code
+
+
 def parse_product(product: dict, base: str) -> dict:
     options = [o.get("name") or "" for o in product.get("options") or []]
     rows: dict[str, dict[str, str]] = {}
     for variant in product.get("variants") or []:
-        code = str(variant.get("sku") or "").strip().upper()
+        code = albatros_code(variant.get("sku"))
         if not code:
             continue
         row = {}
