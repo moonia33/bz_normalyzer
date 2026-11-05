@@ -191,3 +191,37 @@ class ShopifyBadResponseTests(SimpleTestCase):
         with self.assertRaises(StopIteration) as stop:
             next(gen)
         self.assertFalse(stop.exception.value)
+
+
+class BrandSourceTests(SimpleTestCase):
+    def _patched(self):
+        from apps.suppliers.manufacturers.brands import BrandSource
+
+        page = ("de", "https://t/1", {})
+        return BrandSource("savage-gear"), mock.patch.multiple(
+            "apps.suppliers.manufacturers.brands",
+            shopify=mock.Mock(
+                SITES=shopify.SITES,
+                LANGUAGE="en",
+                crawl=lambda *a: iter(
+                    [("en", "https://s/1", {}), ("en", "https://s/2", {})]
+                ),
+            ),
+            sportfishtackle=mock.Mock(
+                SLUG_PREFIXES=sportfishtackle.SLUG_PREFIXES,
+                LANGUAGE="de",
+                crawl=lambda *a: iter([page]),
+            ),
+        )
+
+    def test_languages_select_sources(self):
+        source, patch = self._patched()
+        with patch:
+            urls = [url for _, url, _ in source.crawl(languages=("de",))]
+        self.assertEqual(urls, ["https://t/1"])
+
+    def test_limit_is_shared_across_sources(self):
+        source, patch = self._patched()
+        with patch:
+            urls = [url for _, url, _ in source.crawl(languages=("de", "en"), limit=1)]
+        self.assertEqual(urls, ["https://s/1"])

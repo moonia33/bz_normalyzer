@@ -13,11 +13,27 @@ class BrandSource:
     def __init__(self, brand: str):
         self.brand = brand
 
-    def crawl(self, languages=(), delay: float = http.MIN_DELAY, limit: int = 0):
-        if self.brand in shopify.SITES:
-            yield from shopify.crawl(shopify.SITES[self.brand], delay, limit)
-        if self.brand in sportfishtackle.SLUG_PREFIXES:
-            yield from sportfishtackle.crawl(self.brand, delay, limit)
+    def _sources(self, languages):
+        if self.brand in shopify.SITES and shopify.LANGUAGE in languages:
+            yield shopify.crawl(shopify.SITES[self.brand], self.delay, self.limit)
+        if (
+            self.brand in sportfishtackle.SLUG_PREFIXES
+            and sportfishtackle.LANGUAGE in languages
+        ):
+            yield sportfishtackle.crawl(self.brand, self.delay, self.limit)
+
+    def crawl(
+        self, languages=("de", "en"), delay: float = http.MIN_DELAY, limit: int = 0
+    ):
+        """`languages` riboja šaltinius (Shopify = en, sportfishtackle = de); `limit` – bendras."""
+        self.delay, self.limit = delay, limit
+        count = 0
+        for source in self._sources(languages):
+            for item in source:
+                yield item
+                count += 1
+                if limit and count >= limit:
+                    return
 
 
 BRANDS = {
