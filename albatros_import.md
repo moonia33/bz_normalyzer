@@ -9,7 +9,7 @@
 > | Per-sandėlio kaina / savikaina / nuolaida % (normalyzer → BE) | ✅ normalyzer #35, BE #13 (prod) |
 > | Prekių badge'ai (admin, taisyklės, importas, API, Typesense, FE) | ✅ BE #14/#15, FE #5 (prod) |
 > | Normalyzer eksportas siunčia `badges` | ✅ `NormalizedItem.badges` → `Offer.badges` → katalogo `badges` |
-> | Adapteris `albatros` (Stock Excel) | ✅ `apps/suppliers/adapters/albatros.py` (be variantų grupavimo) |
+> | Adapteris `albatros` (Stock Excel) | ✅ `apps/suppliers/adapters/albatros.py`, variantai grupuojami pagal gamintojo puslapį |
 > | Gamintojų scraper'iai | 🟡 Savage Gear, DAM, Prologic, Madcat (Shopify + sportfishtackle.de); Mepps ❌ |
 > | PS prekių re-key, kategorijų mapingas, vertimas, eksportas | ❌ |
 > | Prod importas | ❌ **tik gavus vartotojo patvirtinimą**, po dry-run ataskaitos |
@@ -235,6 +235,40 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 - Neatpažintas failas / klaidingos eilutės → likučiai neliečiami.
 - Gamintojo modulis: fixture HTML → kodai, variantai, nuotraukos, specs; 429/timeout → be duomenų, importas nekrenta.
 - Pakartotinis importas → 0 pakeitimų (`exported_hash` stabilus).
+
+## Variantų grupavimas (adapteris)
+
+`AlbatrosAdapter.iter_items` po Stock nuskaitymo: `manufacturer_lookup()` →
+`apply_manufacturer_content()` (išjungiama feed config `manufacturer_groups: false`).
+
+- Kodas randamas `ManufacturerContent.codes` pagal `slugify(brand)`; keli puslapiai → EN pirma,
+  tada puslapis su mažiausiai kodų.
+- Puslapis = bazinė prekė: `extra.product_group = "<ženklas>:<url slug>"`, `base_name = series`,
+  ašys = puslapio eilutės laukai (be `name`), EAN iš `specs.eans`, nuotraukos = Stock FOTO + gamintojo.
+- Grupės variantams su vienodomis ašimis (sportfishtackle eilutės be ašių) `model` = Stock
+  pavadinimo žodžių skirtumas (`Exorus 1000 … 210g` / `Exorus 2500 … 260g` → `1000 210g` / `2500 260g`).
+- EAN, kurį šaltinis duoda keliems kodams, nesiunčiamas (kitaip pipeline sujungtų skirtingas prekes); unikalus EAN sujungia su kito tiekėjo preke (Albatros = papildomas sandėlis).
+- Jei gamintojo turinys atsiranda **po** importo (pvz. Mepps), esami offer'iai lieka susieti su
+  senomis prekėmis: po `scrape_manufacturer` + importo paleisti
+  `relink_variant_products --supplier albatros` (dry-run) → `--apply`.
+- Kodas be gamintojo puslapio (vartotojo sprendimas „kol kas kaip turime“) – atskira prekė su
+  Stock pavadinimu ir FOTO.
+
+Dry-run su `Stock 10.21` (lokaliai, be BE rašymo):
+
+| | Kiekis |
+|---|---|
+| Kodai | 10 398 |
+| Prekės | 8 305: 430 su keliais variantais, 302 vieno varianto su gamintojo turiniu, 7 573 be gamintojo turinio |
+| Kodai gamintojo grupėse | 2 825 (visi su nuotrauka; 669 iš 732 puslapių su aprašymu) |
+| Be gamintojo turinio ir be nuotraukos | 3 530 (Crazy Fish 1 118, Mepps 558, Lucky Craft 375, Rapala 374, Borika 161 …) |
+| BE atitikmenys (prod, read-only) | 820 variantų: PS 617 (231 prekė) → re-key; Fox/Shimano/Korda 203 → tik sandėlis |
+
+Peržiūrai (ne automatiškai):
+- 96 PS prekės išsiskaido į kelias Albatros prekes (64 – tik kodai be gamintojo turinio,
+  29 – dalis gamintojo grupėje, 3 – kelios gamintojo grupės).
+- 13 gamintojo grupių atitinka kelias PS prekes (PS dublikatai → sujungti su redirect'u).
+- `GRD230`, `GRD231` atitinka ir `FX.`, ir `KD.` variantą.
 
 ## Kas toliau (eilės tvarka)
 
