@@ -784,12 +784,28 @@ def _to_int_cm(value) -> int:
         return 0
 
 
-def _variant_keys(offer: Offer) -> set[str]:
+def _variant_keys(offer: Offer, shared_eans: frozenset[str] = frozenset()) -> set[str]:
     """Identiteto raktai: EAN ir art-no. Sutapęs bet kuris = tas pats variantas."""
     keys = {f"sku:{_offer_variant_code(offer).lower()}"}
-    if offer.ean:
-        keys.add(f"ean:{offer.ean.strip().lower()}")
+    ean = _ean_key(offer)
+    if ean and ean not in shared_eans:
+        keys.add(f"ean:{ean}")
     return keys
+
+
+def _ean_key(offer: Offer) -> str:
+    return (offer.ean or "").strip().lower()
+
+
+def _shared_eans(offers: list[Offer]) -> frozenset[str]:
+    """EAN'ai, kuriuos tas pats tiekėjas duoda keliems skirtingiems kodams
+    (pvz. HoldCarp spalvoms – bazinės prekės EAN). Jie variantų nejungia."""
+    codes: dict[tuple, set[str]] = {}
+    for offer in offers:
+        ean = _ean_key(offer)
+        if ean:
+            codes.setdefault((offer.supplier_id, ean), set()).add(_offer_variant_code(offer))
+    return frozenset(ean for (_sid, ean), c in codes.items() if len(c) > 1)
 
 
 def offer_prices(offer: Offer) -> tuple:
@@ -951,10 +967,12 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
     ) = _plan_variants(offers, profile)
     variants: list[dict] = []
     index: dict[str, dict] = {}
+    shared_eans = _shared_eans(offers)
     for offer in offers:
         warehouse = _warehouse_code(offer.supplier)
         stock = max(offer.stock or 0, 0) if offer.is_available else 0
-        keys = _variant_keys(offer)
+        keys = _variant_keys(offer, shared_eans)
+        shared = _ean_key(offer) in shared_eans
         hits: list[dict] = []
         for key in keys:
             found = index.get(key)
@@ -978,6 +996,8 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
                 variant_features.get(offer.id, {}),
                 name=name,
             )
+            if shared and variant["ean"] == offer.ean:
+                variant["ean"] = ""
             variants.append(variant)
         else:
             variant = hits.pop(0)
@@ -988,7 +1008,7 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
                 for idx_key, idx_val in index.items():
                     if idx_val is other:
                         index[idx_key] = variant
-        if offer.ean and not variant["ean"]:
+        if offer.ean and not shared and not variant["ean"]:
             variant["ean"] = offer.ean
         for key in keys:
             index[key] = variant
