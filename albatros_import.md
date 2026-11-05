@@ -251,8 +251,23 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 - Jei gamintojo turinys atsiranda **po** importo (pvz. Mepps), esami offer'iai lieka susieti su
   senomis prekėmis: po `scrape_manufacturer` + importo paleisti
   `relink_variant_products --supplier albatros` (dry-run) → `--apply`.
-- Kodas be gamintojo puslapio (vartotojo sprendimas „kol kas kaip turime“) – atskira prekė su
-  Stock pavadinimu ir FOTO.
+- Kodas be gamintojo puslapio (vartotojo sprendimas „kol kas kaip turime“, publikuojama ir be
+  nuotraukos – vėliau peržiūrima rankiniu būdu) – Stock pavadinimas ir FOTO, papildomai:
+  - **zuklys.lt** (`scrape_manufacturer --source zuklys [--codes-file]`, vartotojas leido):
+    paieška pagal Albatros kodą, puslapis priimamas tik jei JSON-LD `name` prasideda kodu.
+    `ManufacturerContent(source="zuklys", language="lt")`; adapteris ima tik nuotraukas ir
+    parametrų lentelę (`attributes.specs`), **negrupuoja**. Be `--codes-file` – `albatros` offer'ių
+    kodai be jokio turinio. ~3 užklausos kodui, `--delay 1.5` → ~7 500 kodų ≈ 9 h.
+  - **Bendra FOTO** (`apply_photo_groups`, išjungiama `photo_groups: false`): tas pats ženklas +
+    skyrius + Stock FOTO → `product_group = "<ženklas>:photo:<sha1[:12]>"`, `base_name` = bendra
+    pavadinimo pradžia, ašis `model` = pavadinimo skirtumas. Nejungiama, jei bendra pradžia tik ženklas
+    (bendra kategorijos nuotrauka).
+  - rockworld.lt pagal kodą neranda; zuklesreikmenys.lt → zvejybosreikmenys.lt už Cloudflare
+    challenge (neapeinama).
+- **Rankinis PS grupavimas svarbiausias** (vartotojo sprendimas): feed config
+  `fixed_groups: {kodas: "ps:<BE product id>"}` (arba `{"group": …, "base_name": …}`) perrašo
+  gamintojo ir FOTO grupę. Užpildoma iš BE atitikmenų (617 kodų, 231 PS prekė) prieš pirmą importą.
+- Eilė: gamintojo turinys → zuklys → FOTO grupės → `fixed_groups` → `_distinguish_twins`.
 
 Dry-run su `Stock 10.21` (lokaliai, be BE rašymo):
 
@@ -263,6 +278,13 @@ Dry-run su `Stock 10.21` (lokaliai, be BE rašymo):
 | Kodai gamintojo grupėse | 2 825 (visi su nuotrauka; 669 iš 732 puslapių su aprašymu) |
 | Be gamintojo turinio ir be nuotraukos | 3 530 (Crazy Fish 1 118, Mepps 558, Lucky Craft 375, Rapala 374, Borika 161 …) |
 | BE atitikmenys (prod, read-only) | 820 variantų: PS 617 (231 prekė) → re-key; Fox/Shimano/Korda 203 → tik sandėlis |
+
+Su FOTO grupėmis (2-as dry-run): 7 244 prekės; 357 FOTO grupės (1 418 kodų; Savage Gear 219,
+Jobe 47, DAM 21), 6 155 vienetinės be gamintojo turinio.
+
+TiCA: BE'je 47 Ockert (`OC.<modelis>`) + 9 PS variantai. Albatros TiCA kodai su Ockert modeliu
+pavadinime – tik 2 ritės (146610 `GBAT8000`, 146612 `GLAT5000`; dar 2 – ričių dangteliai, ne tos
+prekės). Kitų ženklų tokių atitikmenų nėra, todėl taisyklės nėra – susieti rankiniu būdu.
 
 Peržiūrai (ne automatiškai):
 - 96 PS prekės išsiskaido į kelias Albatros prekes (64 – tik kodai be gamintojo turinio,

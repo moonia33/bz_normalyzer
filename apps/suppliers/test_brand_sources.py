@@ -327,3 +327,70 @@ class SportfishtackleIncompleteTests(SimpleTestCase):
         with self.assertRaises(StopIteration) as stop:
             next(gen)
         self.assertFalse(stop.exception.value)
+
+
+_ZUKLYS_PAGE = """<html><head><script type="application/ld+json">{"@type": "BreadcrumbList"}</script>
+<script type="application/ld+json">{"@context": "http://schema.org", "@type": "Product",
+"name": "49-40-30d-6 Guminukai Crazy Fish NIMBLE 1,6' 49-40-30d-6",
+"image": "https://zuklys.lt/image/cache/catalog/n-800x800.jpg"}</script></head><body>
+<div id="tab-description" class="product-desc"></div>
+<div id="tab-specification"><table><tr><td>Ilgis (mm)</td><td>40mm</td></tr>
+<tr><td>Spalva</td><td>30d</td></tr></table></div></body></html>"""
+
+
+class ZuklysParseTests(SimpleTestCase):
+    def test_page_with_code_first_in_name(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        parsed = zuklys.parse_page(_ZUKLYS_PAGE.encode(), "49-40-30d-6")
+        self.assertEqual(parsed["codes"], ["49-40-30D-6"])
+        self.assertEqual(parsed["series"], "Guminukai Crazy Fish NIMBLE 1,6'")
+        self.assertEqual(parsed["images"], ["https://zuklys.lt/image/cache/catalog/n-800x800.jpg"])
+        self.assertEqual(
+            parsed["sections"][0]["rows"], {"49-40-30D-6": {"Ilgis (mm)": "40mm", "Spalva": "30d"}}
+        )
+
+    def test_page_for_other_code_is_rejected(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        self.assertIsNone(zuklys.parse_page(_ZUKLYS_PAGE.encode(), "49-40"))
+
+    def test_search_urls_strip_query(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        text = '<div class="name name-product"><a href="https://zuklys.lt/a-lt.html?search=1&amp;x=2">'
+        self.assertEqual(zuklys.search_urls(text), ["https://zuklys.lt/a-lt.html"])
+
+    def test_search_urls_keep_product_id(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        text = '<p class="name name-product"><a href="https://zuklys.lt/index.php?route=product/product&amp;product_id=42&amp;search=1">'
+        self.assertEqual(
+            zuklys.search_urls(text),
+            ["https://zuklys.lt/index.php?route=product/product&product_id=42"],
+        )
+
+    def test_search_urls_ignore_other_hosts(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        text = '<p class="name name-product"><a href="http://169.254.169.254/latest">'
+        text += '<p class="name name-product"><a href="https://zuklys.lt.evil.com/a.html">'
+        self.assertEqual(zuklys.search_urls(text), [])
+
+    def test_crawl_tries_results_until_code_matches(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        search = '<p class="name name-product"><a href="https://zuklys.lt/x.html">'
+        search += '<p class="name name-product"><a href="https://zuklys.lt/y.html">'
+        pages = [
+            _response(text=search),
+            _response(content=b"<html></html>"),
+            _response(content=_ZUKLYS_PAGE.encode()),
+        ]
+
+        class S:
+            def get(self, url, **kw):
+                return pages.pop(0)
+
+        out = list(zuklys.crawl(["49-40-30d-6"], s=S(), sleep=lambda *_: None))
+        self.assertEqual([url for _, url, _ in out], ["https://zuklys.lt/y.html"])

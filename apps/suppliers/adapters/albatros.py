@@ -11,6 +11,7 @@ Kainodara (vartotojo sprendimas):
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -27,6 +28,7 @@ from apps.suppliers.adapters.registry import register_adapter
 
 logger = logging.getLogger(__name__)
 
+RETAIL_SOURCE = "zuklys"
 PRICE_FACTOR = Decimal("1.5")
 CENT = Decimal("0.01")
 
@@ -163,6 +165,10 @@ class AlbatrosAdapter(BaseAdapter):
                 logger.warning("%s", exc)
         if self.config.get("manufacturer_groups", True):
             apply_manufacturer_content(items, manufacturer_lookup(items))
+        if self.config.get("photo_groups", True):
+            apply_photo_groups(items)
+        apply_fixed_groups(items, self.config.get("fixed_groups") or {})
+        _distinguish_twins(items)
         yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
@@ -223,7 +229,7 @@ def manufacturer_lookup(items: list[NormalizedItem]) -> dict[tuple[str, str], An
 
     from apps.suppliers.models import ManufacturerContent
 
-    sources = {slugify(item.brand_name or "") for item in items} - {""}
+    sources = ({slugify(item.brand_name or "") for item in items} - {""}) | {RETAIL_SOURCE}
     rank = {"en": 0, "de": 1}
     best: dict[tuple[str, str], Any] = {}
     for content in ManufacturerContent.objects.filter(source__in=sources).exclude(codes=[]):
@@ -245,6 +251,7 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
         source = slugify(item.brand_name or "")
         content = lookup.get((source, item.external_id.upper()))
         if content is None:
+            _apply_retail(item, lookup.get((RETAIL_SOURCE, item.external_id.upper())))
             continue
         slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
         item.extra["product_group"] = f"{source}:{slug}"
@@ -271,7 +278,67 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
     for item in items:
         if item.ean and len(ean_codes[item.ean]) > 1:
             item.ean = None
-    _distinguish_twins(items)
+
+
+def _apply_retail(item: NormalizedItem, content) -> None:
+    """Mažmenininko (zuklys.lt) puslapis: tik nuotraukos ir parametrai, be grupavimo."""
+    if content is None:
+        return
+    item.extra["retail_url"] = content.url
+    section = content.section_for(item.external_id.upper()) or {}
+    specs = dict((section.get("rows") or {}).get(item.external_id.upper()) or {})
+    if specs:
+        item.attributes = {**(item.attributes or {}), "specs": specs}
+    item.images = list(dict.fromkeys([*item.images, *content.images]))
+    if item.images and not item.extra.get("main_image_url"):
+        item.extra["main_image_url"] = item.images[0]
+
+
+def apply_photo_groups(items: list[NormalizedItem]) -> None:
+    """Kodai be gamintojo puslapio su ta pačia Stock FOTO, ženklu ir skyriumi -> viena prekė.
+
+    Jungiama tik jei bendra pavadinimo pradžia ilgesnė už ženklą (kitaip FOTO bendra kategorijai).
+    'DAM Damyl Tectan Hyper 4Oz 1.200M 0.30mm' / '... 860M 0.35mm' -> base 'DAM Damyl Tectan Hyper 4Oz'."""
+    from django.utils.text import slugify
+
+    groups: dict[tuple[str, str, str], list[NormalizedItem]] = {}
+    for item in items:
+        photo = item.extra.get("photo_group")
+        if photo and not item.extra.get("product_group") and item.brand_name:
+            key = (slugify(item.brand_name), item.extra.get("category_raw", ""), photo)
+            groups.setdefault(key, []).append(item)
+    for (source, section, photo), members in groups.items():
+        if len(members) < 2:
+            continue
+        tokens = [item.name.split() for item in members]
+        prefix = []
+        for column in zip(*tokens):
+            if len({t.lower() for t in column}) > 1:
+                break
+            prefix.append(column[0])
+        brand_len = len((members[0].brand_name or "").split())
+        if len(prefix) <= brand_len:
+            continue
+        digest = hashlib.sha1(f"{section}|{photo}".encode()).hexdigest()[:12]
+        group = f"{source}:photo:{digest}"
+        for item in members:
+            item.extra["product_group"] = group
+            item.extra["base_name"] = " ".join(prefix)
+
+
+def apply_fixed_groups(items: list[NormalizedItem], groups: dict) -> None:
+    """Feed config `fixed_groups` {kodas: grupė} – rankinis (PS) grupavimas, svarbiausias."""
+    fixed = {str(k).strip().upper(): v for k, v in groups.items()}
+    for item in items:
+        value = fixed.get(item.external_id.upper())
+        if not value:
+            continue
+        if isinstance(value, dict):
+            item.extra["product_group"] = str(value["group"])
+            if value.get("base_name"):
+                item.extra["base_name"] = value["base_name"]
+        else:
+            item.extra["product_group"] = str(value)
 
 
 def _distinguish_twins(items: list[NormalizedItem]) -> None:
