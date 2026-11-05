@@ -248,8 +248,6 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
             continue
         slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
         item.extra["product_group"] = f"{source}:{slug}"
-        # EAN/kodo atitikmuo negali sujungti skirtingų gamintojo puslapių (pipeline strict_group)
-        item.extra["strict_group"] = True
         item.extra["manufacturer_url"] = content.url
         if content.series:
             item.extra["base_name"] = content.series
@@ -265,6 +263,14 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
         item.images = images
         if images and not item.extra.get("main_image_url"):
             item.extra["main_image_url"] = images[0]
+    # Tas pats EAN keliems kodams (šaltinio klaida) -> pipeline sujungtų skirtingas prekes; nesiunčiam.
+    ean_codes: dict[str, set[str]] = {}
+    for item in items:
+        if item.ean:
+            ean_codes.setdefault(item.ean, set()).add(item.external_id)
+    for item in items:
+        if item.ean and len(ean_codes[item.ean]) > 1:
+            item.ean = None
     _distinguish_twins(items)
 
 

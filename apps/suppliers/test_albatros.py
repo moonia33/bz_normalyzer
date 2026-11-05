@@ -150,7 +150,6 @@ class AlbatrosManufacturerGroupTests(TestCase):
         a, b, c, other = items["65045"], items["65046"], items["65047"], items["99999"]
         self.assertEqual(a.extra["product_group"], "dam:effzett-spoon")
         self.assertEqual(b.extra["product_group"], "dam:effzett-spoon")
-        self.assertTrue(a.extra["strict_group"])
         self.assertEqual(a.extra["base_name"], "DAM Effzett Spoon")
         self.assertEqual(a.attributes["axes"], {"Weight": "10g"})
         self.assertEqual(a.ean, "5706301650456")
@@ -161,6 +160,20 @@ class AlbatrosManufacturerGroupTests(TestCase):
         self.assertNotIn("product_group", other.extra)
         self.assertEqual(other.name, "DAM OTHER")
         self.assertEqual(other.images, ["https://s/o.jpg"])
+
+    def test_ean_shared_by_different_codes_is_dropped(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="dam", url="https://x/de/artiklar/dam-other.html", language="de",
+            codes=["99999"], specs={"eans": {"99999": "5706301650456"}},
+        )
+        rows = [
+            [None, "65045", "DAM EFFZETT SPOON 10G", 2, None, 3, None, None, None],
+            [None, "99999", "DAM OTHER", 2, None, 0, None, None, None],
+        ]
+        items = list(AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Bait"], *rows])))
+        self.assertEqual([i.ean for i in items], [None, None])
 
     def test_twins_without_axes_get_model_from_stock_name(self):
         from apps.suppliers.models import ManufacturerContent
