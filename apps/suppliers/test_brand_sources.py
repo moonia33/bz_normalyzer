@@ -361,6 +361,15 @@ class ZuklysParseTests(SimpleTestCase):
         text = '<div class="name name-product"><a href="https://zuklys.lt/a-lt.html?search=1&amp;x=2">'
         self.assertEqual(zuklys.search_urls(text), ["https://zuklys.lt/a-lt.html"])
 
+    def test_search_urls_keep_product_id(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        text = '<p class="name name-product"><a href="https://zuklys.lt/index.php?route=product/product&amp;product_id=42&amp;search=1">'
+        self.assertEqual(
+            zuklys.search_urls(text),
+            ["https://zuklys.lt/index.php?route=product/product&product_id=42"],
+        )
+
     def test_search_urls_ignore_other_hosts(self):
         from apps.suppliers.manufacturers import zuklys
 

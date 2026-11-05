@@ -10,7 +10,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from lxml import html as lxml_html
 
@@ -34,6 +34,9 @@ def _product_url(href: str) -> str | None:
     parts = urlsplit(html_lib.unescape(href))
     if parts.scheme not in ("http", "https") or parts.hostname not in HOSTS:
         return None
+    product_id = parse_qs(parts.query).get("product_id")
+    if product_id:
+        return f"https://{parts.hostname}{parts.path}?route=product/product&product_id={product_id[0]}"
     return f"https://{parts.hostname}{parts.path}"
 
 
