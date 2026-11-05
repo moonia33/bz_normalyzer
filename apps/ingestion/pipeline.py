@@ -649,6 +649,9 @@ def _content_hash(item: NormalizedItem) -> str:
             if k not in {"status", "raw_date", "is_available"}
         },
     }
+    if item.discount_percent is not None:
+        # tik kai yra – kitaip pasikeistų visų esamų offer'ių hash'ai
+        payload["discount_percent"] = item.discount_percent
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
     ).hexdigest()
@@ -921,6 +924,8 @@ def _upsert_offer(
     offer.availability_date = item.availability_date
     if purchase_price is not None or not partial_update or created:
         offer.purchase_price = purchase_price
+    if item.discount_percent is not None or not partial_update or created:
+        offer.discount_percent = item.discount_percent
     incoming_rrp_price = _extra_decimal(item.extra, "rrp_price")
     if incoming_rrp_price is not None or not partial_update or created:
         offer.rrp_price = incoming_rrp_price

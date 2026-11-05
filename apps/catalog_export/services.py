@@ -770,9 +770,36 @@ def _offer_variant_code(offer: Offer) -> str:
     Matrix, Korda 'GRD198' = Guru), todėl tiekėjas gali nurodyti
     sku_prefix – tikrasis art-no lieka 'supplier_code' lauke.
     """
+    if offer.shop_variant_code:
+        return offer.shop_variant_code
     base = (offer.sku or "").strip() or offer.external_id
     prefix = (offer.supplier.sku_prefix or "").strip()
     return f"{prefix}{base}" if prefix else base
+
+
+def offer_terms(offer: Offer, *, primary: bool) -> dict | None:
+    """Sandėlio sąlygos shop InventoryItem'ui.
+
+    Pirminis offer'is nustato varianto kainą, todėl siunčia tik nuolaidą %.
+    Papildomo sandėlio offer'is (kitas tiekėjas) siunčia savo galutinę kainą
+    be PVM (offer_price_override_eur, nuolaida jau įskaičiuota) – shop'as
+    rodo pigiausią sandėlį su likučiu ir jo pristatymo laiką.
+    """
+    if offer.price_locked:
+        return None
+    price_net, cost_net, _pack, _pack_cost = offer_prices(offer)
+    discount = offer.discount_percent or None
+    terms = {
+        "price_net": None,
+        "cost_net": str(cost_net) if cost_net is not None else None,
+        "discount_percent": discount,
+    }
+    if not primary:
+        terms["discount_percent"] = None
+        if price_net is not None:
+            final = Decimal(price_net) * (Decimal(100 - (discount or 0)) / Decimal(100))
+            terms["price_net"] = str(final.quantize(Decimal("0.01")))
+    return terms
 
 
 def _to_int_cm(value) -> int:
@@ -878,6 +905,11 @@ def _new_variant(
         ],
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": str(cost_net) if cost_net is not None else None,
+        "offers": {
+            wh: terms
+            for wh, terms in [(_warehouse_code(offer.supplier), offer_terms(offer, primary=True))]
+            if terms is not None
+        },
         "pack_unit": offer.pack_unit or "",
         "pack_quantity": offer.pack_quantity or 0,
         "trade_pack_qty": pack_qty,
@@ -920,6 +952,8 @@ def _merge_variant(dst: dict, src: dict) -> None:
         dst["name"] = src.get("name") or ""
     for warehouse, qty in src["stock"].items():
         dst["stock"][warehouse] = dst["stock"].get(warehouse, 0) + qty
+    for warehouse, terms in src.get("offers", {}).items():
+        dst.setdefault("offers", {}).setdefault(warehouse, terms)
     if not dst["ean"]:
         dst["ean"] = src["ean"]
     for img in src["images"]:
@@ -1001,6 +1035,9 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
             variants.append(variant)
         else:
             variant = hits.pop(0)
+            terms = offer_terms(offer, primary=False)
+            if terms is not None:
+                variant.setdefault("offers", {}).setdefault(warehouse, terms)
             for other in hits:
                 if other in variants:
                     variants.remove(other)
@@ -1067,7 +1104,9 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                 offers = [
                     offer
                     for offer in product.offers.all()
-                    if offer.is_published and not offer.is_discontinued
+                    if offer.is_published
+                    and not offer.is_discontinued
+                    and not offer.shop_variant_code
                 ]
                 if supplier_code:
                     offers = [o for o in offers if o.supplier.code == supplier_code]
