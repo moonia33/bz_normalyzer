@@ -15,21 +15,34 @@ class BrandSource:
 
     def _sources(self, languages):
         if self.brand in shopify.SITES and shopify.LANGUAGE in languages:
-            yield shopify.crawl(shopify.SITES[self.brand], self.delay, self.limit)
+            base = shopify.SITES[self.brand]
+            yield f"{base}/products/", shopify.crawl(base, self.delay, self.limit)
         if (
             self.brand in sportfishtackle.SLUG_PREFIXES
             and sportfishtackle.LANGUAGE in languages
         ):
-            yield sportfishtackle.crawl(self.brand, self.delay, self.limit)
+            yield (
+                sportfishtackle.BASE,
+                sportfishtackle.crawl(self.brand, self.delay, self.limit),
+            )
 
     def crawl(
         self, languages=("de", "en"), delay: float = http.MIN_DELAY, limit: int = 0
     ):
-        """`languages` riboja šaltinius (Shopify = en, sportfishtackle = de); `limit` – bendras."""
+        """`languages` riboja šaltinius (Shopify = en, sportfishtackle = de); `limit` – bendras.
+
+        Po crawl `complete_prefixes` – pilnai nuskaitytų šaltinių URL prefiksai."""
         self.delay, self.limit = delay, limit
+        self.complete_prefixes = []
         count = 0
-        for source in self._sources(languages):
-            for item in source:
+        for prefix, source in self._sources(languages):
+            while True:
+                try:
+                    item = next(source)
+                except StopIteration as done:
+                    if done.value:
+                        self.complete_prefixes.append(prefix)
+                    break
                 yield item
                 count += 1
                 if limit and count >= limit:

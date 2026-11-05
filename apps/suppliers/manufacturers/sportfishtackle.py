@@ -132,18 +132,22 @@ def parse_page(content: bytes) -> dict:
 def crawl(
     brand: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, sleep=None
 ):
+    """Grąžina True, kai sitemap ir visi puslapiai nuskaityti (404 = prekė pašalinta)."""
     s = s or http.session()
     kwargs = {"sleep": sleep} if sleep else {}
     response = http.get(s, SITEMAP, delay, **kwargs)
     if response is None or response.status_code != 200:
-        return
+        return False
     urls = product_urls(response.text, brand)
+    complete = not limit or len(urls) <= limit
     if limit:
         urls = urls[:limit]
     for url in urls:
         page = http.get(s, url, delay, **kwargs)
         if page is None or page.status_code != 200:
+            complete = complete and page is not None and page.status_code == 404
             continue
         parsed = parse_page(page.content)
         if parsed["codes"]:
             yield LANGUAGE, url, parsed
+    return complete

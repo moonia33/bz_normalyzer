@@ -181,6 +181,59 @@ class ScrapeBrandCommandTests(TestCase):
         )
 
 
+class ScrapeBrandStaleTests(TestCase):
+    def _run(self, complete):
+        def finished(*_):
+            yield (
+                "de",
+                sportfishtackle.BASE + "kept.html",
+                sportfishtackle.parse_page(PAGE),
+            )
+            return complete
+
+        with (
+            mock.patch.object(sportfishtackle, "crawl", side_effect=finished),
+            mock.patch.object(shopify, "crawl", return_value=iter([])),
+        ):
+            call_command(
+                "scrape_manufacturer", source="savage-gear", stdout=mock.Mock()
+            )
+
+    def test_complete_crawl_clears_codes_of_removed_pages(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        gone = ManufacturerContent.objects.create(
+            source="savage-gear",
+            url=sportfishtackle.BASE + "gone.html",
+            language="de",
+            codes=["1"],
+        )
+        other = ManufacturerContent.objects.create(
+            source="savage-gear",
+            url="https://www.savagegear.com/products/x",
+            language="en",
+            codes=["2"],
+        )
+        self._run(complete=True)
+        gone.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(gone.codes, [])
+        self.assertEqual(other.codes, ["2"])
+
+    def test_incomplete_crawl_keeps_codes(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        gone = ManufacturerContent.objects.create(
+            source="savage-gear",
+            url=sportfishtackle.BASE + "gone.html",
+            language="de",
+            codes=["1"],
+        )
+        self._run(complete=False)
+        gone.refresh_from_db()
+        self.assertEqual(gone.codes, ["1"])
+
+
 class ShopifyBadResponseTests(SimpleTestCase):
     def test_non_json_page_stops_without_raising(self):
         s = mock.Mock()

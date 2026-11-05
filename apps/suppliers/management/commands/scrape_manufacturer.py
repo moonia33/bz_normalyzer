@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.ingestion.models import Offer
 from apps.suppliers.manufacturers import climax, sportex
-from apps.suppliers.manufacturers.brands import BRANDS
+from apps.suppliers.manufacturers.brands import BRANDS, BrandSource
 from apps.suppliers.models import ManufacturerContent
 
 SOURCES = {"climax": climax, "sportex": sportex, **BRANDS}
@@ -122,6 +122,15 @@ class Command(BaseCommand):
             stats["pages"] += 1
             codes_seen.update(parsed["codes"])
         stats["codes"] = len(codes_seen)
+        if isinstance(module, BrandSource) and not opts["limit"]:
+            stale = ManufacturerContent.objects.none()
+            for prefix in module.complete_prefixes:
+                stale |= ManufacturerContent.objects.filter(
+                    source=opts["source"], url__startswith=prefix
+                )
+            stats["stale"] = (
+                stale.exclude(url__in=seen).exclude(codes=[]).update(codes=[])
+            )
         if module is climax:
             if not opts["limit"]:
                 stats["stale"] = (
