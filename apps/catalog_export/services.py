@@ -1117,6 +1117,8 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                     and not offer.is_discontinued
                     and not offer.shop_variant_code
                 ]
+                # visų tiekėjų offer'iai – vieno tiekėjo eksportas neturi nuimti kito badge'ų
+                badges = _item_badges(offers)
                 if supplier_code:
                     offers = [o for o in offers if o.supplier.code == supplier_code]
                 if not offers:
@@ -1163,7 +1165,6 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                         "variants": variants,
                     }
                 )
-                badges = _item_badges(offers)
                 if badges is not None:
                     items[-1]["badges"] = badges
 

@@ -237,6 +237,14 @@ class PlanTests(TestCase):
         items = {i["code"]: i for i in build_catalog_payload()["items"]}
         self.assertEqual(items["B1"]["badges"], [])
 
+    def test_supplier_export_keeps_other_suppliers_badges(self):
+        other = Supplier.objects.create(code="oth", name="Other")
+        product = self._product("B3")
+        self._offer("BD", product=product, badges=[])
+        self._offer("BE", product=product, supplier=other, badges=["new-2027"])
+        items = {i["code"]: i for i in build_catalog_payload(self.supplier.code)["items"]}
+        self.assertEqual(items["B3"]["badges"], ["new-2027"])
+
     def test_content_hash_badges(self):
         from apps.ingestion.dto import NormalizedItem
         from apps.ingestion.pipeline import _content_hash
