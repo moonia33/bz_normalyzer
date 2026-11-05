@@ -307,7 +307,7 @@ def apply_photo_groups(items: list[NormalizedItem]) -> None:
         if photo and not item.extra.get("product_group") and item.brand_name:
             key = (slugify(item.brand_name), item.extra.get("category_raw", ""), photo)
             groups.setdefault(key, []).append(item)
-    for (source, _section, photo), members in groups.items():
+    for (source, section, photo), members in groups.items():
         if len(members) < 2:
             continue
         tokens = [item.name.split() for item in members]
@@ -319,7 +319,8 @@ def apply_photo_groups(items: list[NormalizedItem]) -> None:
         brand_len = len((members[0].brand_name or "").split())
         if len(prefix) <= brand_len:
             continue
-        group = f"{source}:photo:{hashlib.sha1(photo.encode()).hexdigest()[:12]}"
+        digest = hashlib.sha1(f"{section}|{photo}".encode()).hexdigest()[:12]
+        group = f"{source}:photo:{digest}"
         for item in members:
             item.extra["product_group"] = group
             item.extra["base_name"] = " ".join(prefix)

@@ -219,6 +219,17 @@ class AlbatrosPhotoAndFixedGroupTests(SimpleTestCase):
         self.assertNotIn("product_group", items["11111"].extra)
         self.assertNotIn("product_group", items["22222"].extra)
 
+    def test_same_photo_in_other_section_is_other_group(self):
+        rows = [
+            *self.ROWS[:2],
+            ["Reels"],
+            [None, "77639", "DAM Damyl Tectan Hyper 4Oz 500M 0.30mm", 2, None, 1, None, None, "https://s/t.jpg"],
+            [None, "77640", "DAM Damyl Tectan Hyper 4Oz 600M 0.35mm", 2, None, 1, None, None, "https://s/t.jpg"],
+        ]
+        items = self._items(rows)
+        self.assertNotEqual(items["77637"].extra["product_group"], items["77639"].extra["product_group"])
+        self.assertEqual(items["77639"].extra["product_group"], items["77640"].extra["product_group"])
+
     def test_photo_groups_can_be_disabled(self):
         items = self._items(self.ROWS, {"photo_groups": False})
         self.assertNotIn("product_group", items["77637"].extra)
