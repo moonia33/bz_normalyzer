@@ -361,6 +361,13 @@ class ZuklysParseTests(SimpleTestCase):
         text = '<div class="name name-product"><a href="https://zuklys.lt/a-lt.html?search=1&amp;x=2">'
         self.assertEqual(zuklys.search_urls(text), ["https://zuklys.lt/a-lt.html"])
 
+    def test_search_urls_ignore_other_hosts(self):
+        from apps.suppliers.manufacturers import zuklys
+
+        text = '<p class="name name-product"><a href="http://169.254.169.254/latest">'
+        text += '<p class="name name-product"><a href="https://zuklys.lt.evil.com/a.html">'
+        self.assertEqual(zuklys.search_urls(text), [])
+
     def test_crawl_tries_results_until_code_matches(self):
         from apps.suppliers.manufacturers import zuklys
 

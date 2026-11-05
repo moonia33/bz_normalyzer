@@ -10,7 +10,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from lxml import html as lxml_html
 
@@ -26,9 +26,20 @@ def _clean(text: str) -> str:
     return " ".join((text or "").split())
 
 
+HOSTS = {"zuklys.lt", "www.zuklys.lt"}
+
+
+def _product_url(href: str) -> str | None:
+    """Tik zuklys.lt nuorodos (ne svetimi/vidiniai adresai), be paieškos parametrų."""
+    parts = urlsplit(html_lib.unescape(href))
+    if parts.scheme not in ("http", "https") or parts.hostname not in HOSTS:
+        return None
+    return f"https://{parts.hostname}{parts.path}"
+
+
 def search_urls(text: str, limit: int = 3) -> list[str]:
-    urls = (html_lib.unescape(u).split("?", 1)[0] for u in _RESULT.findall(text))
-    return list(dict.fromkeys(urls))[:limit]
+    urls = (_product_url(u) for u in _RESULT.findall(text))
+    return list(dict.fromkeys(u for u in urls if u))[:limit]
 
 
 def _product_ld(content: str) -> dict:
