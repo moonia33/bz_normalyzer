@@ -40,7 +40,7 @@ MAPPINGS: list[tuple[str, str, str]] = [
     ("Terminal Tackle", "Needles & Tools", "Drabužiai, Palapinės, Baldai, Įrankiai > Indai ir įrankiai"),
     # ---- Accessories ----
     ("Accessories", "Bankside Accommodation", "Drabužiai, Palapinės, Baldai, Įrankiai > Baldai Žvejams"),
-    ("Accessories", "Baiting & Storage", "Kiti aksesuarai"),
+    ("Accessories", "Baiting & Storage", "Krepšiai, dėklai, dėžutės > Dėžutės"),
     ("Accessories", "Other Accessories", "Kiti aksesuarai"),
     # ---- Clothing ----
     ("Clothing", "Clothing > Classic", "Drabužiai, Palapinės, Baldai, Įrankiai > Apranga ir avalynė"),
@@ -55,10 +55,14 @@ MAPPINGS: list[tuple[str, str, str]] = [
     ("Luggage", "", "Krepšiai, dėklai, dėžutės > Krepšiai"),
     ("Power & Lighting", "", "Elektronika"),
     ("ProCare", "", "Krepšiai, dėklai, dėžutės > Matai ir krepšiai žuvims"),
+    ("Baiting & Storage", "", "Krepšiai, dėklai, dėžutės > Dėžutės"),
+    ("Bankside Accommodation", "", "Drabužiai, Palapinės, Baldai, Įrankiai > Baldai Žvejams"),
+    # ---- be tikslios kategorijos -> admin peržiūrai ----
+    ("Accessories", "", "Nepriskirta"),
+    ("New Products", "", "Nepriskirta"),
 ]
 
 LEAVE_UNMAPPED = {
-    ("New Products", ""),   # mišrus naujienų konteineris
     ("", ""),
 }
 
