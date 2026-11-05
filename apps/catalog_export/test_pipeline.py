@@ -7,6 +7,7 @@ from django.test import TestCase
 
 from apps.catalog.models import Category, Product, ProductText
 from apps.catalog_export import pipeline
+from apps.catalog_export.services import build_catalog_payload
 from apps.catalog_export.models import ExportRun, PipelineRun
 from apps.corecfg.models import Language
 from apps.ingestion.models import Offer
@@ -120,6 +121,36 @@ class PlanTests(TestCase):
         self.assertEqual(items, [{"code": "SP.A1", "qty": 7}, {"code": "SP.A2", "qty": 0}])
         self.assertEqual(stats["in_shop"], 3)
 
+    def test_plan_stock_sends_changed_offer_terms(self):
+        self._offer("B1", stock=2, discount_percent=30)
+        self._offer("B2", stock=2)
+        self._offer("B3", stock=2, shop_variant_code="FX.123", discount_percent=10)
+        state = {
+            "SP.B1": {"code": "SP.B1", "qty": 2, "offer": None},
+            "SP.B2": {"code": "SP.B2", "qty": 2,
+                      "offer": {"price_net": None, "cost_net": "5.00", "discount_percent": None}},
+            "FX.123": {"code": "FX.123", "qty": 2, "offer": None},
+        }
+        with self._state(state):
+            _wh, items, _stats = pipeline.plan_stock(self.supplier)
+        by_code = {i["code"]: i for i in items}
+        self.assertEqual(set(by_code), {"SP.B1", "FX.123"})
+        self.assertEqual(
+            by_code["SP.B1"]["offer"],
+            {"price_net": None, "cost_net": "5.00", "discount_percent": 30},
+        )
+        # papildomas sandėlis: galutinė kaina 10.00 × 0.9, nuolaida jau įskaičiuota
+        self.assertEqual(
+            by_code["FX.123"]["offer"],
+            {"price_net": "9.00", "cost_net": "5.00", "discount_percent": None},
+        )
+
+    def test_plan_stock_old_shop_without_offer_state(self):
+        self._offer("C1", stock=2, discount_percent=30)
+        with self._state({"SP.C1": {"code": "SP.C1", "qty": 2}}):
+            _wh, items, _stats = pipeline.plan_stock(self.supplier)
+        self.assertEqual(items, [])
+
     def test_plan_prices_guard_lock_and_unchanged(self):
         self._offer("A1")  # 12.10 su PVM -> 10.00
         self._offer("A2", selling_price=Decimal("339.01"))  # -> 280.17
@@ -172,6 +203,19 @@ class PlanTests(TestCase):
             payload, _, stats = pipeline.plan_catalog_delta(self.supplier)
         self.assertEqual([i["code"] for i in payload["items"]], ["P4"])
         self.assertEqual(stats["unchanged"], 1)
+
+    def test_catalog_payload_offers_and_secondary_skipped(self):
+        product = self._product("P9")
+        self._offer("D1", product=product, discount_percent=25)
+        other = self._product("P10")
+        self._offer("D2", product=other, shop_variant_code="FX.1")
+        payload = build_catalog_payload()
+        codes = [i["code"] for i in payload["items"]]
+        self.assertIn("P9", codes)
+        self.assertNotIn("P10", codes)
+        variant = next(i for i in payload["items"] if i["code"] == "P9")["variants"][0]
+        self.assertEqual(variant["offers"]["sup"]["discount_percent"], 25)
+        self.assertIsNone(variant["offers"]["sup"]["price_net"])
 
     def test_hash_ignores_prices_and_stock(self):
         item = {"code": "X", "price_net": "1", "variants": [{"code": "v", "price_net": "1", "stock": {"a": 1}}]}

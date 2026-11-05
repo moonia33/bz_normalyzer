@@ -95,6 +95,18 @@ class Offer(TimeStampedModel):
     purchase_price = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
     rrp_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    discount_percent = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Nuolaida % nuo pardavimo kainos (shop InventoryItem.offer_discount_percent).",
+    )
+    shop_variant_code = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text="Kito tiekėjo shop variantas (SKU), kuriam šis offer'is – tik papildomas "
+        "sandėlis: siunčiamas likutis ir sandėlio kaina, katalogo turinys ne.",
+    )
     shipping_height_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     shipping_width_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     shipping_depth_cm = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)

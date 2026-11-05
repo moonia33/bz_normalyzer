@@ -24,6 +24,8 @@ class NormalizedItem:
     stock: int = 0
     availability_date: date | None = None
     purchase_price: Decimal | None = None
+    # Papildoma mūsų nuolaida % (pvz. Albatros SALE); kaina lieka be nuolaidos.
+    discount_percent: int | None = None
     currency: str = "EUR"
     is_available: bool = True
     extra: dict[str, Any] = field(default_factory=dict)

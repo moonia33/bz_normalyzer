@@ -36,6 +36,7 @@ from apps.catalog_export.services import (
     _warehouse_code,
     build_catalog_payload,
     offer_prices,
+    offer_terms,
     run_export,
 )
 from apps.corecfg.models import Language, get_config
@@ -62,7 +63,9 @@ DUE_TOLERANCE = timedelta(minutes=5)
 CENT = Decimal("0.01")
 ACTIVE_BATCH_STATUSES = {"validating", "in_progress", "finalizing", "cancelling"}
 VOLATILE_ITEM_KEYS = {"price_net", "cost_net", "stock"}
-VOLATILE_VARIANT_KEYS = {"price_net", "cost_net", "pack_price", "pack_purchase_price", "stock"}
+VOLATILE_VARIANT_KEYS = {
+    "price_net", "cost_net", "pack_price", "pack_purchase_price", "stock", "offers",
+}
 LIST_LIMIT = 200
 # OpenAI Batch enqueued-token limitas (~1.2M) – ~4k token/eilutė su LT promptu.
 TRANSLATION_BATCH_ROWS = 250
@@ -608,17 +611,25 @@ def _stage_prices(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
 def plan_stock(supplier: Supplier) -> tuple[str, list[dict], dict]:
     warehouse = _warehouse_code(supplier)
     desired: dict[str, int] = {}
+    terms: dict[str, dict] = {}
     for offer in Offer.objects.filter(supplier=supplier).select_related("supplier").iterator():
         live = offer.is_published and offer.is_available and not offer.is_discontinued
         qty = max(offer.stock or 0, 0) if live else 0
         code = _offer_variant_code(offer)
+        if code not in desired or qty > desired[code]:
+            terms[code] = offer_terms(offer, primary=not offer.shop_variant_code)
         desired[code] = max(desired.get(code, 0), qty)
     state = fetch_variant_state(desired, warehouse)
-    items = [
-        {"code": code, "qty": qty}
-        for code, qty in sorted(desired.items())
-        if code in state and state[code].get("qty") != qty
-    ]
+    items = []
+    for code, qty in sorted(desired.items()):
+        row = state.get(code)
+        if row is None:
+            continue
+        item = {"code": code, "qty": qty}
+        if "offer" in row and not _same_terms(row["offer"], terms[code]):
+            item["offer"] = terms[code]
+        if row.get("qty") != qty or "offer" in item:
+            items.append(item)
     stats = {
         "offers": len(desired),
         "in_shop": sum(1 for code in desired if code in state),
@@ -626,6 +637,15 @@ def plan_stock(supplier: Supplier) -> tuple[str, list[dict], dict]:
         "warehouse": warehouse,
     }
     return warehouse, items, stats
+
+
+def _same_terms(shop: dict | None, wanted: dict) -> bool:
+    shop = shop or {}
+    return (
+        _dec(shop.get("price_net")) == _dec(wanted["price_net"])
+        and _dec(shop.get("cost_net")) == _dec(wanted["cost_net"])
+        and (shop.get("discount_percent") or None) == wanted["discount_percent"]
+    )
 
 
 def _stage_stock(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
