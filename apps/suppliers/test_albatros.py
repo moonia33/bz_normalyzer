@@ -103,3 +103,16 @@ class AlbatrosAdapterTests(SimpleTestCase):
     def test_negative_export_raises(self):
         with self.assertRaises(AdapterError):
             self._items([["", 1, "X", -5, None, 1]])
+
+    def test_iter_items_skips_bad_rows_and_counts_errors(self):
+        payload = _xlsx([
+            HEADER,
+            ["", 1, "Good A", 10, None, 1],
+            ["", None, "No code", 10, None, 1],
+            ["", 2, "Bad qty", 10, None, "n/a"],
+            ["", 3, "Negative", -5, None, 1],
+            ["", 4, "Good B", 10, None, 2],
+        ])
+        items = list(self.adapter.iter_items(payload))
+        self.assertEqual([i.external_id for i in items], ["1", "4"])
+        self.assertEqual(self.adapter.fetch_errors, 3)

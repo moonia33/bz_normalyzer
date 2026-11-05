@@ -149,6 +149,17 @@ class AlbatrosAdapter(BaseAdapter):
             }
         yield from items.values()
 
+    def iter_items(self, payload: bytes) -> Iterator[NormalizedItem]:
+        # Bloga eilutė neturi nutraukti viso importo: praleidžiama ir skaičiuojama
+        # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
+        self.fetch_errors = 0
+        for row in self.parse(payload):
+            try:
+                yield self.normalize(row)
+            except AdapterError as exc:
+                self.fetch_errors += 1
+                logger.warning("%s", exc)
+
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = row.get("code") or ""
         if not code:
