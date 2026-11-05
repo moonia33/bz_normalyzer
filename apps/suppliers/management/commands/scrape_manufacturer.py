@@ -4,9 +4,10 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.ingestion.models import Offer
 from apps.suppliers.manufacturers import climax, sportex
+from apps.suppliers.manufacturers.brands import BRANDS
 from apps.suppliers.models import ManufacturerContent
 
-SOURCES = {"climax": climax, "sportex": sportex}
+SOURCES = {"climax": climax, "sportex": sportex, **BRANDS}
 
 
 def _series_codes(brand: str, series: str) -> list[str]:
@@ -79,6 +80,7 @@ class Command(BaseCommand):
         )
         stats = {"pages": 0, "codes": 0}
         seen: set[str] = set()
+        codes_seen: set[str] = set()
         for lang, url, parsed in module.crawl(languages, opts["delay"], opts["limit"]):
             if "codes" not in parsed:
                 codes = _series_codes(
@@ -105,6 +107,12 @@ class Command(BaseCommand):
                     "specs": {
                         "sections": parsed["sections"],
                         "series_tokens": parsed.get("series_tokens", 0),
+                        **({"eans": parsed["eans"]} if parsed.get("eans") else {}),
+                        **(
+                            {"category": parsed["category"]}
+                            if parsed.get("category")
+                            else {}
+                        ),
                     },
                     "codes": parsed["codes"],
                     "images": parsed["images"],
@@ -112,8 +120,8 @@ class Command(BaseCommand):
             )
             seen.add(url)
             stats["pages"] += 1
-            if lang == "de":
-                stats["codes"] += len(parsed["codes"])
+            codes_seen.update(parsed["codes"])
+        stats["codes"] = len(codes_seen)
         if module is climax:
             if not opts["limit"]:
                 stats["stale"] = (

@@ -10,7 +10,7 @@
 > | Prekių badge'ai (admin, taisyklės, importas, API, Typesense, FE) | ✅ BE #14/#15, FE #5 (prod) |
 > | Normalyzer eksportas siunčia `badges` | ✅ `NormalizedItem.badges` → `Offer.badges` → katalogo `badges` |
 > | Adapteris `albatros` (Stock Excel) | ✅ `apps/suppliers/adapters/albatros.py` (be variantų grupavimo) |
-> | Gamintojų scraper'iai | ❌ |
+> | Gamintojų scraper'iai | 🟡 Savage Gear, DAM, Prologic, Madcat (Shopify + sportfishtackle.de); Mepps ❌ |
 > | PS prekių re-key, kategorijų mapingas, vertimas, eksportas | ❌ |
 > | Prod importas | ❌ **tik gavus vartotojo patvirtinimą**, po dry-run ataskaitos |
 
@@ -137,6 +137,33 @@ tokioms prekėms „Naujiena“ reikia BE `BadgeRule` arba rankinio priskyrimo.
 
 ## Gamintojų šaltiniai (vartotojo pateikti)
 
+### Įgyvendinta (`scrape_manufacturer --source <ženklo slug>`)
+
+`source` = prekės ženklo slug (`slugify(brand_name_raw)`: `savage-gear`, `dam`, `prologic`,
+`madcat`, `mepps`), nes `translate_lang` turinio ieško pagal jį ir kodą (pirma EN, tada DE).
+Vienas `source` jungia kelis puslapių šaltinius (`apps/suppliers/manufacturers/brands.py`):
+
+| Modulis | Svetainė | Kalba | Kas gaunama |
+|---|---|---|---|
+| `shopify.py` | savagegear.com, dam.de, prologicfishing.com, madcat-fishing.com (`/products.json`) | en | prekė = bazinė prekė; `variant.sku` = kodas; option'ai (Color, Size…) = varianto eilutė; nuotraukos; aprašymas; `product_type` |
+| `sportfishtackle.py` | sportfishtackle.de/de/artiklar/<slug>.html (sąrašas iš sportfiskeprylar.se sitemap, slug prasideda ženklu) | de | JSON-LD `offers[].sku` = kodas, `gtin12` = EAN (`specs.eans`), varianto pavadinimas; `TeknSpec` lentelė → sekcijos tekstas; zoom nuotraukos |
+| `http.py` | – | – | User-Agent, pauzė ≥ 1 s, 429/5xx → backoff (Retry-After), klaida → `None` (crawl tęsiasi) |
+
+Faktai (2026-10, Stock 10.21):
+- **Gamintojų Shopify turi tik dabartinį sezoną** (savagegear.com – 108 prekės): Stock kodų
+  rasta Savage Gear 12/3 494, DAM 83/943, Prologic 156/554, Madcat 192/430.
+- **sportfiskeprylar/sportfishtackle turi ir senus sezonus:** Savage Gear 1 369/3 494 kodų
+  (212 puslapių). Kodai sutampa su Albatros (5 ir 7 skaitmenų).
+- sportfishtackle.**com** (EN) blokuoja Cloudflare (403) – neapeiti; naudojama `.de`.
+- sportfiskeprylar.se `/en/` puslapiai vis tiek grąžina švedišką tekstą.
+- **store.mepps.com** – JAV parduotuvė (nopCommerce), SKU kitokie (`B0FT BRT-BRG`), su Albatros
+  kodais (`528981`, `528987-B`) nesutampa. sportfishtackle turi tik 3 Mepps puslapius.
+  Mepps šaltinis neišspręstas.
+- Prekės be gamintojo turinio: naudoti Stock failo salsify nuotraukas ir pavadinimą; kitų
+  mažmenininkų/šaltinių paieška – kitas žingsnis.
+
+### Pradinė analizė
+
 Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 | Ženklas | Kodų / su likučiu | Šaltinis | Paieška pagal kodą |
@@ -216,7 +243,8 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
    **jokių `PriceRule` šiam tiekėjui** – kaina jau RRP bazėje (export × 1,5).
    Variantų grupavimas – iš gamintojų puslapių (2 žingsnis); `extra.photo_group` (bendra FOTO)
    – užuomina grupavimui.
-2. Gamintojų scraper'iai: pradėti nuo savagegear.com, dam.de, store.mepps.com (randama pagal kodą).
+2. Gamintojų scraper'iai: ✅ Savage Gear, DAM, Prologic, Madcat (žr. „Įgyvendinta“). Toliau:
+   Mepps šaltinis, Rapala/Crazy Fish (modelio atitikimas), padengimo ataskaita pagal Stock kodus.
 3. Dry-run ataskaita vartotojui (kiekiai, kainų pavyzdžiai, susiejimas su esamomis prekėmis).
 4. Tik po patvirtinimo: BE backup → PS re-key → eksportas → Typesense patikra.
 
