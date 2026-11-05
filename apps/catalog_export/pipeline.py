@@ -629,7 +629,11 @@ def plan_stock(supplier: Supplier) -> tuple[str, list[dict], dict]:
         if row is None:
             continue
         item = {"code": code, "qty": qty}
-        if "offer" in row and not _same_terms(row["offer"], terms[code]):
+        if (
+            "offer" in row
+            and terms[code] is not None
+            and not _same_terms(row["offer"], terms[code])
+        ):
             item["offer"] = terms[code]
         if row.get("qty") != qty or "offer" in item:
             items.append(item)

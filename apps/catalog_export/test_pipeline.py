@@ -145,6 +145,12 @@ class PlanTests(TestCase):
             {"price_net": "9.00", "cost_net": "5.00", "discount_percent": None},
         )
 
+    def test_plan_stock_locked_offer_sends_no_terms(self):
+        self._offer("L1", stock=2, discount_percent=30, price_locked=True)
+        with self._state({"SP.L1": {"code": "SP.L1", "qty": 2, "offer": None}}):
+            _wh, items, _stats = pipeline.plan_stock(self.supplier)
+        self.assertEqual(items, [])
+
     def test_plan_stock_old_shop_without_offer_state(self):
         self._offer("C1", stock=2, discount_percent=30)
         with self._state({"SP.C1": {"code": "SP.C1", "qty": 2}}):

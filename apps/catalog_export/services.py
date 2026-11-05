@@ -777,7 +777,7 @@ def _offer_variant_code(offer: Offer) -> str:
     return f"{prefix}{base}" if prefix else base
 
 
-def offer_terms(offer: Offer, *, primary: bool) -> dict:
+def offer_terms(offer: Offer, *, primary: bool) -> dict | None:
     """Sandėlio sąlygos shop InventoryItem'ui.
 
     Pirminis offer'is nustato varianto kainą, todėl siunčia tik nuolaidą %.
@@ -785,6 +785,8 @@ def offer_terms(offer: Offer, *, primary: bool) -> dict:
     be PVM (offer_price_override_eur, nuolaida jau įskaičiuota) – shop'as
     rodo pigiausią sandėlį su likučiu ir jo pristatymo laiką.
     """
+    if offer.price_locked:
+        return None
     price_net, cost_net, _pack, _pack_cost = offer_prices(offer)
     discount = offer.discount_percent or None
     terms = {
@@ -903,7 +905,11 @@ def _new_variant(
         ],
         "price_net": str(price_net) if price_net is not None else None,
         "cost_net": str(cost_net) if cost_net is not None else None,
-        "offers": {_warehouse_code(offer.supplier): offer_terms(offer, primary=True)},
+        "offers": {
+            wh: terms
+            for wh, terms in [(_warehouse_code(offer.supplier), offer_terms(offer, primary=True))]
+            if terms is not None
+        },
         "pack_unit": offer.pack_unit or "",
         "pack_quantity": offer.pack_quantity or 0,
         "trade_pack_qty": pack_qty,
@@ -1029,9 +1035,9 @@ def _build_variants(offers: list[Offer]) -> tuple[list[dict], dict[str, str], di
             variants.append(variant)
         else:
             variant = hits.pop(0)
-            variant.setdefault("offers", {}).setdefault(
-                warehouse, offer_terms(offer, primary=False)
-            )
+            terms = offer_terms(offer, primary=False)
+            if terms is not None:
+                variant.setdefault("offers", {}).setdefault(warehouse, terms)
             for other in hits:
                 if other in variants:
                     variants.remove(other)
