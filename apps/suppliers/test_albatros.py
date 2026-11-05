@@ -93,3 +93,9 @@ class AlbatrosAdapterTests(SimpleTestCase):
         for qty in (None, "n/a"):
             with self.assertRaises(AdapterError):
                 self._items([["", 1, "X", 10, None, qty]])
+
+    def test_item_without_code_is_row_error(self):
+        rows = list(self.adapter.parse(_xlsx([HEADER, ["", None, "No code", 10, None, 1]])))
+        self.assertEqual(len(rows), 1)
+        with self.assertRaises(AdapterError):
+            self.adapter.normalize(rows[0])

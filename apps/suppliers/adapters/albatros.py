@@ -128,6 +128,8 @@ class AlbatrosAdapter(BaseAdapter):
                     section = str(row[0]).strip()
                 continue
             if not code:
+                # prekė be kodo -> normalize klaida (importas su klaidomis likučių nenulina)
+                yield {"code": "", "name": item, "section": section}
                 continue
             photo = next(
                 (str(c).strip() for c in row if isinstance(c, str) and c.strip().startswith("http")),
