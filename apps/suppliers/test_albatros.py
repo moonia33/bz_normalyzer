@@ -88,3 +88,8 @@ class AlbatrosAdapterTests(SimpleTestCase):
         self.assertEqual(detect_brand("Lucky Craft LC FLAT"), "Lucky Craft")
         self.assertEqual(detect_brand("PROPELERIS MKP-2", "Minn Kota Accessories"), "Minn Kota")
         self.assertEqual(detect_brand("Unknown thing", "Reel - Ritė"), "")
+
+    def test_bad_qty_raises(self):
+        for qty in (None, "n/a"):
+            with self.assertRaises(AdapterError):
+                self._items([["", 1, "X", 10, None, qty]])

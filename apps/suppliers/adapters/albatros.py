@@ -162,7 +162,11 @@ class AlbatrosAdapter(BaseAdapter):
             cost = (export * (1 + (sale or 0))).quantize(CENT, rounding=ROUND_HALF_UP)
             rrp = (export * PRICE_FACTOR).quantize(CENT, rounding=ROUND_HALF_UP)
         discount = int((-sale * 100).to_integral_value(rounding=ROUND_HALF_UP)) if sale else None
-        stock = max(self._to_int(row.get("qty") or 0), 0)
+        qty = self._to_decimal(row.get("qty"))
+        if qty is None:
+            # tuščias/netaisyklingas kiekis – eilutės klaida, ne 0 (klaida blokuoja nulinimą)
+            raise AdapterError(f"Albatros {code}: netaisyklingas Q-ty ({row.get('qty')!r})")
+        stock = max(int(qty), 0)
         photo = row.get("photo") or ""
         section = row.get("section") or ""
         extra = {
