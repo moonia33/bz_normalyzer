@@ -1,7 +1,6 @@
 # Albatros integracija (planas agentams)
 
 > Statusas: **analizė, kodo dar nėra.** Šis failas – nurodymai lokaliems ir Devin agentams.
-> Kainodara dar **nenuspręsta** – neįgyvendinti, kol vartotojas nepatvirtins.
 
 ## Pagrindiniai faktai
 
@@ -11,7 +10,7 @@
 - Jokio API/feed'o: visi duomenys ateina **Excel failais**, kuriuos įkelia vartotojas.
   Likučių ir kainų sinchronizacija vyksta **tik įkėlus failą** (jokio tvarkaraščio,
   jokių užklausų tiekėjui).
-- Excel'yje tik: kodas, pavadinimas EN, kaina be PVM, likutis. Kategorijų nėra –
+- Excel'yje tik: kodas, pavadinimas EN, savikaina be PVM, SALE %, likutis, kartais FOTO URL. Kategorijų nėra –
   tik **skyriaus** antraštė (eilutė, kur užpildytas tik A stulpelis, pvz. `Bait / RAPALA`,
   `Reel - Ritė`). Skyrius = orientacija į stambesnę kategoriją.
 - Turinys (aprašymai, nuotraukos, specifikacijos, variantų grupavimas) – **scrap'inamas
@@ -21,28 +20,44 @@
 
 | Tipas | Pavyzdys | Stulpeliai | Rolė |
 |---|---|---|---|
-| Raw Stock (pilnas) | `Raw Stock 10.26.xlsx` (~30 800 kodų, 116 skyrių) | A skyrius, B kodas, C pavadinimas, D kaina be PVM, E likutis | **Katalogas + likučiai + kainos.** Pilnas sąrašas → leidžiama nulinti dingusius |
-| Stock (su likučiu) | `Stock 10.21.xlsx` (~10 400) | Code, Item, be PVM export, SALE, Q-ty, Order, Catalogue, FOTO | Papildomi **nuotraukų URL** (images.salsify.com, albatros.lt, jobesports.com) ir SALE nuolaida |
-| Naujienos | `2027 NEW.xlsx` | Code, Item, su PVM, export, nuolaida, FOTO | Naujos prekės, nuotraukos; **nenulina** kitų |
+| **Stock (pagrindinis, pilnas)** | `Stock 10.21.xlsx`: 10 399 kodų (6 588 su 0), 110 skyrių | A žymė (`""` / `New 2027`), Code, Item, `be PVM, export`, `SALE`, `Q-ty`, Order, Catalogue, `FOTO` | **Katalogas + savikaina + likučiai.** Importuojama **viskas**, įskaitant 0. Kito Stock importo metu nerastas kodas → likutis 0 |
+| Raw Stock | `Raw Stock 10.26.xlsx` (~30 800 kodų) | A skyrius, kodas, pavadinimas, kaina be PVM, likutis | **Nenaudojamas** kaip šaltinis (tik informacija analizei) |
+| Naujienos | `2027 NEW.xlsx` (382) | Code, Item, su PVM, export, nuolaida, FOTO (salsify) | Naujienų žymė + nuotraukos; **nenulina** |
 | Gamintojo kainoraščiai | `TiCA 2024`, `Crazy Fish Softlures 2024`, `Outdoors Adventures 2024` (Humminbird/Jobe/RAM: EAN, RRP, foto) | skiriasi | Papildomi duomenys (EAN, RRP, foto); **nenulina** |
 
-Taisyklės:
-- Kodą normalizuoti: `str(x).strip()`, skaičius be `.0`, išlaikyti brūkšnius (`10005-100`).
-  Dubliuotas kodas faile (1 atvejis) – imti paskutinę eilutę, užfiksuoti įspėjimą.
-- Tuščia kaina (~1 300 kodų, 35 su likučiu) → prekė nepublikuojama, bet esamai prekei
-  likutis atnaujinamas.
-- Failo tipą atpažinti pagal antraštes, ne pagal failo vardą. Neatpažintas → klaida, nieko nekeisti.
+Stock failo taisyklės:
+- Skyrius = eilutė, kur užpildytas tik A stulpelis (pvz. `Reel - Ritė`) → `category_raw`.
+- A stulpelis `New 2027` (400 eilučių) = **naujienos žymė** (žr. „Naujienų badge“).
+- `SALE` – neigiama trupmena (`-0.3` = −30 %), užpildyta 3 810 eilučių; tuščia = be nuolaidos.
+- `FOTO` URL: ~4 800 `images.salsify.com` (DAM grupė), albatros.lt, jobesports.com.
+- Kodą normalizuoti: `str(x).strip()`, skaičius be `.0`, brūkšnius išlaikyti (`10005-100`).
+  Dubliuotas kodas – paskutinė eilutė + įspėjimas.
+- Failo tipą atpažinti pagal antraštes (`Code`, `be PVM, export`, `SALE`, `Q-ty`), ne pagal vardą.
+  Neatpažintas → klaida, nieko nekeisti.
 - Lietuviški bendriniai pirmi žodžiai (`VOBLERIS`, `BALANSYRAS`, `SUKRIUKĖ`, `VARIKLIS`,
   `BLIZGĖ`, `GUMINUKAS`) nėra ženklas: ženklas = kitas žodis arba iš skyriaus
-  (`VOBLERIS RAPALA BXB-3 BGH` → Rapala). Santrumpos: `SG` = Savage Gear, `PL` = Preston?
-  (patikrinti), `R.T.`/`RT` = Ron Thompson, `CC` = CC Moore, `FZ` = Effzett.
+  (`VOBLERIS RAPALA BXB-3 BGH` → Rapala). Santrumpos: `SG` = Savage Gear, **`PL` = Prologic**,
+  `R.T.`/`RT` = Ron Thompson, `CC` = CC Moore, `FZ` = Effzett.
 
-## Apimtis (vartotojo sprendimas)
+## Apimtis ir likučiai (vartotojo sprendimas)
 
-- Importuoti **tik su likučiu > 0**.
-- **Išimtis:** jei pagal gamintojo duomenis kodas yra prekės variantas ir **bent vienas**
-  tos prekės variantas turi likutį – importuojami **visi** jos variantai (kiti – su 0).
-- Vėliau likutis dingsta → prekė lieka, likutis 0 (netrinama).
+- Importuojama **viskas, kas yra Stock faile**, įskaitant likutį 0.
+- Kitame Stock importe nerastas kodas → likutis 0 (prekė netrinama). Saugiklis: tik jei importe
+  0 klaidų ir failas atpažintas kaip pilnas (`mark_absent_offers`, `ABSENT_MIN_SEEN_SHARE`).
+- Senos PS prekės, kurių kodas yra Albatros faile = **Albatros prekės**: jų likutis imamas iš
+  Stock failo, įskaitant nulinimą.
+
+## Kainodara (vartotojo sprendimas)
+
+- Savikaina = `be PVM, export` (be PVM).
+- `SALE` mažina savikainą: `efektyvi_savikaina = export × (1 + SALE)` (`SALE=-0.3` → ×0,7).
+- Pardavimo kaina (be PVM) = savikaina × **1,5**.
+- Fronte nuolaida turi būti protinga ir motyvuoti pirkti. Siūlomas variantas (**laukia patvirtinimo**):
+  - įprasta kaina = `export × 1,5`, akcijos kaina = `export × (1 + SALE) × 1,5`, todėl fronte rodomas tas pats SALE %;
+  - apvalinti iki gražaus % (pvz. 30 %, ne 29,7 %);
+  - nerodyti nuolaidos < 5 %;
+  - akcijos kaina niekada ne mažesnė už `efektyvi_savikaina × 1,15` (minimali marža).
+- `SALE` dingo kitame faile → akcija nuimama.
 
 ## Susiejimas su esamomis BE prekėmis
 
@@ -58,8 +73,26 @@ Albatros kodu (sku arba sku be prefikso):
 - Prieš bet kokį re-key: **BE DB backup** (`pg_dump -Fc`), dry-run ataskaita vartotojui.
 - Neaiškūs atitikmenys (kodas sutampa, bet ženklas/pavadinimas ne) → CSV peržiūrai, ne automatiškai.
 - Nesusietos senos PS prekės lieka **įjungtos**.
-- Atviras klausimas: **kaina, kai tą pačią prekę turi keli tiekėjai** – nespręsti, kol vartotojas
-  nenuspręs. Kol kas kitų tiekėjų prekėms Albatros duoda tik likutį, kainos neperrašo.
+- **Ta pati prekė pas kelis tiekėjus** (vartotojo sprendimas): įrašomos **abi kainos** (kiekvieno
+  sandėlio), fronte rodoma **mažesnė**, o pristatymo laikas – pagal to sandėlio
+  `Warehouse.dispatch_days_min/max` (Albatros – vietinis, beveik kaip parduotuvė).
+  - Dabar normalyzer siunčia vieną kainą variantui (`_item_price_net` = pirminio offer'io kaina).
+  - BE jau turi per-sandėlio laukus `InventoryItem.cost_eur` ir `offer_price_override_eur`,
+    bet importas jų nepildo.
+  - Reikia atskiro PR: normalyzer stock payload'e kiekvienam sandėliui siunčia `qty`, `price_net`
+    ir `cost_net`; BE `_apply_stock` juos rašo į `InventoryItem`; frontas renkasi pigiausią
+    sandėlį, kuriame yra likutis, ir rodo jo pristatymo laiką.
+  - Nuolaida skaičiuojama nuo pasirinkto sandėlio kainos.
+
+## Naujienų badge („New 2027“)
+
+Šaltinis: Stock failo A stulpelis `New 2027` ir (arba) kodas yra `2027 NEW.xlsx`.
+BE dabar prekių badge'ų nėra (`badge` yra tik CMS blokuose). Variantai:
+1. **Feature** `Naujiena = 2027`: veikia per esamą importą ir filtrus, bet frontui reikia
+   taisyklės, kad šį feature rodytų kaip badge.
+2. **Siūloma:** BE `Product.badges` (JSON sąrašas, pvz. `["new"]` + `badge_until`);
+   importas jį pildo, frontas rodo, Typesense indeksuoja filtravimui. Reikia BE + FE PR.
+Kai žymė dingsta iš failo, badge nuimamas.
 
 ## Gamintojų šaltiniai (vartotojo pateikti)
 
@@ -70,7 +103,7 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 | Savage Gear (`SAVAGE`, `SG`) | 6 124 / 3 452 | savagegear.com (Shopify); sportfiskeprylar.se | ✅ `/search?q=<kodas>&type=product` randa |
 | DAM | 2 320 / 911 | dam.de | ✅ `/search?q=<kodas>` randa |
 | Mepps | 1 424 / 556 | store.mepps.com; sportfiskeprylar.se | ✅ `/search?q=<kodas>` randa |
-| Prologic | 715 / 434 | prologicfishing.com; sportfiskeprylar.se | ⚠ HTTP 429 (rate limit) – lėtai, iš srv2 |
+| Prologic (`PROLOGIC`, `PL`) | 1 170 / 554 | prologicfishing.com; sportfiskeprylar.se | ⚠ HTTP 429 (rate limit) – lėtai, iš srv2 |
 | Madcat | 594 / 430 | madcat-fishing.com | ⚠ HTTP 429 |
 | Kuusamo | 786 / 248 | kuusamonuistin.fi/en | ⚠ HTTP 429 |
 | Crazy Fish | 2 639 / 1 321 | crazy-fish.eu (+ crazyfish.com.ua RU/UA, crazyfishetcompagnie.fr) | ❌ kodas (`ALSR662XULS`) paieškoje nerandamas – katalogo crawl + modelio atitikimas |
@@ -97,12 +130,13 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 ## Eiga
 
 1. **Adapteris `albatros`** (`apps/suppliers/adapters/albatros.py`, `@register_adapter`):
-   Raw Stock failas (FeedRole `catalog`, upload); skyrius → `category_raw`;
-   kodas → `external_id`, `sku=AL.<kodas>`; kaina be PVM → pirkimo kaina
-   (`purchase_price_includes_vat=False`); likutis → warehouse `albatros`.
+   Stock failas (FeedRole `catalog`, upload); skyrius → `category_raw`;
+   kodas → `external_id`, `sku=AL.<kodas>`; `export × (1+SALE)` → pirkimo kaina
+   (`purchase_price_includes_vat=False`); `markup_percent=50`; SALE → akcija;
+   `New 2027` → badge; likutis → warehouse `albatros`.
    Papildomi failai (Stock su FOTO, NEW, kainoraščiai) – atskiri feed'ai (`partial_update`),
    papildo nuotraukas/EAN/RRP, **nenulina**.
-2. **Apimties filtras:** su likučiu + kiti tos pačios gamintojo grupės variantai.
+2. **Apimtis:** visi Stock failo kodai (ir su 0).
 3. **Gamintojo turinys:** `scrape_manufacturer --source <x>`; susiejimas pagal kodą
    (`ManufacturerContent.codes`), grupavimas į bazinę prekę + variantus.
 4. **Esamų prekių susiejimas:** PS → re-key, kiti tiekėjai → tik sandėlis.
@@ -112,7 +146,7 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 6. **Vertimas į LT** (`translate_lang`, ta pati schema).
 7. **Eksportas:** `export_catalog --supplier albatros --dry-run` → ataskaita → `--push`;
    BE ImportRun be klaidų; **Typesense** reindex (`search.services.index_products`) ir patikra.
-8. **Likučiai:** naujas Raw Stock failas → importas → `export_stock`.
+8. **Likučiai:** naujas Stock failas → importas → `export_stock`.
    `mark_absent_offers` nulina dingusius tik jei importe 0 klaidų ir matyta ≥ `ABSENT_MIN_SEEN_SHARE`.
 
 ## Saugikliai (nekeisti)
@@ -126,7 +160,9 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 ## Testai (privalomi prieš PR)
 
 - Visų failų tipų parsing'as (skyriaus eilutės, tuščios kainos, dubliuotas kodas, kodas skaičius/tekstas).
-- Apimtis: variantas be likučio importuojamas, jei grupėje yra su likučiu.
+- Kainos: export × (1+SALE) × 1,5; minimali marža; akcija dingsta be SALE.
+- Nerastas kitame Stock faile kodas → 0 (ir PS prekėms); klaidingas failas → nieko.
+- `New 2027` → badge; dingus – nuimamas.
 - PS re-key: SKU, URL, sandėlis; kitų tiekėjų prekėms – tik sandėlis, kaina nepakeista.
 - Neatpažintas failas / klaidingos eilutės → likučiai neliečiami.
 - Gamintojo modulis: fixture HTML → kodai, variantai, nuotraukos, specs; 429/timeout → be duomenų, importas nekrenta.
@@ -134,7 +170,6 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 ## Atviri klausimai
 
-1. Kainodara (antkainis nuo pirkimo kainos be PVM? RRP? SALE stulpelis?).
-2. Kaina, kai tą pačią prekę turi keli tiekėjai.
-3. `PL` – Preston ar kitas ženklas?
-4. Ar Raw Stock visada pilnas (visi kodai, ir su 0)? Nuo to priklauso dingusių nulinimas.
+1. Fronto nuolaidos taisyklės (min. %, apvalinimas, minimali marža) – patvirtinti siūlymą.
+2. Naujienų badge: feature ar `Product.badges` (BE + FE).
+3. Per-sandėlio kainų PR (normalyzer + BE + FE) – daryti prieš Albatros eksportą ar po jo.
