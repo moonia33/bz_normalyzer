@@ -139,6 +139,8 @@ def crawl(
     if response is None or response.status_code != 200:
         return False
     urls = product_urls(response.text, brand)
+    if not urls:
+        return False
     complete = not limit or len(urls) <= limit
     if limit:
         urls = urls[:limit]
