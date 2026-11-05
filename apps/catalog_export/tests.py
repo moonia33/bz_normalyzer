@@ -149,6 +149,20 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(len(variants), 1)
         self.assertEqual(variants[0]["stock"], {"fox": 5, "moss": 3})
 
+    def test_same_supplier_shared_ean_keeps_separate_variants(self):
+        """HoldCarp: spalvos skirtingais kodais, bet su bazinės prekės EAN."""
+        for eid, colour in (("AAA-2", "Red"), ("AAA-3", "Green")):
+            self._make_offer(
+                eid, f"Variant {colour}", {"specs": {"Color": colour}},
+                ean="1111111111111",
+            )
+        payload = build_catalog_payload()
+        variants = payload["items"][0]["variants"]
+        self.assertEqual(
+            sorted(v["code"] for v in variants), ["AAA-1", "AAA-2", "AAA-3"]
+        )
+        self.assertEqual({v["ean"] for v in variants}, {""})
+
     def test_unpublished_offers_excluded(self):
         self.offer.is_published = False
         self.offer.save()
