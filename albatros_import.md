@@ -8,7 +8,7 @@
 > | Planas, sprendimai, kainodara | ✅ šis failas |
 > | Per-sandėlio kaina / savikaina / nuolaida % (normalyzer → BE) | ✅ normalyzer #35, BE #13 (prod) |
 > | Prekių badge'ai (admin, taisyklės, importas, API, Typesense, FE) | ✅ BE #14/#15, FE #5 (prod) |
-> | Normalyzer eksportas siunčia `badges` | ❌ dar nėra (žr. „Naujienų badge“) |
+> | Normalyzer eksportas siunčia `badges` | ✅ `NormalizedItem.badges` → `Offer.badges` → katalogo `badges` |
 > | Adapteris `albatros` (Stock Excel) | ❌ |
 > | Gamintojų scraper'iai | ❌ |
 > | PS prekių re-key, kategorijų mapingas, vertimas, eksportas | ❌ |
@@ -127,10 +127,13 @@ parametrai). BE jau turi (ecommercebackend `docs/badges.md`):
   šaltinio badge'us: trūkstamą kodą sukuria (`name=code`, pervadinti admine), nebeatsiųstą nuima.
   `badges` nenurodytas (`null`) = nieko nekeisti; `[]` = nuimti visus importo badge'us.
 
-**Lieka padaryti normalyzer'yje:** `Offer`/`NormalizedItem` laukas badge kodams (Albatros:
-`new-2027`, kai A stulpelyje `New 2027` arba kodas yra `2027 NEW.xlsx`), jo įtraukimas į
-`exported_hash` ir `badges` prekės lygyje katalogo payload'e. Kitiems tiekėjams lauko nesiųsti
-(`null`), kad nebūtų liečiami jų badge'ai. Žymė dingo iš **validaus** Stock failo → `[]`.
+**Normalyzer (padaryta):** adapteris pildo `NormalizedItem.badges` (Albatros: `["new-2027"]`,
+kai A stulpelyje `New 2027` arba kodas yra `2027 NEW.xlsx`, kitaip `[]`). Saugoma `Offer.badges`,
+įeina į content hash ir `exported_hash`; katalogo payload'e prekės `badges` = publikuotų offer'ių
+sąjunga. Adapteriai, kurie lauko nepildo (`None`), `badges` rakto nesiunčia – shop'e jų badge'ai
+nekeičiami. Žymė dingo iš **validaus** Stock failo → `[]` → BE nuima.
+Ribojimas: offer'is su `shop_variant_code` (prekė kito tiekėjo) badge'o shop'ui neperduoda –
+tokioms prekėms „Naujiena“ reikia BE `BadgeRule` arba rankinio priskyrimo.
 
 ## Gamintojų šaltiniai (vartotojo pateikti)
 
@@ -208,10 +211,9 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 ## Kas toliau (eilės tvarka)
 
-1. Normalyzer: badge kodų laukas + `badges` katalogo payload'e (žr. aukščiau).
-2. Adapteris `albatros` + testai (skyrius „Testai“).
-3. Gamintojų scraper'iai: pradėti nuo savagegear.com, dam.de, store.mepps.com (randama pagal kodą).
-4. Dry-run ataskaita vartotojui (kiekiai, kainų pavyzdžiai, susiejimas su esamomis prekėmis).
-5. Tik po patvirtinimo: BE backup → PS re-key → eksportas → Typesense patikra.
+1. Adapteris `albatros` + testai (skyrius „Testai“).
+2. Gamintojų scraper'iai: pradėti nuo savagegear.com, dam.de, store.mepps.com (randama pagal kodą).
+3. Dry-run ataskaita vartotojui (kiekiai, kainų pavyzdžiai, susiejimas su esamomis prekėmis).
+4. Tik po patvirtinimo: BE backup → PS re-key → eksportas → Typesense patikra.
 
 Atvirų verslo klausimų nėra; neaiškumai – klausti vartotojo, ne spėti.

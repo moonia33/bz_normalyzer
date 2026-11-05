@@ -36,7 +36,8 @@ Kuriamas: **Albatros `AL.`** – žr. `albatros_import.md` (būsenos lentelė vi
   `offer_terms()`. Ta pati prekė keliuose sandėliuose: pirminis offer'is nustato kainą,
   papildomas siunčia tik likutį + sandėlio kainą. BE rodo pigiausią sandėlį su likučiu.
 - **Badge'ai BE** (ecommercebackend #14): kuriami admine, priskiriami rankiniu būdu, taisyklėmis
-  arba importu (`badges` katalogo payload'e). Normalyzer jų **dar nesiunčia**.
+  arba importu. Normalyzer: `NormalizedItem.badges` → `Offer.badges` → prekės `badges`
+  (`None` = raktas nesiunčiamas, shop'e nieko nekeičia).
 - Variantų ašys/feature'ai eksportuojami deterministiškai → antras dry-run iš eilės turi rodyti 0 pakeitimų.
 - Tiekėjo pasikartojantis EAN skirtingiems kodams nejungia variantų ir į BE nesiunčiamas.
 

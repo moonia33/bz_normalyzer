@@ -223,6 +223,39 @@ class PlanTests(TestCase):
         self.assertEqual(variant["offers"]["sup"]["discount_percent"], 25)
         self.assertIsNone(variant["offers"]["sup"]["price_net"])
 
+    def test_catalog_payload_badges(self):
+        product = self._product("B1")
+        self._offer("BA", product=product, badges=["new-2027"])
+        self._offer("BB", product=product, badges=[])
+        plain = self._product("B2")
+        self._offer("BC", product=plain)
+        items = {i["code"]: i for i in build_catalog_payload()["items"]}
+        self.assertEqual(items["B1"]["badges"], ["new-2027"])
+        # tiekėjas badge'ų netvarko -> rakto nėra, shop'as jų nekeičia
+        self.assertNotIn("badges", items["B2"])
+        Offer.objects.filter(external_id="BA").update(badges=[])
+        items = {i["code"]: i for i in build_catalog_payload()["items"]}
+        self.assertEqual(items["B1"]["badges"], [])
+
+    def test_supplier_export_keeps_other_suppliers_badges(self):
+        other = Supplier.objects.create(code="oth", name="Other")
+        product = self._product("B3")
+        self._offer("BD", product=product, badges=[])
+        self._offer("BE", product=product, supplier=other, badges=["new-2027"])
+        items = {i["code"]: i for i in build_catalog_payload(self.supplier.code)["items"]}
+        self.assertEqual(items["B3"]["badges"], ["new-2027"])
+
+    def test_content_hash_badges(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.ingestion.pipeline import _content_hash
+
+        base = NormalizedItem(external_id="X", name="X")
+        self.assertEqual(
+            _content_hash(base), _content_hash(NormalizedItem(external_id="X", name="X", badges=None))
+        )
+        tagged = NormalizedItem(external_id="X", name="X", badges=["new-2027"])
+        self.assertNotEqual(_content_hash(base), _content_hash(tagged))
+
     def test_hash_ignores_prices_and_stock(self):
         item = {"code": "X", "price_net": "1", "variants": [{"code": "v", "price_net": "1", "stock": {"a": 1}}]}
         other = {"code": "X", "price_net": "2", "variants": [{"code": "v", "price_net": "3", "stock": {"a": 9}}]}

@@ -100,6 +100,12 @@ class Offer(TimeStampedModel):
         blank=True,
         help_text="Nuolaida % nuo pardavimo kainos (shop InventoryItem.offer_discount_percent).",
     )
+    badges = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Marketingo badge kodai, pvz. ["new-2027"]. null = tiekėjas badge\'ų netvarko '
+        "(shop'e jie nekeičiami).",
+    )
     shop_variant_code = models.CharField(
         max_length=128,
         blank=True,
