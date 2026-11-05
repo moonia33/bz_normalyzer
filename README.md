@@ -507,6 +507,12 @@ python manage.py export_stock --supplier fox --push
 Push konfigūracija `.env`: `SHOP_API_BASE_URL`, `SHOP_USER_EMAIL`, `SHOP_USER_PASSWORD` (JWT login `/api/v1/auth/login`, staff vartotojas).
 Kiekvienas eksportas registruojamas `ExportRun` (sha256, item_count, shop atsakymas).
 
+Per-sandėlio sąlygos: variantas siunčia `offers: {"<warehouse_code>": {price_net, cost_net, discount_percent}}`
+(`offer_terms()`), likučių eksportas – `offer` kiekvienam kodui. Pirminis offer'is nustato varianto
+kainą (`price_net` sąlygose = `null`, `discount_percent` = `Offer.discount_percent`); offer'is su
+`shop_variant_code` (kito tiekėjo prekė) yra tik papildomas sandėlis: siunčia likutį ir galutinę
+sandėlio kainą, turinio nekuria. Agentams – pradėti nuo `AGENTS.md`.
+
 ### Shop kategorijų sinchronizavimas
 
 Shop kategorijos yra kanoninis šaltinis eksporto `category` laukui:

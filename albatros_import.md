@@ -1,6 +1,18 @@
 # Albatros integracija (planas agentams)
 
-> Statusas: **analizė, kodo dar nėra.** Šis failas – nurodymai lokaliems ir Devin agentams.
+> Statusas (2026-11-05): **infrastruktūra paruošta, Albatros adapterio dar nėra.**
+> Šis failas – nurodymai lokaliems ir Devin agentams. Bendra būsena ir taisyklės – `AGENTS.md`.
+>
+> | Dalis | Būsena |
+> |---|---|
+> | Planas, sprendimai, kainodara | ✅ šis failas |
+> | Per-sandėlio kaina / savikaina / nuolaida % (normalyzer → BE) | ✅ normalyzer #35, BE #13 (prod) |
+> | Prekių badge'ai (admin, taisyklės, importas, API, Typesense, FE) | ✅ BE #14/#15, FE #5 (prod) |
+> | Normalyzer eksportas siunčia `badges` | ❌ dar nėra (žr. „Naujienų badge“) |
+> | Adapteris `albatros` (Stock Excel) | ❌ |
+> | Gamintojų scraper'iai | ❌ |
+> | PS prekių re-key, kategorijų mapingas, vertimas, eksportas | ❌ |
+> | Prod importas | ❌ **tik gavus vartotojo patvirtinimą**, po dry-run ataskaitos |
 
 ## Pagrindiniai faktai
 
@@ -64,10 +76,11 @@ Pavyzdys: export 10 €, SALE −0.3 → cost 7 €, kaina 15 €, nuolaida 30 %
 
 - Be `SALE` → cost = export, nuolaidos nėra (`offer_discount_percent = null`).
 - `SALE` dingo kitame faile → nuolaida nuimama.
-- BE kainų logika jau palaiko `InventoryItem.offer_discount_percent` (`catalog/services/money.py`,
-  `home_services.py`). **Trūksta:** BE `catalog_import` jo neįrašo, normalyzer jo nesiunčia →
-  reikia papildyti normalyzer payload'ą (per sandėlį: `discount_percent`) ir BE `_apply_stock` /
-  katalogo importą.
+- **Padaryta:** adapteris turi užpildyti `NormalizedItem.discount_percent` (= `round(−SALE×100)`,
+  be SALE – `None`); jis saugomas `Offer.discount_percent`, įeina į content hash ir per
+  `offer_terms()` keliauja į BE `offers.<warehouse>.discount_percent` → `InventoryItem.offer_discount_percent`.
+  `price_net` lieka be nuolaidos (export × 1,5), `cost_net` = su nuolaida. BE pats skaičiuoja
+  `compare_at_price` / `discount_percent` fronte.
 
 ## Susiejimas su esamomis BE prekėmis
 
@@ -86,23 +99,38 @@ Albatros kodu (sku arba sku be prefikso):
 - **Ta pati prekė pas kelis tiekėjus** (vartotojo sprendimas): įrašomos **abi kainos** (kiekvieno
   sandėlio), fronte rodoma **mažesnė**, o pristatymo laikas – pagal to sandėlio
   `Warehouse.dispatch_days_min/max` (Albatros – vietinis, beveik kaip parduotuvė).
-  - Dabar normalyzer siunčia vieną kainą variantui (`_item_price_net` = pirminio offer'io kaina).
-  - BE jau turi per-sandėlio laukus `InventoryItem.cost_eur` ir `offer_price_override_eur`,
-    bet importas jų nepildo.
-  - Reikia atskiro PR: normalyzer stock payload'e kiekvienam sandėliui siunčia `qty`, `price_net`
-    ir `cost_net`; BE `_apply_stock` juos rašo į `InventoryItem`; frontas renkasi pigiausią
-    sandėlį, kuriame yra likutis, ir rodo jo pristatymo laiką.
-  - Nuolaida skaičiuojama nuo pasirinkto sandėlio kainos.
+  - **Padaryta (normalyzer #35, BE #13):**
+    - Pirminis offer'is (prekės „savininkas“) nustato varianto kainą ir siunčia sandėliui
+      `cost_net` + `discount_percent`.
+    - Papildomo sandėlio offer'is: `Offer.shop_variant_code` = kito tiekėjo shop SKU (pvz. `FX.123`).
+      Toks offer'is **nekuria turinio**, į `plan_prices()` neįeina (neperrašo varianto kainos);
+      siunčia tik likutį ir sandėlio galutinę kainą `price_net` (nuolaida jau įskaičiuota) →
+      `InventoryItem.offer_price_override_eur`.
+    - `price_locked` offer'is sandėlio sąlygų nesiunčia (`offer_terms()` → `None`).
+    - BE renkasi sandėlį su `qty_available > 0` pagal `offer_priority`, efektyvią kainą, id;
+      pristatymo langas – pagal parinktą sandėlį. FE pakeitimų nereikėjo.
+  - Albatros adapteriui lieka: Albatros kodą, sutampantį su kito tiekėjo variantu, pažymėti
+    `shop_variant_code` (susiejimas pagal kodą/EAN, neaiškūs – CSV peržiūrai).
+  - Po pirmo deploy'aus BE vieną kartą įrašo savikainas visiems sandėliams (didesnis stock sync).
 
 ## Naujienų badge („New 2027“)
 
 Šaltinis: Stock failo A stulpelis `New 2027` ir (arba) kodas yra `2027 NEW.xlsx`.
-BE dabar prekių badge'ų nėra (`badge` yra tik CMS blokuose). Variantai:
-1. **Feature** `Naujiena = 2027`: veikia per esamą importą ir filtrus, bet frontui reikia
-   taisyklės, kad šį feature rodytų kaip badge.
-2. **Siūloma:** BE `Product.badges` (JSON sąrašas, pvz. `["new"]` + `badge_until`);
-   importas jį pildo, frontas rodo, Typesense indeksuoja filtravimui. Reikia BE + FE PR.
-Kai žymė dingsta iš failo, badge nuimamas.
+
+**Sprendimas (vartotojo):** atskiri marketingo badge'ai, **ne** feature (feature = techniniai
+parametrai). BE jau turi (ecommercebackend `docs/badges.md`):
+- `Badge` (kuriamas admine bet kada: kodas, LT pavadinimas, stilius/spalva, prioritetas, galioja nuo–iki),
+- `ProductBadge` su šaltiniu `manual` / `import` / `rule`,
+- `BadgeRule` (taisyklės kaip enrichment: ženklas, kategorija, SKU prefiksas, feature, tekstas,
+  likutis sandėlyje, nuolaida, naujumas) – naktį 03:50 arba admine.
+- Katalogo importe prekės lauke `badges: ["new-2027"]` → BE sinchronizuoja **tik `import`**
+  šaltinio badge'us: trūkstamą kodą sukuria (`name=code`, pervadinti admine), nebeatsiųstą nuima.
+  `badges` nenurodytas (`null`) = nieko nekeisti; `[]` = nuimti visus importo badge'us.
+
+**Lieka padaryti normalyzer'yje:** `Offer`/`NormalizedItem` laukas badge kodams (Albatros:
+`new-2027`, kai A stulpelyje `New 2027` arba kodas yra `2027 NEW.xlsx`), jo įtraukimas į
+`exported_hash` ir `badges` prekės lygyje katalogo payload'e. Kitiems tiekėjams lauko nesiųsti
+(`null`), kad nebūtų liečiami jų badge'ai. Žymė dingo iš **validaus** Stock failo → `[]`.
 
 ## Gamintojų šaltiniai (vartotojo pateikti)
 
@@ -178,7 +206,12 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 - Gamintojo modulis: fixture HTML → kodai, variantai, nuotraukos, specs; 429/timeout → be duomenų, importas nekrenta.
 - Pakartotinis importas → 0 pakeitimų (`exported_hash` stabilus).
 
-## Atviri klausimai
+## Kas toliau (eilės tvarka)
 
-1. Naujienų badge: feature ar `Product.badges` (BE + FE).
-2. Per-sandėlio kainų PR (normalyzer + BE + FE) – daryti prieš Albatros eksportą ar po jo.
+1. Normalyzer: badge kodų laukas + `badges` katalogo payload'e (žr. aukščiau).
+2. Adapteris `albatros` + testai (skyrius „Testai“).
+3. Gamintojų scraper'iai: pradėti nuo savagegear.com, dam.de, store.mepps.com (randama pagal kodą).
+4. Dry-run ataskaita vartotojui (kiekiai, kainų pavyzdžiai, susiejimas su esamomis prekėmis).
+5. Tik po patvirtinimo: BE backup → PS re-key → eksportas → Typesense patikra.
+
+Atvirų verslo klausimų nėra; neaiškumai – klausti vartotojo, ne spėti.
