@@ -1081,6 +1081,15 @@ def _item_cost_net(product: Product, offers: list[Offer]) -> str | None:
     return str(cost.quantize(Decimal("0.01"))) if cost is not None else None
 
 
+def _item_badges(offers) -> list[str] | None:
+    """Prekės badge'ai = offer'ių badge'ų sąjunga. None (rakto nėra) – nė vienas
+    offer'is badge'ų netvarko, shop'as jų nekeičia."""
+    managed = [o.badges for o in offers if o.badges is not None]
+    if not managed:
+        return None
+    return sorted({code for codes in managed for code in codes if code})
+
+
 def build_catalog_payload(supplier_code: str | None = None) -> dict:
     base_lang = (Language.objects.filter(is_base=True).first())
     base_code = base_lang.code if base_lang else "en"
@@ -1154,6 +1163,9 @@ def build_catalog_payload(supplier_code: str | None = None) -> dict:
                         "variants": variants,
                     }
                 )
+                badges = _item_badges(offers)
+                if badges is not None:
+                    items[-1]["badges"] = badges
 
     finally:
         _CATEGORY_NAMES.clear()

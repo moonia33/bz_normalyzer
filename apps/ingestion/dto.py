@@ -26,6 +26,8 @@ class NormalizedItem:
     purchase_price: Decimal | None = None
     # Papildoma mūsų nuolaida % (pvz. Albatros SALE); kaina lieka be nuolaidos.
     discount_percent: int | None = None
+    # Marketingo badge kodai (shop Badge.code). None = adapteris badge'ų netvarko.
+    badges: list[str] | None = None
     currency: str = "EUR"
     is_available: bool = True
     extra: dict[str, Any] = field(default_factory=dict)
