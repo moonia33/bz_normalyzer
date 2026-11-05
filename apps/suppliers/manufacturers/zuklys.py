@@ -24,6 +24,10 @@ MAX_CANDIDATES = 3
 _LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 
 
+def _clean(text: str) -> str:
+    return " ".join((text or "").split())
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 

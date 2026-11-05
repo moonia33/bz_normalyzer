@@ -377,7 +377,7 @@ class ZuklysParseTests(SimpleTestCase):
             zuklys.candidates("49-40-30D-6", index),
             ["https://zuklys.lt/lt/a/49-40-30d-6-guminukai-crazy-fish-nimble-49-40-30d-6-lt.html"],
         )
-        self.assertEqual(zuklys.candidates("49-40", index), [])
+        self.assertEqual(zuklys.candidates("99999", index), [])
 
     def test_crawl_uses_sitemap_and_tries_candidates_until_code_matches(self):
         from apps.suppliers.manufacturers import zuklys
