@@ -62,7 +62,9 @@ def parse_product(product: dict, base: str) -> dict:
 
 
 def crawl(base: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, sleep=None):
-    """Generuoja (language, url, parsed) kiekvienai prekei su bent vienu kodu."""
+    """Generuoja (language, url, parsed) kiekvienai prekei su bent vienu kodu.
+
+    Grąžina True tik pilnai nuskaičius katalogą (tada galima nuimti dingusių prekių kodus)."""
     s = s or http.session()
     kwargs = {"sleep": sleep} if sleep else {}
     page, seen = 1, 0
@@ -75,10 +77,13 @@ def crawl(base: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, slee
             **kwargs,
         )
         if response is None or response.status_code != 200:
-            return
-        products = response.json().get("products") or []
+            return False
+        try:
+            products = response.json().get("products") or []
+        except ValueError:
+            return False
         if not products:
-            return
+            return True
         for product in products:
             parsed = parse_product(product, base)
             if not parsed["codes"]:
@@ -86,5 +91,5 @@ def crawl(base: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, slee
             yield LANGUAGE, f"{base}/products/{product['handle']}", parsed
             seen += 1
             if limit and seen >= limit:
-                return
+                return False
         page += 1

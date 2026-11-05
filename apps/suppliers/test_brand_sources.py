@@ -179,3 +179,15 @@ class ScrapeBrandCommandTests(TestCase):
         self.assertEqual(
             content.section_for("62388")["heading"], "Savage Gear Parabellum CCS"
         )
+
+
+class ShopifyBadResponseTests(SimpleTestCase):
+    def test_non_json_page_stops_without_raising(self):
+        s = mock.Mock()
+        bad = _response()
+        bad.json.side_effect = ValueError("not json")
+        s.get.return_value = bad
+        gen = shopify.crawl("https://x", s=s, sleep=lambda _: None)
+        with self.assertRaises(StopIteration) as stop:
+            next(gen)
+        self.assertFalse(stop.exception.value)
