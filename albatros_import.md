@@ -49,15 +49,25 @@ Stock failo taisyklės:
 
 ## Kainodara (vartotojo sprendimas)
 
-- Savikaina = `be PVM, export` (be PVM).
-- `SALE` mažina savikainą: `efektyvi_savikaina = export × (1 + SALE)` (`SALE=-0.3` → ×0,7).
-- Pardavimo kaina (be PVM) = savikaina × **1,5**.
-- Fronte nuolaida turi būti protinga ir motyvuoti pirkti. Siūlomas variantas (**laukia patvirtinimo**):
-  - įprasta kaina = `export × 1,5`, akcijos kaina = `export × (1 + SALE) × 1,5`, todėl fronte rodomas tas pats SALE %;
-  - apvalinti iki gražaus % (pvz. 30 %, ne 29,7 %);
-  - nerodyti nuolaidos < 5 %;
-  - akcijos kaina niekada ne mažesnė už `efektyvi_savikaina × 1,15` (minimali marža).
-- `SALE` dingo kitame faile → akcija nuimama.
+`SALE` yra **mūsų papildoma nuolaida** (neigiama trupmena, `-0.3` = −30 %).
+
+```
+savikaina_be_nuolaidos = export                      # `be PVM, export`
+savikaina_su_nuolaida  = export × (1 + SALE)        # įrašoma kaip cost (BE cost_eur)
+pardavimo_kaina        = export × 1,5                # įprasta kaina (price_net)
+nuolaida_%             = round((1 − (savikaina_su_nuolaida×1,5) / pardavimo_kaina) × 100)
+                       = round(−SALE × 100)          # sveikas %, BE InventoryItem.offer_discount_percent
+galutinė_kaina         ≈ savikaina_su_nuolaida × 1,5
+```
+
+Pavyzdys: export 10 €, SALE −0.3 → cost 7 €, kaina 15 €, nuolaida 30 %, galutinė 10,50 € (= 7 × 1,5).
+
+- Be `SALE` → cost = export, nuolaidos nėra (`offer_discount_percent = null`).
+- `SALE` dingo kitame faile → nuolaida nuimama.
+- BE kainų logika jau palaiko `InventoryItem.offer_discount_percent` (`catalog/services/money.py`,
+  `home_services.py`). **Trūksta:** BE `catalog_import` jo neįrašo, normalyzer jo nesiunčia →
+  reikia papildyti normalyzer payload'ą (per sandėlį: `discount_percent`) ir BE `_apply_stock` /
+  katalogo importą.
 
 ## Susiejimas su esamomis BE prekėmis
 
@@ -131,8 +141,8 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 1. **Adapteris `albatros`** (`apps/suppliers/adapters/albatros.py`, `@register_adapter`):
    Stock failas (FeedRole `catalog`, upload); skyrius → `category_raw`;
-   kodas → `external_id`, `sku=AL.<kodas>`; `export × (1+SALE)` → pirkimo kaina
-   (`purchase_price_includes_vat=False`); `markup_percent=50`; SALE → akcija;
+   kodas → `external_id`, `sku=AL.<kodas>`; `export × (1+SALE)` → pirkimo kaina (cost),
+   `export × 1,5` → kaina; SALE → `discount_percent`;
    `New 2027` → badge; likutis → warehouse `albatros`.
    Papildomi failai (Stock su FOTO, NEW, kainoraščiai) – atskiri feed'ai (`partial_update`),
    papildo nuotraukas/EAN/RRP, **nenulina**.
@@ -160,7 +170,7 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 ## Testai (privalomi prieš PR)
 
 - Visų failų tipų parsing'as (skyriaus eilutės, tuščios kainos, dubliuotas kodas, kodas skaičius/tekstas).
-- Kainos: export × (1+SALE) × 1,5; minimali marža; akcija dingsta be SALE.
+- Kainos: cost = export × (1+SALE), price = export × 1,5, discount = round(−SALE×100); be SALE – be nuolaidos.
 - Nerastas kitame Stock faile kodas → 0 (ir PS prekėms); klaidingas failas → nieko.
 - `New 2027` → badge; dingus – nuimamas.
 - PS re-key: SKU, URL, sandėlis; kitų tiekėjų prekėms – tik sandėlis, kaina nepakeista.
@@ -170,6 +180,5 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 
 ## Atviri klausimai
 
-1. Fronto nuolaidos taisyklės (min. %, apvalinimas, minimali marža) – patvirtinti siūlymą.
-2. Naujienų badge: feature ar `Product.badges` (BE + FE).
-3. Per-sandėlio kainų PR (normalyzer + BE + FE) – daryti prieš Albatros eksportą ar po jo.
+1. Naujienų badge: feature ar `Product.badges` (BE + FE).
+2. Per-sandėlio kainų PR (normalyzer + BE + FE) – daryti prieš Albatros eksportą ar po jo.
