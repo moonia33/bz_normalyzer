@@ -12,6 +12,7 @@ Kainodara (vartotojo sprendimas):
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 from collections.abc import Iterator
@@ -153,12 +154,16 @@ class AlbatrosAdapter(BaseAdapter):
         # Bloga eilutė neturi nutraukti viso importo: praleidžiama ir skaičiuojama
         # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
         self.fetch_errors = 0
+        items = []
         for row in self.parse(payload):
             try:
-                yield self.normalize(row)
+                items.append(self.normalize(row))
             except AdapterError as exc:
                 self.fetch_errors += 1
                 logger.warning("%s", exc)
+        if self.config.get("manufacturer_groups", True):
+            apply_manufacturer_content(items, manufacturer_lookup(items))
+        yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = row.get("code") or ""
@@ -210,3 +215,78 @@ class AlbatrosAdapter(BaseAdapter):
             extra={k: v for k, v in extra.items() if v not in (None, "")},
             raw={k: str(v) if v is not None else None for k, v in row.items()},
         )
+
+
+def manufacturer_lookup(items: list[NormalizedItem]) -> dict[tuple[str, str], Any]:
+    """(ženklo slug, kodas) -> ManufacturerContent: pirma EN, tada mažiausias puslapis."""
+    from django.utils.text import slugify
+
+    from apps.suppliers.models import ManufacturerContent
+
+    sources = {slugify(item.brand_name or "") for item in items} - {""}
+    rank = {"en": 0, "de": 1}
+    best: dict[tuple[str, str], Any] = {}
+    for content in ManufacturerContent.objects.filter(source__in=sources).exclude(codes=[]):
+        key_rank = (rank.get(content.language, 2), len(content.codes), content.url)
+        for code in content.codes:
+            current = best.get((content.source, code))
+            if current is None or key_rank < current[0]:
+                best[(content.source, code)] = (key_rank, content)
+    return {key: value[1] for key, value in best.items()}
+
+
+def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> None:
+    """Gamintojo puslapis = bazinė prekė: product_group, base_name, ašys, nuotraukos.
+
+    Kodai be gamintojo puslapio lieka atskiromis prekėmis su Stock pavadinimu ir FOTO."""
+    from django.utils.text import slugify
+
+    for item in items:
+        source = slugify(item.brand_name or "")
+        content = lookup.get((source, item.external_id.upper()))
+        if content is None:
+            continue
+        slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
+        item.extra["product_group"] = f"{source}:{slug}"
+        item.extra["manufacturer_url"] = content.url
+        if content.series:
+            item.extra["base_name"] = content.series
+        section = content.section_for(item.external_id.upper()) or {}
+        row = dict((section.get("rows") or {}).get(item.external_id.upper()) or {})
+        row.pop("name", None)
+        if row:
+            item.attributes = {**(item.attributes or {}), "axes": row}
+        ean = (content.specs or {}).get("eans", {}).get(item.external_id.upper())
+        if ean and not item.ean:
+            item.ean = ean
+        images = list(dict.fromkeys([*item.images, *content.images]))
+        item.images = images
+        if images and not item.extra.get("main_image_url"):
+            item.extra["main_image_url"] = images[0]
+    _distinguish_twins(items)
+
+
+def _distinguish_twins(items: list[NormalizedItem]) -> None:
+    """Grupės variantams su vienodomis ašimis `model` = Stock pavadinimo skirtumas.
+
+    'Savage Gear Exorus 1000 7bb 5.2:1 210g' / '... 2500 7bb 5.2:1 260g' -> '1000 210g' / '2500 260g'."""
+    groups: dict[str, list[NormalizedItem]] = {}
+    for item in items:
+        group = item.extra.get("product_group")
+        if group:
+            groups.setdefault(group, []).append(item)
+    for members in groups.values():
+        same: dict[str, list[NormalizedItem]] = {}
+        for item in members:
+            axes = (item.attributes or {}).get("axes") or {}
+            same.setdefault(json.dumps(axes, sort_keys=True), []).append(item)
+        for twins in same.values():
+            if len(twins) < 2:
+                continue
+            tokens = [[t for t in re.split(r"\s+", item.name) if t] for item in twins]
+            common = set.intersection(*({t.lower() for t in toks} for toks in tokens))
+            for item, toks in zip(twins, tokens):
+                label = " ".join(t for t in toks if t.lower() not in common) or item.external_id
+                axes = dict((item.attributes or {}).get("axes") or {})
+                axes["model"] = f"{axes['model']} {label}" if axes.get("model") else label
+                item.attributes = {**(item.attributes or {}), "axes": axes}

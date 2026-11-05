@@ -2,7 +2,7 @@ import io
 from decimal import Decimal
 from typing import ClassVar
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from openpyxl import Workbook
 
 from apps.suppliers.adapters.albatros import (
@@ -15,6 +15,10 @@ from apps.suppliers.adapters.base import AdapterError
 
 
 class _Feed:
+    config: ClassVar[dict] = {"manufacturer_groups": False}
+
+
+class _DbFeed:
     config: ClassVar[dict] = {}
 
 
@@ -116,3 +120,57 @@ class AlbatrosAdapterTests(SimpleTestCase):
         items = list(self.adapter.iter_items(payload))
         self.assertEqual([i.external_id for i in items], ["1", "4"])
         self.assertEqual(self.adapter.fetch_errors, 3)
+
+
+class AlbatrosManufacturerGroupTests(TestCase):
+    def setUp(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="dam", url="https://www.dam.de/products/effzett-spoon", language="en",
+            series="DAM Effzett Spoon", codes=["65045", "65046"],
+            images=["https://cdn/m1.jpg"],
+            specs={"sections": [{"heading": "", "text": "", "rows": {
+                "65045": {"name": "x", "Weight": "10g"}, "65046": {"Weight": "20g"}}}],
+                "eans": {"65045": "5706301650456"}},
+        )
+        ManufacturerContent.objects.create(
+            source="dam", url="https://www.sportfishtackle.de/de/artiklar/dam-spoon.html",
+            language="de", series="DE", codes=["65045", "65046", "65047"],
+        )
+
+    def test_groups_by_manufacturer_page(self):
+        rows = [
+            ["New 2027", "65045", "DAM EFFZETT SPOON 10G", 2, None, 3, None, None, "https://s/f.jpg"],
+            [None, "65046", "DAM EFFZETT SPOON 20G", 2, None, 0, None, None, None],
+            [None, "65047", "DAM EFFZETT SPOON 30G", 2, None, 0, None, None, None],
+            [None, "99999", "DAM OTHER", 2, None, 0, None, None, "https://s/o.jpg"],
+        ]
+        items = {i.external_id: i for i in AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Bait"], *rows]))}
+        a, b, c, other = items["65045"], items["65046"], items["65047"], items["99999"]
+        self.assertEqual(a.extra["product_group"], "dam:effzett-spoon")
+        self.assertEqual(b.extra["product_group"], "dam:effzett-spoon")
+        self.assertEqual(a.extra["base_name"], "DAM Effzett Spoon")
+        self.assertEqual(a.attributes["axes"], {"Weight": "10g"})
+        self.assertEqual(a.ean, "5706301650456")
+        self.assertEqual(a.images, ["https://s/f.jpg", "https://cdn/m1.jpg"])
+        self.assertEqual(b.extra["main_image_url"], "https://cdn/m1.jpg")
+        self.assertEqual(c.extra["product_group"], "dam:dam-spoon")
+        self.assertEqual(c.attributes, {})
+        self.assertNotIn("product_group", other.extra)
+        self.assertEqual(other.name, "DAM OTHER")
+        self.assertEqual(other.images, ["https://s/o.jpg"])
+
+    def test_twins_without_axes_get_model_from_stock_name(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="savage-gear", url="https://x/de/artiklar/sg-exorus.html", language="de",
+            codes=["1609503", "1609504"],
+        )
+        rows = [
+            [None, "1609503", "Savage Gear Exorus 1000 7bb 5.2:1 210g", 2, None, 1, None, None, None],
+            [None, "1609504", "Savage Gear Exorus 2500 7bb 5.2:1 260g", 2, None, 1, None, None, None],
+        ]
+        items = list(AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Reel"], *rows])))
+        self.assertEqual([i.attributes["axes"] for i in items], [{"model": "1000 210g"}, {"model": "2500 260g"}])
