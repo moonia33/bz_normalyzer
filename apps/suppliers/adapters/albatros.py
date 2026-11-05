@@ -248,6 +248,8 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
             continue
         slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
         item.extra["product_group"] = f"{source}:{slug}"
+        # EAN/kodo atitikmuo negali sujungti skirtingų gamintojo puslapių (pipeline strict_group)
+        item.extra["strict_group"] = True
         item.extra["manufacturer_url"] = content.url
         if content.series:
             item.extra["base_name"] = content.series

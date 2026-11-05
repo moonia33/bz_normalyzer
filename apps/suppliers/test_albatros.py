@@ -150,6 +150,7 @@ class AlbatrosManufacturerGroupTests(TestCase):
         a, b, c, other = items["65045"], items["65046"], items["65047"], items["99999"]
         self.assertEqual(a.extra["product_group"], "dam:effzett-spoon")
         self.assertEqual(b.extra["product_group"], "dam:effzett-spoon")
+        self.assertTrue(a.extra["strict_group"])
         self.assertEqual(a.extra["base_name"], "DAM Effzett Spoon")
         self.assertEqual(a.attributes["axes"], {"Weight": "10g"})
         self.assertEqual(a.ean, "5706301650456")
