@@ -3,11 +3,11 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.ingestion.models import Offer
-from apps.suppliers.manufacturers import climax, sportex
+from apps.suppliers.manufacturers import climax, sportex, zuklys
 from apps.suppliers.manufacturers.brands import BRANDS, BrandSource
 from apps.suppliers.models import ManufacturerContent
 
-SOURCES = {"climax": climax, "sportex": sportex, **BRANDS}
+SOURCES = {"climax": climax, "sportex": sportex, "zuklys": zuklys, **BRANDS}
 
 
 def _series_codes(brand: str, series: str) -> list[str]:
@@ -22,6 +22,18 @@ def _series_codes(brand: str, series: str) -> list[str]:
         if wanted <= climax.tokens(f"{base} {sub}"):
             codes.append(str(code).strip().upper())
     return sorted(codes)
+
+
+def _zuklys_codes(path: str | None) -> list[str]:
+    """Albatros kodai, kuriems dar nėra jokio turinio (gamintojo ar zuklys)."""
+    if path:
+        with open(path, encoding="utf-8") as fh:
+            return [line.strip().upper() for line in fh if line.strip()]
+    covered = set()
+    for codes in ManufacturerContent.objects.exclude(codes=[]).values_list("codes", flat=True):
+        covered.update(codes)
+    codes = Offer.objects.filter(supplier__code="albatros").values_list("external_id", flat=True)
+    return sorted({str(c).strip().upper() for c in codes} - covered)
 
 
 def _keep_most_specific(source: str, urls: set[str]) -> int:
@@ -70,6 +82,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--limit", type=int, default=0, help="Riboti serijų puslapių skaičių."
         )
+        parser.add_argument(
+            "--codes-file",
+            help="zuklys: kodų sąrašas (po vieną eilutėje); be jo – tiekėjo albatros kodai be turinio.",
+        )
 
     def handle(self, *args, **opts):
         module = SOURCES.get(opts["source"])
@@ -81,7 +97,11 @@ class Command(BaseCommand):
         stats = {"pages": 0, "codes": 0}
         seen: set[str] = set()
         codes_seen: set[str] = set()
-        for lang, url, parsed in module.crawl(languages, opts["delay"], opts["limit"]):
+        if module is zuklys:
+            pages = zuklys.crawl(_zuklys_codes(opts.get("codes_file")), opts["delay"], opts["limit"])
+        else:
+            pages = module.crawl(languages, opts["delay"], opts["limit"])
+        for lang, url, parsed in pages:
             if "codes" not in parsed:
                 codes = _series_codes(
                     opts["source"], parsed.get("series_de") or parsed["series"]

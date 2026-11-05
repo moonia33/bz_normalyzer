@@ -188,3 +188,65 @@ class AlbatrosManufacturerGroupTests(TestCase):
         ]
         items = list(AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Reel"], *rows])))
         self.assertEqual([i.attributes["axes"] for i in items], [{"model": "1000 210g"}, {"model": "2500 260g"}])
+
+
+class AlbatrosPhotoAndFixedGroupTests(SimpleTestCase):
+    def _items(self, rows, config=None):
+        class Feed:
+            pass
+
+        Feed.config = {"manufacturer_groups": False, **(config or {})}
+        return {i.external_id: i for i in AlbatrosAdapter(Feed()).iter_items(_xlsx([HEADER, ["Line"], *rows]))}
+
+    ROWS = (
+        [None, "77637", "DAM Damyl Tectan Hyper 4Oz 1.200M 0.30mm", 2, None, 1, None, None, "https://s/t.jpg"],
+        [None, "77638", "DAM Damyl Tectan Hyper 4Oz 860M 0.35mm", 2, None, 1, None, None, "https://s/t.jpg"],
+        [None, "11111", "DAM Spoon 10g", 2, None, 1, None, None, "https://s/g.jpg"],
+        [None, "22222", "DAM Feeder 20g", 2, None, 1, None, None, "https://s/g.jpg"],
+    )
+
+    def test_same_photo_brand_section_groups_with_name_prefix(self):
+        items = self._items(self.ROWS)
+        a, b = items["77637"], items["77638"]
+        self.assertEqual(a.extra["product_group"], b.extra["product_group"])
+        self.assertTrue(a.extra["product_group"].startswith("dam:photo:"))
+        self.assertEqual(a.extra["base_name"], "DAM Damyl Tectan Hyper 4Oz")
+        self.assertEqual(a.attributes["axes"], {"model": "1.200M 0.30mm"})
+        self.assertEqual(b.attributes["axes"], {"model": "860M 0.35mm"})
+
+    def test_generic_photo_with_only_brand_in_common_is_not_grouped(self):
+        items = self._items(self.ROWS)
+        self.assertNotIn("product_group", items["11111"].extra)
+        self.assertNotIn("product_group", items["22222"].extra)
+
+    def test_photo_groups_can_be_disabled(self):
+        items = self._items(self.ROWS, {"photo_groups": False})
+        self.assertNotIn("product_group", items["77637"].extra)
+
+    def test_fixed_groups_override(self):
+        items = self._items(
+            self.ROWS,
+            {"fixed_groups": {"77637": "ps:42", "11111": {"group": "ps:42", "base_name": "PS name"}}},
+        )
+        self.assertEqual(items["77637"].extra["product_group"], "ps:42")
+        self.assertEqual(items["11111"].extra["product_group"], "ps:42")
+        self.assertEqual(items["11111"].extra["base_name"], "PS name")
+        self.assertTrue(items["77638"].extra["product_group"].startswith("dam:photo:"))
+
+
+class AlbatrosRetailFallbackTests(TestCase):
+    def test_zuklys_adds_images_and_specs_without_group(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="zuklys", url="https://zuklys.lt/49-40-lt.html", language="lt",
+            series="Guminukai Crazy Fish NIMBLE", codes=["49-40-30D-6"],
+            images=["https://zuklys.lt/image/cache/catalog/n-800x800.jpg"],
+            specs={"sections": [{"heading": "", "text": "", "rows": {"49-40-30D-6": {"Spalva": "30d"}}}]},
+        )
+        rows = [[None, "49-40-30d-6", "Crazy Fish Nimble 1.6\" 1g 49-40-30d-6", 2, None, 1, None, None, None]]
+        (item,) = AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Soft"], *rows]))
+        self.assertNotIn("product_group", item.extra)
+        self.assertEqual(item.attributes, {"specs": {"Spalva": "30d"}})
+        self.assertEqual(item.extra["main_image_url"], "https://zuklys.lt/image/cache/catalog/n-800x800.jpg")
+        self.assertEqual(item.extra["retail_url"], "https://zuklys.lt/49-40-lt.html")
