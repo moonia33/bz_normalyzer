@@ -99,3 +99,7 @@ class AlbatrosAdapterTests(SimpleTestCase):
         self.assertEqual(len(rows), 1)
         with self.assertRaises(AdapterError):
             self.adapter.normalize(rows[0])
+
+    def test_negative_export_raises(self):
+        with self.assertRaises(AdapterError):
+            self._items([["", 1, "X", -5, None, 1]])

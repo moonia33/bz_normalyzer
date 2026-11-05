@@ -155,6 +155,8 @@ class AlbatrosAdapter(BaseAdapter):
             raise AdapterError(f"Albatros: trūksta kodo: {repr(row)[:200]}")
         name = row.get("name") or code
         export = self._to_decimal(row.get("export"))
+        if export is not None and export < 0:
+            raise AdapterError(f"Albatros {code}: neigiama export kaina ({export})")
         sale = self._to_decimal(row.get("sale"))
         if sale is not None and not Decimal(-1) < sale <= 0:
             raise AdapterError(f"Albatros {code}: SALE už ribų ({sale})")
