@@ -296,3 +296,29 @@ class ShopifyIncompleteTests(SimpleTestCase):
 
     def test_empty_first_page_is_incomplete(self):
         self.assertFalse(self._result({"products": []}))
+
+
+class SportfishtackleIncompleteTests(SimpleTestCase):
+    def test_sitemap_without_brand_urls_is_incomplete(self):
+        gen = sportfishtackle.crawl(
+            "savage-gear",
+            s=mock.Mock(get=mock.Mock(return_value=_response(text="<urlset/>"))),
+            sleep=lambda _: None,
+        )
+        with self.assertRaises(StopIteration) as stop:
+            next(gen)
+        self.assertFalse(stop.exception.value)
+
+    def test_page_without_product_data_is_incomplete(self):
+        sitemap = (
+            "<loc>https://www.sportfiskeprylar.se/sv/artiklar/savage-gear-x.html</loc>"
+        )
+        s = mock.Mock()
+        s.get.side_effect = [
+            _response(text=sitemap),
+            _response(content=b"<html><h1>Maintenance</h1></html>"),
+        ]
+        gen = sportfishtackle.crawl("savage-gear", s=s, sleep=lambda _: None)
+        with self.assertRaises(StopIteration) as stop:
+            next(gen)
+        self.assertFalse(stop.exception.value)

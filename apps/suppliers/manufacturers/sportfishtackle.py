@@ -132,7 +132,8 @@ def parse_page(content: bytes) -> dict:
 def crawl(
     brand: str, delay: float = http.MIN_DELAY, limit: int = 0, s=None, sleep=None
 ):
-    """Grąžina True, kai sitemap ir visi puslapiai nuskaityti (404 = prekė pašalinta)."""
+    """Grąžina True, kai sitemap ir visi puslapiai nuskaityti (404 = prekė pašalinta;
+    puslapis be kodų = neaišku, kodai nevalomi)."""
     s = s or http.session()
     kwargs = {"sleep": sleep} if sleep else {}
     response = http.get(s, SITEMAP, delay, **kwargs)
@@ -152,4 +153,6 @@ def crawl(
         parsed = parse_page(page.content)
         if parsed["codes"]:
             yield LANGUAGE, url, parsed
+        else:
+            complete = False
     return complete
