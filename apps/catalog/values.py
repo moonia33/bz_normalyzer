@@ -260,8 +260,8 @@ def parse_value(
         inches = _to_decimal(m.group(2)) or Decimal(0)
         num = feet + inches / Decimal(12)
         detected_unit = "ft"
-        ft_in_computed = True
-        orig_display = f"{_fmt_num(_round(num, 'ft'))} ft"
+        ft_in_computed = m.group(2) is not None
+        orig_display = f"{_fmt_num(_round(num, 'ft', None if ft_in_computed else num))} ft"
     else:
         m = _RANGE_RE.match(raw)
         if m:

@@ -81,6 +81,7 @@ class ParseValueTests(TestCase):
         self.assertEqual(pv.code, "8-17-ft")
         pv = parse_value("12'4\"", "number", "m")
         self.assertEqual(pv.display, "3,76 m (12,33 ft)")
+        self.assertEqual(parse_value("8.125'", "number", "ft").code, "8-125-ft")
 
     def test_range(self):
         pv = parse_value("10-40g", "range", "g")
