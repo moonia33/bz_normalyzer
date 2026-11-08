@@ -33,6 +33,10 @@ _CANONICAL: list[tuple[str, str, list[str], str, str]] = [
     # kompozitinės reikšmės -> apps.catalog.profiles.split_composite.
     ("size", "axis", ["Size", "Größe", "Rozmiar", "Rozmer", "Dydis", "Wymiar"], "text", ""),
     ("hook_size", "axis", ["Hook size", "Hook Size", "Hakengröße", "Rozmiar haka"], "text", ""),
+    # Drabužių (S–XXL) ir avalynės (EU 36–48, UK) dydžiai – atskiros ašys,
+    # kad 'size' filtras nemaišytų batų, drabužių ir kabliukų numerių.
+    ("apparel_size", "axis", ["Apparel Size", "Clothing Size", "Konfektionsgröße", "Rozmiar odzieży"], "text", ""),
+    ("shoe_size", "axis", ["Shoe Size", "Schuhgröße", "Rozmiar buta"], "text", ""),
     ("pattern", "axis", ["Decor Pattern", "Dekor", "Dekoracja", "Pattern"], "text", ""),
     ("lure_size", "axis", ["Lure Size", "Ködergröße", "Rozmiar przynęty"], "number", "cm"),
     ("weight", "axis", ["Weight gram", "Gewicht g", "Waga g"], "number", "g"),

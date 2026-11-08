@@ -72,6 +72,7 @@ def _translation_block(product: Product, base_lang: str) -> dict:
 
 from apps.catalog.attributes import (
     ATTRIBUTE_META,
+    AXIS_PRIORITY,
     CODE_ALIASES,
     MAX_OPTIONS,
     VARIANT_LABEL_CODE,
@@ -477,6 +478,84 @@ def _apply_composite_axes(
     return name_parts, consumed_labels
 
 
+# Kabliuko dydis bet kuriuo tiekėjo formatu: '8', '08', '#8', 'No8',
+# 'Size 8', 'size 02', 'roz. 8', '1/0'. Grupė 1 – numeris, 2 – '/0'.
+_HOOK_SIZE_RE = re.compile(
+    r"^(?:size|no\.?|nr\.?|roz\.?|#)?\s*#?\s*0*(\d{1,2})\s*(/\s*0)?$",
+    re.IGNORECASE,
+)
+# Avalynė: EU 35–49 (ir pusės), 'UK7', 'EU41', 'UK 7 / EU 41'.
+_SHOE_SIZE_RE = re.compile(
+    r"^(?:(?:eu|uk|us)\s*\d{1,2}(?:[.,]5)?(?:\s*/\s*(?:eu|uk|us)\s*\d{1,2}(?:[.,]5)?)*"
+    r"|(?:3[5-9]|4[0-9])(?:[.,]5)?(?:\s*[-/]\s*(?:3[5-9]|4[0-9]))?)$",
+    re.IGNORECASE,
+)
+_HOOK_PROFILES = {"hooks", "rigs"}
+
+
+def _hook_size_value(value: str) -> str | None:
+    """'Size 08' -> '8', '#2/0' -> '2/0'; None kai tai ne kabliuko dydis."""
+    m = _HOOK_SIZE_RE.match(str(value or "").strip())
+    if not m:
+        return None
+    return m.group(1) + ("/0" if m.group(2) else "")
+
+
+def _size_target(values: list[str], profile) -> tuple[str, list[str]] | None:
+    """Grupės lygio generic 'size' semantika: kai VISOS grupės 'size'
+    reikšmės yra to paties tipo, grąžina (kanoninė ašis, reikšmės).
+
+    Sprendžiama visai grupei, ne offer'iui: Moss kabliukuose '2' ir
+    '1/0' turi tapti viena 'hook-size' ašimi, ne 'size' + 'hook-size'.
+    """
+    if not values:
+        return None
+    if profile.code in _HOOK_PROFILES:
+        hooks = [_hook_size_value(v) for v in values]
+        if all(hooks):
+            return "hook-size", hooks
+    if profile.code == "clothing":
+        if all(_is_size_word(v) for v in values):
+            return "apparel-size", values
+        if all(_SHOE_SIZE_RE.match(v.strip()) for v in values):
+            return "shoe-size", values
+    if profile.composite_rules:
+        targets = set()
+        for v in values:
+            produced, leftover = split_composite(v, profile)
+            if leftover or len(produced) != 1:
+                return None
+            targets.add(_code(next(iter(produced))))
+        if len(targets) == 1:
+            target = targets.pop()
+            if target != "size":
+                return target, values
+    return None
+
+
+def _promote_generic_size(raw: dict[int, dict], profile) -> None:
+    """Generic 'size' -> semantinė ašis, kai visa grupė vienareikšmė
+    (BZ-26): kabliukai -> hook-size, drabužiai -> apparel-size, batai ->
+    shoe-size, '20g' šėryklėlėse -> weight ir t.t. Esamos hook-size
+    reikšmės suvienodinamos ('#8'/'Size 8' -> '8'). Jei offer'is jau turi
+    tikslinę ašį su kita reikšme – nieko nekeičiam (neaišku, kuri
+    teisinga)."""
+    sized = [axes for axes in raw.values() if axes.get("size")]
+    found = _size_target([axes["size"] for axes in sized], profile)
+    if found:
+        target, values = found
+        if all(axes.get(target) in (None, "", val) for axes, val in zip(sized, values)):
+            for axes, val in zip(sized, values):
+                del axes["size"]
+                axes[target] = val
+    if profile.code in _HOOK_PROFILES:
+        for axes in raw.values():
+            if axes.get("hook-size"):
+                norm = _hook_size_value(axes["hook-size"])
+                if norm:
+                    axes["hook-size"] = norm
+
+
 # Produkto vardo spec-dalies nukirtimas (merge_variant_products):
 # skliaustai '(0.08mm)'/'[150m]' + uodegos '50lb 1200 m' tokenai.
 _NAME_BRACKET_RE = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
@@ -528,6 +607,7 @@ def _plan_variants(
     # F3: kompozitinės 'size'/'variantas' reikšmės -> kanoninės ašys
     # (prieš normalizavimą, kad nauji kodai gautų num/unit meta).
     name_parts, consumed_labels = _apply_composite_axes(offers, raw, profile)
+    _promote_generic_size(raw, profile)
     composite_names = {
         oid: {
             "leftover": name_parts.get(oid, ""),
@@ -602,6 +682,29 @@ def _plan_variants(
         )
         candidates.remove(best)
         chosen.append(best)
+    # Profilio ašys neatskiria -> papildomai kitos varijuojančios kanoninės
+    # ašys (pvz. line-strength pavadėliuose), kad pirkėjas turėtų
+    # selektorių, o ne tik variantų sąrašą (BZ-26).
+    if _collisions(chosen) > 0:
+        extra = sorted(
+            (
+                ax for ax in varying
+                if ax not in chosen
+                and (ATTRIBUTE_META.get(_norm_axis(ax)) or {}).get("kind") == "axis"
+            ),
+            key=lambda ax: (AXIS_PRIORITY.get(_norm_axis(ax), 99), ax),
+        )
+        while extra and len(chosen) < MAX_OPTIONS and _collisions(chosen) > 0:
+            best = min(
+                extra,
+                key=lambda ax: (
+                    _collisions([*chosen, ax]),
+                    AXIS_PRIORITY.get(_norm_axis(ax), 99),
+                    ax,
+                ),
+            )
+            extra.remove(best)
+            chosen.append(best)
     # All-or-nothing: nepilnai atskiriantys options -> options visai nebe.
     if _collisions(chosen) > 0:
         chosen = []

@@ -855,9 +855,9 @@ class CompositeAxisTests(TestCase):
                         for f in v["features"]}
             for v in item["variants"]
         }
-        # '0,10mm' vienas token'as -> neskaldoma, lieka 'size' ašis.
-        self.assertEqual(vf["S-1"].get("size"), "0,10 mm")
-        self.assertNotIn("line-diameter", vf["S-1"])
+        # Visa grupė vienareikšmė (vien mm) -> line-diameter, ne 'size'.
+        self.assertEqual(vf["S-1"].get("line-diameter"), "0,1 mm")
+        self.assertNotIn("size", vf["S-1"])
 
     def test_variantas_label_composite_becomes_axes(self):
         product = self._product("Braided lines")
@@ -1092,6 +1092,66 @@ class LeftoverRoutingTests(TestCase):
         self.assertNotIn("model", vf["L-1"])
 
 
+class SizeSemanticsTests(TestCase):
+    """BZ-26: generic 'size' -> semantinė ašis pagal visą grupę."""
+
+    setUp = CompositeAxisTests.setUp
+    _product = CompositeAxisTests._product
+    _offer = CompositeAxisTests._offer
+
+    def _options(self):
+        item = build_catalog_payload()["items"][0]
+        return {v["code"]: v["options"] for v in item["variants"]}
+
+    def test_hook_numbers_and_aught_sizes_are_one_axis(self):
+        # Moss kabliukai: '2'/'1' size_raw + '1/0' hook-size ašis.
+        product = self._product("Kabliukai spiningavimui")
+        self._offer(product, "K-1", "Hook", size_raw="2")
+        self._offer(product, "K-2", "Hook", size_raw="1")
+        self._offer(product, "K-3", "Hook", attrs={"axes": {"hook-size": "1/0"}})
+        self._offer(product, "K-4", "Hook", size_raw="#2/0")
+        options = self._options()
+        self.assertEqual(
+            {k: list(v) for k, v in options.items()},
+            {k: ["hook-size"] for k in ("K-1", "K-2", "K-3", "K-4")},
+        )
+        self.assertEqual(len({v["hook-size"] for v in options.values()}), 4)
+
+    def test_hook_size_formats_unified(self):
+        product = self._product("Hooks")
+        self._offer(product, "H-1", "Hook", size_raw="Size 08")
+        self._offer(product, "H-2", "Hook", attrs={"axes": {"hook-size": "#6"}})
+        options = self._options()
+        self.assertEqual(options["H-1"], {"hook-size": "8"})
+        self.assertEqual(options["H-2"], {"hook-size": "6"})
+
+    def test_shoe_sizes_become_shoe_size(self):
+        product = self._product("Auliniai batai")
+        self._offer(product, "B-1", "Boot", size_raw="41")
+        self._offer(product, "B-2", "Boot", size_raw="42")
+        self.assertEqual(list(self._options()["B-1"]), ["shoe-size"])
+
+    def test_mixed_size_values_stay_generic(self):
+        product = self._product("Apranga")
+        self._offer(product, "A-1", "Set", size_raw="M")
+        self._offer(product, "A-2", "Set", size_raw="42")
+        self.assertEqual(list(self._options()["A-1"]), ["size"])
+
+    def test_feeder_grams_become_weight(self):
+        product = self._product("Šėryklėlės")
+        self._offer(product, "F-1", "Feeder", size_raw="20g")
+        self._offer(product, "F-2", "Feeder", size_raw="30g")
+        self.assertEqual(list(self._options()["F-1"]), ["weight"])
+
+    def test_non_profile_axis_used_when_profile_axes_collide(self):
+        # lines profilyje line-strength nėra; diametras vienodas ->
+        # anksčiau options = [], dabar line-strength selektorius.
+        product = self._product("Pavadėliniai valai")
+        self._offer(product, "P-1", "Leader", size_raw="0,30mm 10kg")
+        self._offer(product, "P-2", "Leader", size_raw="0,30mm 12kg")
+        self.assertEqual(list(self._options()["P-1"]), ["line-strength"])
+
+
 class LineNameAxesTests(TestCase):
     """C: mm/m/lb iš offer+product pavadinimo -> lines ašys; pliki
     vienetai ('m') – tuščios reikšmės."""
@@ -1189,5 +1249,5 @@ class LineNameAxesTests(TestCase):
         payload = build_catalog_payload()
         item = next(i for i in payload["items"] if i["code"] == "korda-hoodie")
         options = {v["code"]: v["options"] for v in item["variants"]}
-        self.assertEqual(options["H-1"], {"size": "m"})
-        self.assertEqual(options["H-2"], {"size": "l"})
+        self.assertEqual(options["H-1"], {"apparel-size": "m"})
+        self.assertEqual(options["H-2"], {"apparel-size": "l"})
