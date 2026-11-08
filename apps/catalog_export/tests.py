@@ -1151,6 +1151,28 @@ class SizeSemanticsTests(TestCase):
         self._offer(product, "P-2", "Leader", size_raw="0,30mm 12kg")
         self.assertEqual(list(self._options()["P-1"]), ["line-strength"])
 
+    def test_trouser_waist_sizes_not_shoe_size(self):
+        product = self._product("Kelnės")
+        self._offer(product, "T-1", "Trousers", size_raw="40")
+        self._offer(product, "T-2", "Trousers", size_raw="42")
+        self.assertEqual(list(self._options()["T-1"]), ["size"])
+
+    def test_same_hook_size_in_both_fields_merges(self):
+        product = self._product("Karpiniai kabliukai")
+        self._offer(product, "H-1", "Hook", size_raw="Size 08",
+                    attrs={"axes": {"hook-size": "#8"}})
+        self._offer(product, "H-2", "Hook", size_raw="Size 06",
+                    attrs={"axes": {"hook-size": "#6"}})
+        options = self._options()
+        self.assertEqual(list(options["H-1"]), ["hook-size"])
+        self.assertEqual(options["H-1"]["hook-size"], "8")
+
+    def test_generic_size_leftover_not_fallback_option(self):
+        product = self._product("Pintas valas")
+        self._offer(product, "L-1", "Braid", size_raw="PE4")
+        self._offer(product, "L-2", "Braid", size_raw="PE8")
+        self.assertFalse(self._options()["L-1"])
+
 
 class LineNameAxesTests(TestCase):
     """C: mm/m/lb iš offer+product pavadinimo -> lines ašys; pliki

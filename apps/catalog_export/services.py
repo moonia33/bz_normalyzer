@@ -491,6 +491,10 @@ _SHOE_SIZE_RE = re.compile(
     re.IGNORECASE,
 )
 _HOOK_PROFILES = {"hooks", "rigs"}
+# Kelnių '40'/'42' nesiskiria nuo batų dydžių -> shoe-size tik avalynei.
+_FOOTWEAR_RX = re.compile(
+    r"avalyn|boots?\b|\bbatai|bridkel|šlepet|slepet|sandal|shoes?\b|schuh|\bbuty\b|obuwie"
+)
 
 
 def _hook_size_value(value: str) -> str | None:
@@ -501,7 +505,9 @@ def _hook_size_value(value: str) -> str | None:
     return m.group(1) + ("/0" if m.group(2) else "")
 
 
-def _size_target(values: list[str], profile) -> tuple[str, list[str]] | None:
+def _size_target(
+    values: list[str], profile, context: str = ""
+) -> tuple[str, list[str]] | None:
     """Grupės lygio generic 'size' semantika: kai VISOS grupės 'size'
     reikšmės yra to paties tipo, grąžina (kanoninė ašis, reikšmės).
 
@@ -517,7 +523,9 @@ def _size_target(values: list[str], profile) -> tuple[str, list[str]] | None:
     if profile.code == "clothing":
         if all(_is_size_word(v) for v in values):
             return "apparel-size", values
-        if all(_SHOE_SIZE_RE.match(v.strip()) for v in values):
+        if _FOOTWEAR_RX.search(context) and all(
+            _SHOE_SIZE_RE.match(v.strip()) for v in values
+        ):
             return "shoe-size", values
     if profile.composite_rules:
         targets = set()
@@ -533,27 +541,27 @@ def _size_target(values: list[str], profile) -> tuple[str, list[str]] | None:
     return None
 
 
-def _promote_generic_size(raw: dict[int, dict], profile) -> None:
+def _promote_generic_size(raw: dict[int, dict], profile, context: str = "") -> None:
     """Generic 'size' -> semantinė ašis, kai visa grupė vienareikšmė
     (BZ-26): kabliukai -> hook-size, drabužiai -> apparel-size, batai ->
     shoe-size, '20g' šėryklėlėse -> weight ir t.t. Esamos hook-size
     reikšmės suvienodinamos ('#8'/'Size 8' -> '8'). Jei offer'is jau turi
     tikslinę ašį su kita reikšme – nieko nekeičiam (neaišku, kuri
     teisinga)."""
-    sized = [axes for axes in raw.values() if axes.get("size")]
-    found = _size_target([axes["size"] for axes in sized], profile)
-    if found:
-        target, values = found
-        if all(axes.get(target) in (None, "", val) for axes, val in zip(sized, values)):
-            for axes, val in zip(sized, values):
-                del axes["size"]
-                axes[target] = val
     if profile.code in _HOOK_PROFILES:
         for axes in raw.values():
             if axes.get("hook-size"):
                 norm = _hook_size_value(axes["hook-size"])
                 if norm:
                     axes["hook-size"] = norm
+    sized = [axes for axes in raw.values() if axes.get("size")]
+    found = _size_target([axes["size"] for axes in sized], profile, context)
+    if found:
+        target, values = found
+        if all(axes.get(target) in (None, "", val) for axes, val in zip(sized, values)):
+            for axes, val in zip(sized, values):
+                del axes["size"]
+                axes[target] = val
 
 
 # Produkto vardo spec-dalies nukirtimas (merge_variant_products):
@@ -607,7 +615,9 @@ def _plan_variants(
     # F3: kompozitinės 'size'/'variantas' reikšmės -> kanoninės ašys
     # (prieš normalizavimą, kad nauji kodai gautų num/unit meta).
     name_parts, consumed_labels = _apply_composite_axes(offers, raw, profile)
-    _promote_generic_size(raw, profile)
+    _promote_generic_size(
+        raw, profile, _offer_context(offers[0]) if offers else ""
+    )
     composite_names = {
         oid: {
             "leftover": name_parts.get(oid, ""),
@@ -690,6 +700,7 @@ def _plan_variants(
             (
                 ax for ax in varying
                 if ax not in chosen
+                and _norm_axis(ax) not in _GENERIC_AXES
                 and (ATTRIBUTE_META.get(_norm_axis(ax)) or {}).get("kind") == "axis"
             ),
             key=lambda ax: (AXIS_PRIORITY.get(_norm_axis(ax), 99), ax),
