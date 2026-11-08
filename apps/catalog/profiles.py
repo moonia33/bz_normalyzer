@@ -58,8 +58,8 @@ PROFILES: list[CategoryProfile] = [
         "clothing",
         r"marškin|marskin|džemper|dzemper|striuk|keln|šort|\bsortai|shorts?\b|"
         r"apranga|avalyn|clothing|apparel|hoodie|jacket|\btee\b|\bcap\b|"
-        r"boots?\b|odzież|odziez|bekleidung",
-        ("size", "color"),
+        r"boots?\b|\bbatai|bridkel|odzież|odziez|bekleidung",
+        ("apparel_size", "shoe_size", "size", "color"),
     ),
     CategoryProfile(
         "floats",
