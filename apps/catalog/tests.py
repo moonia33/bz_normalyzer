@@ -75,6 +75,13 @@ class ParseValueTests(TestCase):
         pv = parse_value("13'3\"", "number", "ft")
         self.assertEqual(pv.num, Decimal("13.25"))
 
+    def test_feet_inches_repeating_fraction_is_rounded(self):
+        pv = parse_value("8'2\"", "number", "ft")
+        self.assertEqual(pv.num, Decimal("8.17"))
+        self.assertEqual(pv.code, "8-17-ft")
+        pv = parse_value("12'4\"", "number", "m")
+        self.assertEqual(pv.display, "3,76 m (12,33 ft)")
+
     def test_range(self):
         pv = parse_value("10-40g", "range", "g")
         self.assertEqual(pv.num, Decimal("10"))
