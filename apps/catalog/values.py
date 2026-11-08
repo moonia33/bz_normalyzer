@@ -238,6 +238,7 @@ def parse_value(
     num = num_max = None
     detected_unit = ""
     orig_display = ""
+    ft_in_computed = False
 
     def _norm_u(tok: str) -> str:
         return _UNIT_NORM.get((tok or "").lower(), (tok or "").lower())
@@ -259,7 +260,8 @@ def parse_value(
         inches = _to_decimal(m.group(2)) or Decimal(0)
         num = feet + inches / Decimal(12)
         detected_unit = "ft"
-        orig_display = f"{_fmt_num(num)} ft"
+        ft_in_computed = m.group(2) is not None
+        orig_display = f"{_fmt_num(_round(num, 'ft', None if ft_in_computed else num))} ft"
     else:
         m = _RANGE_RE.match(raw)
         if m:
@@ -358,7 +360,9 @@ def parse_value(
             num=None, num_max=None, unit=canonical_unit,
             display=raw, code=value_code(raw),
         )
-    unconverted = not detected_unit or detected_unit == canonical_unit
+    unconverted = not ft_in_computed and (
+        not detected_unit or detected_unit == canonical_unit
+    )
     num = _round(converted, canonical_unit, num if unconverted else None)
     if converted_max is not None:
         num_max = _round(
