@@ -343,19 +343,57 @@ def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=())
     return out
 
 
+_VARIANT_COMMA = re.compile(r",(?!\d)|(?<!\d),")
+
+
 def split_variant_name(name: str) -> tuple[str, str]:
-    """'BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims, L' -> (bazė, 'L')."""
-    base, sep, value = (name or "").rpartition(",")
-    base, value = base.strip(), value.strip()
-    if not sep or not base or not value or len(value) > _MAX_VARIANT_LEN:
-        return name.strip(), ""
+    """'BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims, L' -> (bazė, 'L').
+
+    Kablelis tarp skaitmenų (dydis 9,5) – ne skirtukas."""
+    name = (name or "").strip()
+    cuts = [m.start() for m in _VARIANT_COMMA.finditer(name)]
+    if not cuts:
+        return name, ""
+    base, value = name[: cuts[-1]].strip(), name[cuts[-1] + 1 :].strip()
+    if not base or not value or len(value) > _MAX_VARIANT_LEN:
+        return name, ""
     return base, value
+
+
+_COLOR = re.compile(
+    r"^(juod|pilk|mėlyn|balt|raudon|žal|geltn|gelton|oranž|rož|violet|rud|smaragd|sidabr|auks|chaki|"
+    r"bord|turkio|mėtin|levand|koral|smėlin|grafit|kamufliaž|tams|šviesi|spalv|black|gr[ae]y|"
+    r"blue|red|green|yellow|orange|pink|white|purple|camo)"
+)
+_COLOR_GLUE = {"/", "-", "ir", "&"}
+
+
+def split_color(value: str) -> tuple[str, str]:
+    """'smaragdinė spalva S' -> ('smaragdinė spalva', 'S'); 'juodas / pilkas' -> ('juodas / pilkas', '').
+
+    Spalva = spalvų žodžiai ir viskas iki „spalva“ ('žalios citrinos spalva 116cm')."""
+    tokens = value.split()
+    words = [t.casefold().strip(".,;()") for t in tokens]
+    color = [bool(_COLOR.match(w)) for w in words]
+    for i, word in enumerate(words):
+        if word.startswith("spalv"):
+            color[: i + 1] = [True] * (i + 1)
+    for i, word in enumerate(words):
+        if word in _COLOR_GLUE and 0 < i < len(words) - 1 and color[i - 1] and color[i + 1]:
+            color[i] = True
+    picked = [t for t, c in zip(tokens, color) if c]
+    rest = [t for t, c in zip(tokens, color) if not c]
+    while rest and rest[0].casefold() in _COLOR_GLUE:
+        rest.pop(0)
+    return " ".join(picked), " ".join(rest)
 
 
 def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
     """nemus neturi variantų: tas pats ženklas + pavadinimas iki paskutinio kablelio -> viena prekė.
 
-    Jungiama tik jei ≥ 2 kodai su skirtingomis reikšmėmis; gamintojo / PS grupės lieka pirmesnės."""
+    Variantas tik ne spalva (spalva lieka pavadinime: kitos spalvos – kita prekė). Prekė su vienu
+    dydžiu irgi gauna grupę – kitas dydis vėliau prisijungs prie tos pačios. Kodai su ta pačia
+    reikšme nejungiami; gamintojo / PS grupės lieka pirmesnės."""
     from django.utils.text import slugify
 
     groups: dict[tuple[str, str], list[tuple[NormalizedItem, str, str]]] = {}
@@ -364,14 +402,16 @@ def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
         if content is None or item.extra.get("product_group"):
             continue
         base, value = split_variant_name(content.series or "")
+        color, value = split_color(value)
+        if color and value:
+            base = f"{base}, {color}"
         if value:
             key = (slugify(item.brand_name or ""), base.casefold())
             groups.setdefault(key, []).append((item, base, value))
     for members in groups.values():
-        # Ta pati reikšmė keliems kodams (pvz. dydis pavadinime neįrašytas) -> tų kodų nejungiam.
         counts = Counter(value.casefold() for _, _, value in members)
         members = [m for m in members if counts[m[2].casefold()] == 1]
-        if len(members) < 2:
+        if not members:
             continue
         base = members[0][1]
         digest = hashlib.sha1(base.casefold().encode()).hexdigest()[:8]

@@ -10,6 +10,7 @@ from apps.suppliers.adapters.albatros import (
     badges_from_mark,
     detect_brand,
     normalize_code,
+    split_color,
     split_variant_name,
 )
 from apps.suppliers.adapters.base import AdapterError
@@ -371,14 +372,49 @@ class AlbatrosNemusTests(TestCase):
         self.assertNotIn("product_group", items["2-2"].extra)
 
     def test_same_value_codes_are_not_grouped(self):
-        for code, value in (("H-1", "juodas"), ("H-2", "Juodas"), ("H-3", "pilkas"), ("H-4", "balta")):
+        for code, value in (("H-1", "L"), ("H-2", "l"), ("H-3", "M"), ("H-4", "XL")):
             _nemus(code, f"JOBE šalmas, {value}")
         items = self._items()
         self.assertNotIn("product_group", items["H-1"].extra)
         self.assertNotIn("product_group", items["H-2"].extra)
         self.assertEqual(items["H-3"].extra["product_group"], items["H-4"].extra["product_group"])
 
+    def test_colors_are_not_grouped(self):
+        _nemus("C-1", "BORIKA laikiklis, juodas")
+        _nemus("C-2", "BORIKA laikiklis, pilkas")
+        _nemus("C-3", "BORIKA lizdas, juodas / pilkas")
+        items = self._items()
+        for code in ("C-1", "C-2", "C-3"):
+            self.assertNotIn("product_group", items[code].extra)
+            self.assertNotIn("axes", items[code].attributes or {})
+
+    def test_color_with_size_color_stays_in_name(self):
+        for code, value in (("E-S", "smaragdinė spalva S"), ("E-M", "smaragdinė spalva M"), ("B-S", "juoda S")):
+            _nemus(code, f"JOBE liemenė, {value}")
+        items = self._items()
+        s, m, b = items["E-S"], items["E-M"], items["B-S"]
+        self.assertEqual(s.extra["product_group"], m.extra["product_group"])
+        self.assertNotEqual(s.extra["product_group"], b.extra["product_group"])
+        self.assertEqual(s.extra["base_name"], "JOBE liemenė, smaragdinė spalva")
+        self.assertEqual((s.attributes["axes"], b.attributes["axes"]), ({"size": "S"}, {"size": "S"}))
+
+    def test_single_size_is_product_with_one_variant(self):
+        _nemus("X-1", "JOBE Base šalmas, XL")
+        item = self._items()["X-1"]
+        self.assertTrue(item.extra["product_group"].startswith("nemus:"))
+        self.assertEqual((item.extra["base_name"], item.attributes["axes"]), ("JOBE Base šalmas", {"size": "XL"}))
+
+    def test_split_color(self):
+        self.assertEqual(split_color("smaragdinė spalva S"), ("smaragdinė spalva", "S"))
+        self.assertEqual(split_color("juodas / pilkas"), ("juodas / pilkas", ""))
+        self.assertEqual(split_color("Tamsiai Mėlyni"), ("Tamsiai Mėlyni", ""))
+        self.assertEqual(split_color("dydis XL"), ("", "dydis XL"))
+        self.assertEqual(split_color("3 asmenims"), ("", "3 asmenims"))
+        self.assertEqual(split_color("juodas / aliuminis"), ("juodas", "aliuminis"))
+        self.assertEqual(split_color("žalios citrinos spalva 116cm"), ("žalios citrinos spalva", "116cm"))
+
     def test_split_variant_name(self):
         self.assertEqual(split_variant_name("Jobe liemenė, dydis 10"), ("Jobe liemenė", "dydis 10"))
         self.assertEqual(split_variant_name("DAVIKLIS XI 14 HW"), ("DAVIKLIS XI 14 HW", ""))
         self.assertEqual(split_variant_name(", L"), (", L", ""))
+        self.assertEqual(split_variant_name("batai, mėlyni, dydis 9,5 - 43"), ("batai, mėlyni", "dydis 9,5 - 43"))
