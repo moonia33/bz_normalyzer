@@ -455,8 +455,9 @@ def _strict_group_product(
         return product
 
     def single_group(candidate: Product) -> bool:
+        # Kitų tiekėjų offer'iai (bendras EAN) – ne konfliktas: jų grupės kitos.
         return not (
-            Offer.objects.filter(product=candidate)
+            Offer.objects.filter(product=candidate, supplier=job.supplier)
             .exclude(pk=offer.pk)
             .exclude(product_group__iexact=group)
             .exists()

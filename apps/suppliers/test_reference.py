@@ -177,6 +177,18 @@ class StrictGroupProductTests(TestCase):
         plain = NormalizedItem(external_id="b1", name="b", extra={})
         self.assertEqual(_strict_group_product(job, plain, light, mixed), mixed)
 
+    def test_other_supplier_offers_do_not_conflict(self):
+        fox = Supplier.objects.create(code="fox", name="Fox")
+        albatros = Supplier.objects.create(code="albatros", name="Albatros")
+        shared = Product.objects.create(sku="CFX286", name="Fox T-shirt")
+        Offer.objects.create(supplier=fox, external_id="CFX286", name="a",
+                             product=shared, product_group="fox-tee")
+        offer = Offer.objects.create(supplier=albatros, external_id="CFX286", name="a",
+                                     product=shared, product_group="ps:1")
+        item = NormalizedItem(external_id="CFX286", name="a", extra={"strict_group": True})
+        job = SimpleNamespace(supplier=albatros)
+        self.assertEqual(_strict_group_product(job, item, offer, shared), shared)
+
 
 class CategoryMarkupRulesTests(TestCase):
     def test_category_median_and_fallback(self):
