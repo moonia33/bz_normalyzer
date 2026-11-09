@@ -414,6 +414,12 @@ class AlbatrosNemusTests(TestCase):
         _nemus("RAM-1", "RAM® C dydžio rankena, trumpa", brand="")
         self.assertEqual(self._items()["RAM-1"].brand_name, "RAM Mounts")
 
+    def test_single_non_size_value_is_not_grouped(self):
+        _nemus("Z-1", "JOBE liemenė, pripučiama")
+        item = self._items()["Z-1"]
+        self.assertNotIn("product_group", item.extra)
+        self.assertNotIn("axes", item.attributes or {})
+
     def test_split_color(self):
         self.assertEqual(split_color("smaragdinė spalva S"), ("smaragdinė spalva", "S"))
         self.assertEqual(split_color("juodas / pilkas"), ("juodas / pilkas", ""))
@@ -423,6 +429,7 @@ class AlbatrosNemusTests(TestCase):
         self.assertEqual(split_color("juodas / aliuminis"), ("juodas", "aliuminis"))
         self.assertEqual(split_color("žalios citrinos spalva 116cm"), ("žalios citrinos spalva", "116cm"))
         self.assertEqual(split_color("S juodos spalvos"), ("juodos spalvos", "S"))
+        self.assertEqual(split_color("žydra"), ("žydra", ""))
 
     def test_split_variant_name(self):
         self.assertEqual(split_variant_name("Jobe liemenė, dydis 10"), ("Jobe liemenė", "dydis 10"))

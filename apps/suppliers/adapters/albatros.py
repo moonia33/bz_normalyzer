@@ -362,10 +362,19 @@ def split_variant_name(name: str) -> tuple[str, str]:
 
 _COLOR = re.compile(
     r"^(juod|pilk|mėlyn|balt|raudon|žal|geltn|gelton|oranž|rož|violet|rud|smaragd|sidabr|auks|chaki|"
-    r"bord|turkio|mėtin|levand|koral|smėlin|grafit|kamufliaž|tams|šviesi|spalv|black|gr[ae]y|"
+    r"bord|turkio|mėtin|levand|koral|smėlin|grafit|kamufliaž|tams|šviesi|spalv|žydr|alyv|persik|"
+    r"krem|bež|salotin|vyšn|fuksij|olyv|kaki|neon|black|gr[ae]y|navy|"
     r"blue|red|green|yellow|orange|pink|white|purple|camo)"
 )
 _COLOR_GLUE = {"/", "-", "ir", "&"}
+_SIZES = {"XS", "S", "M", "L", "XL", "XXL", "XXXL", "2XS", "2XL", "3XL", "4XL", "5XL", "UNI", "UNIVERSAL"}
+
+
+def is_size(value: str) -> bool:
+    """'XL', '2XL/3XL', 'dydis 9,5 - 43', '116cm' -> True; 'žydra', 'pripučiama' -> False."""
+    return any(ch.isdigit() for ch in value) or any(
+        t.upper() in _SIZES for t in re.split(r"[\s/+-]+", value)
+    )
 
 
 def split_color(value: str) -> tuple[str, str]:
@@ -415,6 +424,8 @@ def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
     for (brand, key), members in groups.items():
         counts = Counter(value.casefold() for _, _, value in members)
         members = [m for m in members if counts[m[2].casefold()] == 1]
+        if len(members) == 1 and not is_size(members[0][2]):
+            continue
         if not members:
             continue
         base = members[0][1]
