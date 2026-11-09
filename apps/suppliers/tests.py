@@ -297,3 +297,20 @@ class AlbatrosRefineCategoriesTests(SimpleTestCase):
         ]
         refine_categories(items)
         self.assertEqual({i.category_path for i in items}, {f"{section} > Meškerykočiai"})
+
+    def test_group_member_with_own_type_keeps_it(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        section = "Suit - Jacket+Trousers"
+        items = [
+            NormalizedItem(
+                external_id=n, sku=n, name=f"Savage Gear WP Suit {n}", category_path=section,
+                extra={"product_group": "g1", "base_name": "Savage Gear WP Suit"},
+            )
+            for n in ("Jacket L", "Bib Trousers L")
+        ]
+        refine_categories(items)
+        self.assertEqual(
+            [i.category_path for i in items], [f"{section} > Striukės", f"{section} > Kelnės"]
+        )

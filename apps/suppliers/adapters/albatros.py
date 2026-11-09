@@ -304,7 +304,7 @@ _SPLIT_RE = {
 
 
 def refine_categories(items: list[NormalizedItem]) -> None:
-    """Mišrus skyrius -> pogrupis pagal pavadinimą; visa variantų grupė gauna tą patį pogrupį."""
+    """Mišrus skyrius -> pogrupis pagal prekės pavadinimą, o jei jis neatpažintas – pagal visą grupę."""
     groups: dict[tuple[str, str], list[NormalizedItem]] = defaultdict(list)
     for item in items:
         if item.category_path in _SPLIT_RE:
@@ -314,11 +314,15 @@ def refine_categories(items: list[NormalizedItem]) -> None:
         text = " ".join(
             dict.fromkeys(t for m in members for t in (m.extra.get("base_name"), m.name) if t)
         )
-        for pattern, sub in _SPLIT_RE[path]:
-            if pattern.search(text):
-                for m in members:
-                    m.category_path = f"{path} > {sub}"
-                break
+        shared = _split_sub(path, text)
+        for m in members:
+            sub = _split_sub(path, m.name) or shared
+            if sub:
+                m.category_path = f"{path} > {sub}"
+
+
+def _split_sub(path: str, text: str) -> str | None:
+    return next((sub for pattern, sub in _SPLIT_RE[path] if pattern.search(text)), None)
 
 
 def nemus_contents() -> dict[str, Any]:
