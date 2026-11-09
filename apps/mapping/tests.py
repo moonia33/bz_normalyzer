@@ -73,3 +73,21 @@ class MapAlbatrosCategoriesTests(TestCase):
         nemus.refresh_from_db()
         stock.refresh_from_db()
         self.assertEqual((nemus.category, stock.category), (wear, other))
+
+    def test_held_codes_stay_unpublished(self):
+        from django.core.management import call_command
+
+        from apps.ingestion.models import Offer
+        from apps.suppliers.models import SupplierFeed
+
+        supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        SupplierFeed.objects.create(supplier=supplier, name="stock", kind="excel_upload", config={"unpublish_codes": ["a-1"]})
+        root = Category.objects.create(name="Vandens Sportas", slug="vandens-sportas")
+        Category.objects.create(name="Kitos prekės", slug="kitos-prekes-201", parent=root)
+        common = {"supplier": supplier, "name": "X", "category_raw": "JOBE Towables", "selling_price": 10, "images": ["x.jpg"]}
+        held = Offer.objects.create(external_id="A-1", sku="A-1", **common)
+        free = Offer.objects.create(external_id="B-1", sku="B-1", **common)
+        call_command("map_albatros_categories", stdout=StringIO())
+        held.refresh_from_db()
+        free.refresh_from_db()
+        self.assertEqual((held.is_published, free.is_published), (False, True))

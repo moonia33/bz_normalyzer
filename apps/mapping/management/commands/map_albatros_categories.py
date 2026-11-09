@@ -143,6 +143,11 @@ class Command(BaseCommand):
                 updated += not was_created
         self.stdout.write(f"CategoryMapping: {created} sukurta, {updated} atnaujinta.")
 
+        held = {
+            str(code).strip().upper()
+            for feed in supplier.feeds.all()
+            for code in (feed.config or {}).get("unpublish_codes") or []
+        }
         remapped = published = unpublished = products_updated = 0
         offers = Offer.objects.filter(supplier=supplier).select_related("product").iterator(chunk_size=500)
         for offer in offers:
@@ -154,6 +159,7 @@ class Command(BaseCommand):
                 remapped += 1
             new_published = bool(
                 not offer.is_discontinued
+                and offer.external_id.strip().upper() not in held
                 and offer.category_id
                 and offer.selling_price is not None
                 and offer.images
