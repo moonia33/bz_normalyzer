@@ -279,8 +279,14 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
     - kodo Stock faile nėra: atskira `albatros` prekė, `rrp = nemus / 1,21`, savikaina `× 0,8`,
       likutis 19 (Centrinis sandėlis), jei nemus „yra“, kitaip 0. Be kainos – praleidžiama.
     - variantai (`apply_nemus_groups`, po gamintojo grupių, prieš FOTO ir PS): tas pats ženklas +
-      pavadinimas iki paskutinio kablelio, ≥ 2 kodai -> `product_group = "nemus:<slug>-<sha1[:8]>"`,
-      ašis `size` = dalis po kablelio ('..., L', 'dydis 10', 'geltona 60-90 kg' – skaido export'as).
+      pavadinimas iki paskutinio kablelio (kablelis tarp skaitmenų, pvz. „9,5“, – ne skirtukas)
+      -> `product_group = "nemus:<slug>-<sha1(ženklas|bazė)[:8]>"`, ašis `size` = dalis po kablelio.
+      Vartotojo taisyklės: **pagal spalvą nejungiama** – spalva (`split_color`: spalvų žodžiai ir viskas
+      iki „spalva“) lieka pavadinime: '..., juodas' -> atskira prekė be varianto; '..., smaragdinė
+      spalva S' -> bazė '..., smaragdinė spalva', `size` = 'S'. **Vienas dydis** ('šalmas, XL') ->
+      prekė su vienu variantu (grupė jau sukurta, vėliau atsiradęs dydis prisijungia). Kodai su ta
+      pačia reikšme toje pačioje bazėje nejungiami.
+    - nemus-only prekės be likučio („nėra“) importuojamos su 0 (ne sezonas, vartotojo sprendimas).
     - Retail (nuotraukos) `RETAIL_SOURCES = ("nemus", "zuklys")`: nemus pirmas, jei turi nuotraukų.
     - Laivai / kateriai kol kas kaip įprastos prekės (Plane BZ: atskiros kategorijos ir užklausos forma).
   - **Bendra FOTO** (`apply_photo_groups`, išjungiama `photo_groups: false`): tas pats ženklas +
