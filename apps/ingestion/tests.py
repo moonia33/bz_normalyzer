@@ -1498,3 +1498,25 @@ class StripIntensifiersTests(SimpleTestCase):
         self.assertEqual(_strip_intensifiers("Lytinis ženklas"), "Lytinis ženklas")
         self.assertEqual(_strip_intensifiers("ne itin storas"), "ne itin storas")
         self.assertEqual(_strip_intensifiers("Nėra ypač sunkus"), "Nėra ypač sunkus")
+
+
+class StaleMainImageTests(TestCase):
+    def _import(self, link: str) -> Offer:
+        from apps.suppliers.test_albatros import HEADER, _xlsx
+
+        rows = [HEADER, ["Reel"], ["", 5, "TiCA Q", 10, None, 3, None, link]]
+        self.feed.file.save("al.xlsx", ContentFile(_xlsx(rows)), save=True)
+        run_import(ImportJob.objects.create(supplier=self.supplier, feed=self.feed))
+        return Offer.objects.select_related("product").get(supplier=self.supplier, external_id="5")
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        self.feed = SupplierFeed.objects.create(
+            supplier=self.supplier, name="stock", kind=SourceKind.EXCEL_UPLOAD,
+            adapter_code="albatros", config={"manufacturer_groups": False, "photo_groups": False},
+        )
+
+    def test_rejected_photo_clears_product_main_image(self):
+        self.assertEqual(self._import("http://x/5.jpg").product.main_image_url, "http://x/5.jpg")
+        offer = self._import("http://www.albatros.lt/public/pdf/5.pdf")
+        self.assertEqual((offer.images, offer.product.main_image_url, offer.product.images), ([], "", []))

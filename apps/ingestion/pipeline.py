@@ -598,6 +598,14 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     elif product.images:
         product.images = []
         changed_fields.append("images")
+    if (
+        product.main_image_url
+        and not offer.main_image_url
+        and product.main_image_url not in (product.images or [])
+    ):
+        # offer'is nuotraukos nebeturi (pvz. PDF atmestas) – senas URL nebeeksportuojamas
+        product.main_image_url = ""
+        changed_fields.append("main_image_url")
     if isinstance(offer.videos, list):
         merged_videos = _merge_video_lists(product.videos, offer.videos)
         if product.videos != merged_videos:
