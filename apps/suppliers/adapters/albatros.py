@@ -192,6 +192,7 @@ class AlbatrosAdapter(BaseAdapter):
             apply_photo_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
         _distinguish_twins(items)
+        refine_categories(items)
         yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
@@ -244,6 +245,66 @@ class AlbatrosAdapter(BaseAdapter):
             extra={k: v for k, v in extra.items() if v not in (None, "")},
             raw={k: str(v) if v is not None else None for k, v in row.items()},
         )
+
+
+# Mišrūs skyriai -> "skyrius > pogrupis" pagal pavadinimą (pirma tinkanti taisyklė);
+# CategoryMapping mapina tik pagal kelią, todėl pogrupis turi būti kelyje.
+SECTION_SPLITS: dict[str, list[tuple[str, str]]] = {
+    "Bait / MEPPS": [(r"syclops|spoon", "Blizgės")],
+    "Bait / RAPALA": [(r"spoon|blizg", "Blizgės"), (r"balansyr", "Balansyrai")],
+    "CAT Fishing - Šamų žvejyba": [
+        (r"\b(line|braid|pe x\d|mono|leader|backbone|mcbb)", "Valai"),
+        (r"\brod\b|\d[.,]\d{1,2} ?m\b|\d+ ?ft|\dsec\b|\d ?sec\b", "Meškerykočiai"),
+        (r"\bhooks?\b|treble", "Kabliukai"),
+        (r"alarm|bell|bead|rattle|clonk|float|stick|rig\b|sinker|lead", "Aksesuarai"),
+    ],
+    "LEAD / JIG HEAD": [(r"\blead|weight|sinker", "Svareliai")],
+    "HOOKS - KABLIUKAI": [(r"madcat", "Šamams")],
+    "Reel - Ritė": [(r"feeder", "Dugninei")],
+    "Reel / Longcast": [(r"spod", "Spodinės"), (r"surf", "Dugninei")],
+    "Rod / Sea": [(r"troll", "Velkiavimui")],
+    "Rod / Tele": [(r"spin", "Spiningai")],
+    "Winter Fishing Reels&Rods": [(r"\btip\b|meškeryt", "Meškerytės")],
+    "Line / Carp, Leader - Karpinis valas, pavadėliai": [(r"leader", "Pavadėliai")],
+    "Line/Fly - Muselinis valas": [(r"leader|tapered|flytrace", "Konusiniai")],
+    "Traces / Leaders / Crimps - Pavadėliai / Viela / Užspaudėj": [
+        (r"wire|titan|wolfram|steel|black7|7x7", "Metaliniai")
+    ],
+    "FEEDER SYSTEM": [
+        (r"\brig\b", "Sistemėlės"),
+        (r"holder|support|rest", "Laikikliai"),
+        (r"feeder", "Šėryklėlės"),
+    ],
+    "Carp Hooks / Rigs - Carp kabliukai / su pavadėliu": [(r"\brigs?\b", "Sistemėlės")],
+    "Carp Tools, Spombs, Markers - Karpiniai įrankiai": [(r"spomb|spod|throwing|cobra", "Laidynės")],
+    "Carp Landing Net, MAT, Carp Care": [(r"landing net", "Graibštai")],
+    "Bait / Carp PVA": [(r"pellet", "Peletės")],
+    "Bag / Box - Krepšys / dėžė": [(r"box|wallet", "Dėžutės")],
+    "ROD POD - STOVAI - ROD HOLDERS, ROD REST": [
+        (r"bank ?stick|spike", "Kuoliukai"),
+        (r"\brest|buzz ?bar|holder", "Laikikliai"),
+    ],
+    "BITE ALARM / SWINGER": [(r"swinger", "Svingai")],
+    "NETS - GRAIBŠTAI, TINKLELIAI": [(r"handle", "Kotai")],
+    "Suit - Jacket+Trousers": [(r"jacket", "Striukės"), (r"bib|trouser", "Kelnės")],
+    "Chair / Bedchair - Kėdės / Gultai": [(r"bed|sleep", "Gultai")],
+    "Tent / Sleeping Bag - Palapinės, skėčiai, miegmaišiai": [(r"sleeping bag", "Miegmaišiai")],
+    "Tools, Pliers - Žnyplės, žirklės": [(r"žirkl", "Žirklutės")],
+    "Cannon Accessories": [(r"minn ?kota", "Minn Kota")],
+    "Vandens pramogos > Wake lentos ir vandens slidės": [(r"slid", "Vandens slidės")],
+}
+_SPLIT_RE = {
+    section: [(re.compile(pattern, re.IGNORECASE), sub) for pattern, sub in rules]
+    for section, rules in SECTION_SPLITS.items()
+}
+
+
+def refine_categories(items: list[NormalizedItem]) -> None:
+    for item in items:
+        for pattern, sub in _SPLIT_RE.get(item.category_path, ()):
+            if pattern.search(item.extra.get("base_name") or item.name):
+                item.category_path = f"{item.category_path} > {sub}"
+                break
 
 
 def nemus_contents() -> dict[str, Any]:

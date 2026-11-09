@@ -91,3 +91,23 @@ class MapAlbatrosCategoriesTests(TestCase):
         held.refresh_from_db()
         free.refresh_from_db()
         self.assertEqual((held.is_published, free.is_published), (False, True))
+
+    def test_maps_stock_section_to_deep_category(self):
+        from django.core.management import call_command
+
+        from apps.ingestion.models import Offer
+
+        supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        root = Category.objects.create(name="Masalai ir jaukai", slug="masalai-ir-jaukai")
+        lures = Category.objects.create(name="Spiningui", slug="spiningui", parent=root)
+        wobblers = Category.objects.create(name="Vobleriai", slug="vobleriai", parent=lures)
+        offer = Offer.objects.create(
+            supplier=supplier, external_id="W-1", sku="W-1", name="W", category_raw="Bait / Wobbler"
+        )
+        loose = Offer.objects.create(
+            supplier=supplier, external_id="U-1", sku="U-1", name="U", category_raw="Unknown section"
+        )
+        call_command("map_albatros_categories", stdout=StringIO())
+        offer.refresh_from_db()
+        loose.refresh_from_db()
+        self.assertEqual((offer.category, loose.category, loose.is_published), (wobblers, None, False))
