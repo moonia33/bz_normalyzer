@@ -216,7 +216,11 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
      `vobleriai`). Mišrūs skyriai adapteryje skaidomi pagal pavadinimą (`SECTION_SPLITS`, pvz.
      `CAT Fishing - Šamų žvejyba > Valai`), nes pipeline mapina tik pagal kelią.
    - nemus skyriams, kurių BE neturi (laivai, kateriai, atrakcionai, liemenės, hidrokostiumai ir kt.),
-     kuriamos naujos kategorijos pagal nemus medį; kol jų nėra – laikinai artimiausia/`Nepriskirta`.
+     kuriamos naujos kategorijos pagal nemus medį (BE `seed_nemus_categories`, taip pat
+     „Laivų aksesuarai“ > Laikikliai / Priedai RAM, Borika, Nexo/Marinac prekėms). Kol jų nėra,
+     `map_albatros_categories` jas praneša kaip nerastas, o prekės lieka nepublikuotos.
+   - Eiga: BE `seed_nemus_categories --dry-run` → be `--dry-run` → normalyzer `sync_shop_categories`
+     → `map_albatros_categories --dry-run` → `map_albatros_categories`.
    - Kelias be eilutės → kategorijos nėra, prekė nepublikuojama (kaip importe), kol nesumapinta.
    - nemus.lt prekės be SEO slug'o (`?product_id=N`) kategorijoje raktuojamos `product_id=N`.
 6. **Vertimas į LT** (`translate_lang`, ta pati schema).

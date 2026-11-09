@@ -57,9 +57,9 @@ class MapAlbatrosCategoriesTests(TestCase):
 
         supplier = Supplier.objects.create(code="albatros", name="Albatros")
         root = Category.objects.create(name="Vandens Sportas", slug="vandens-sportas")
-        wear = Category.objects.create(name="Apranga bei avalynė", slug="apranga-bei-avalyne", parent=root)
-        Category.objects.create(name="Kitos prekės", slug="kitos-prekes", parent=root)
-        other = Category.objects.create(name="Kitos prekės", slug="kitos-prekes-201", parent=root)
+        vests = Category.objects.create(name="Liemenės", slug="liemenes", parent=root)
+        wear = Category.objects.create(name="Vyriškos liemenės", slug="vyriskos-liemenes", parent=vests)
+        other = Category.objects.create(name="Vandens atrakcionai", slug="vandens-atrakcionai", parent=root)
         nemus = Offer.objects.create(
             supplier=supplier, external_id="A-1", sku="A-1", name="A",
             category_raw="Vandens pramogos > Liemenės > Vyriškos liemenės",
@@ -83,7 +83,7 @@ class MapAlbatrosCategoriesTests(TestCase):
         supplier = Supplier.objects.create(code="albatros", name="Albatros")
         SupplierFeed.objects.create(supplier=supplier, name="stock", kind="excel_upload", config={"unpublish_codes": ["a-1"]})
         root = Category.objects.create(name="Vandens Sportas", slug="vandens-sportas")
-        Category.objects.create(name="Kitos prekės", slug="kitos-prekes-201", parent=root)
+        Category.objects.create(name="Vandens atrakcionai", slug="vandens-atrakcionai", parent=root)
         common = {"supplier": supplier, "name": "X", "category_raw": "JOBE Towables", "selling_price": 10, "images": ["x.jpg"]}
         held = Offer.objects.create(external_id="A-1", sku="A-1", **common)
         free = Offer.objects.create(external_id="B-1", sku="B-1", **common)
