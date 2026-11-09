@@ -476,3 +476,8 @@ class NemusTests(TestCase):
         out = list(nemus.crawl(["710313-1"], s=S(), sleep=lambda *_: None))
         self.assertEqual([url for _, url, _ in out], ["https://nemus.lt/a-1"])
         self.assertEqual(urls, [nemus.SITEMAP, *pages])
+
+    def test_empty_page_is_skipped(self):
+        from apps.suppliers.manufacturers import nemus
+
+        self.assertIsNone(nemus.parse_page(b""))

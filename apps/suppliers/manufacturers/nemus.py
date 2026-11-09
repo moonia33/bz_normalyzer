@@ -13,6 +13,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
+from lxml import etree
 from lxml import html as lxml_html
 
 from apps.suppliers.manufacturers import http
@@ -56,7 +57,10 @@ def parse_page(content: bytes) -> dict | None:
     """Prekės puslapis -> turinys vienam kodui; be kodo (model) -> None."""
     text = content.decode("utf-8", errors="replace")
     ld = _product_ld(text)
-    tree = lxml_html.fromstring(text)
+    try:
+        tree = lxml_html.fromstring(text)
+    except etree.ParserError:
+        return None
     code = _clean(ld.get("model") or tree.xpath('string(//li[@class="product-model"]/span)'))
     code = code.upper()
     if not code:
