@@ -322,6 +322,20 @@ class AlbatrosNemusTests(TestCase):
         items = self._items()
         self.assertEqual((items["M-1"].brand_name, items["R-1"].brand_name), ("Minn Kota", "RebelCell"))
 
+    def test_stock_code_category_from_nemus(self):
+        c = _nemus("A-1", "Jobe A", price="12.10")
+        c.specs = {**c.specs, "category": "Vandens pramogos > Liemenės > Vyriškos liemenės"}
+        c.save()
+        _nemus("B-1", "Jobe B", price="12.10")
+        rows = [
+            [None, "A-1", "Jobe A", 2, None, 10, None, None, None],
+            [None, "B-1", "Jobe B", 2, None, 10, None, None, None],
+        ]
+        items = self._items(rows)
+        self.assertEqual(items["A-1"].category_path, "Vandens pramogos > Liemenės > Vyriškos liemenės")
+        self.assertEqual(items["A-1"].extra["category_raw"], "Vests")
+        self.assertEqual(items["B-1"].category_path, "Vests")
+
     def test_nemus_without_price_is_skipped(self):
         _nemus("X-1", "Jobe X", price="")
         self.assertEqual(self._items(), {})

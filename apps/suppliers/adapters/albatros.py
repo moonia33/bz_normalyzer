@@ -274,9 +274,13 @@ def nemus_net_price(content) -> Decimal | None:
 
 
 def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
-    """Kodas ir Stock faile, ir nemus: savikaina iš Albatros, kaina – mažesnioji."""
+    """Kodas ir Stock faile, ir nemus: savikaina iš Albatros, kaina – mažesnioji, skyrius iš nemus."""
     for item in items:
         content = nemus.get(item.external_id.upper())
+        category = (content.specs or {}).get("category") if content is not None else ""
+        if category:
+            # nemus skyrius (LT, giliau) tikslesnis už Stock skyrių; photo grupėms lieka `category_raw`
+            item.category_path = category
         net = nemus_net_price(content) if content is not None else None
         if net is None:
             continue

@@ -1,0 +1,176 @@
+from collections import Counter
+
+from django.core.management.base import BaseCommand
+from django.db import transaction
+
+from apps.catalog.models import Category
+from apps.ingestion.models import Offer
+from apps.mapping.models import CategoryMapping
+from apps.mapping.services import map_category
+from apps.suppliers.models import Supplier
+
+# Albatros kategorijos kelias -> shop kategorijos slug (ne kelias: 'Vandens Sportas > Kitos prekės'
+# yra dvi kategorijos). Stock kodai su nemus.lt puslapiu gauna nemus skyrių (adapteris),
+# kiti – Stock skyrių; nemus-only be skyriaus – 'Nemus'.
+NEMUS: dict[str, str] = {
+    "Aksesuarai > Borika FASTen laikikliai": "kiti-aksesuarai",
+    "Aksesuarai > Priedai": "kiti-aksesuarai",
+    "Aksesuarai > Ram Laikikliai": "kiti-aksesuarai",
+    "Ram Laikikliai": "kiti-aksesuarai",
+    "Akumuliatoriai ir pakrovėjai": "kiti-prietaisai-ir-priedai",
+    "Gamintojas > Energy Research": "kiti-prietaisai-ir-priedai",
+    "Gamintojas > Rebelcell": "kiti-prietaisai-ir-priedai",
+    "Gamintojas > Roy Pow": "kiti-prietaisai-ir-priedai",
+    "Audio sistemos > Hertz": "kiti-prietaisai-ir-priedai",
+    "Gamintojas > Minnkota": "valciu-varikliai",
+    "Echolotai": "echolotai",
+    "Echolotai > Echolotų priedai": "echolotai",
+    "Echolotai > Echolotų priedai > Ethernet tinklo įranga": "echolotai",
+    "Echolotai > Echolotų priedai > Kiti priedai": "echolotai",
+    "Echolotai > Echolotų priedai > Sonarai": "echolotai",
+    "Echolotai > Humminbird echolotai": "echolotai",
+    "Echolotai > Minn Kota Echolotai": "echolotai",
+    "Elektriniai varikliai > Elektrinių variklių priedai": "valciu-varikliai",
+    "Elektriniai varikliai > Elektrinių variklių priedai > Propeleriai el. varikliams": "valciu-varikliai",
+    "Elektriniai varikliai > Elektrinių variklių priedai > Tvirtinimo ir montavimo įranga": "valciu-varikliai",
+    "Elektriniai varikliai > Elektrinių variklių priedai > Valdymo įranga": "valciu-varikliai",
+    "Elektriniai varikliai > Gale pakabinami varikliai > Minnkota Endura C2": "valciu-varikliai",
+    "Elektriniai varikliai > Gale pakabinami varikliai > Minnkota Endura Max": "valciu-varikliai",
+    "Elektriniai varikliai > Gale pakabinami varikliai > Minnkota Traxxis": "valciu-varikliai",
+    "Elektriniai varikliai > Priekyje tvirtinami varikliai > Minnkota Instinct": "valciu-varikliai",
+    "Elektriniai varikliai > Priekyje tvirtinami varikliai > Minnkota Powerdrive": "valciu-varikliai",
+    "Elektriniai varikliai > Priekyje tvirtinami varikliai > Minnkota Terrova": "valciu-varikliai",
+    "Elektriniai varikliai > Priekyje tvirtinami varikliai > Minnkota Ulterra": "valciu-varikliai",
+    "Kajakai": "kitos-prekes-201",
+    "Kajakai > Old Town": "kitos-prekes-201",
+    "Vandens pramogos > Kajakai": "kitos-prekes-201",
+    "Pramoginiai laivai > AUTUMN 2026 CAMPAIGN": "nepriskirta",
+    "Pramoginiai laivai > Bayliner": "nepriskirta",
+    "Pramoginiai laivai > XO": "nepriskirta",
+    "Žvejybiniai kateriai > Alba boats": "nepriskirta",
+    "Žvejybiniai kateriai > Alumagic": "nepriskirta",
+    "Žvejybiniai kateriai > Skylla": "nepriskirta",
+    "Vandens pramogos > Apranga ir avalynė": "apranga-bei-avalyne",
+    "Vandens pramogos > Hidrokostiumai": "apranga-bei-avalyne",
+    "Vandens pramogos > Hidrokostiumai > Moteriški hidrokostiumai": "apranga-bei-avalyne",
+    "Vandens pramogos > Hidrokostiumai > Vaikiški hidrokostiumai": "apranga-bei-avalyne",
+    "Vandens pramogos > Hidrokostiumai > Vyriški hidrokostiumai": "apranga-bei-avalyne",
+    "Vandens pramogos > Liemenės > Moteriškos liemenės": "apranga-bei-avalyne",
+    "Vandens pramogos > Liemenės > Vaikiškos liemenės": "apranga-bei-avalyne",
+    "Vandens pramogos > Liemenės > Vyriškos liemenės": "apranga-bei-avalyne",
+    "Vandens pramogos > Irklentės": "irklentes",
+    "Vandens pramogos > Priedai vandens sportui": "aksesuarai",
+    "Vandens pramogos > Vandens atrakcionai": "kitos-prekes-201",
+    "Vandens pramogos > Wake lentos ir vandens slidės": "vandenlentes",
+    "Nemus": "nepriskirta",
+}
+STOCK: dict[str, str] = {
+    "BORIKA": "kiti-aksesuarai",
+    "RAM Mounts": "kiti-aksesuarai",
+    "NEXO - MARINAC Boat Accessories": "kiti-aksesuarai",
+    "JOBE Accessories Clothing Footwear": "apranga-bei-avalyne",
+    "JOBE Life VESTS": "apranga-bei-avalyne",
+    "JOBE Wetsuits": "apranga-bei-avalyne",
+    "JOBE Towables": "kitos-prekes-201",
+    "JOBE SUP": "irklentes",
+    "JOBE WakeBoards WaterSkis": "vandenlentes",
+    "KAYAK": "kitos-prekes-201",
+    "Humminbird Accessories": "echolotai",
+    "Humminbird Depthfinders": "echolotai",
+    "Maps": "echolotai",
+    "Minn Kota Accessories": "valciu-varikliai",
+    "Minn Kota Motors": "valciu-varikliai",
+    "Boating/Motors": "valciu-varikliai",
+    "REBELCELL": "kiti-prietaisai-ir-priedai",
+    "RoyPow": "kiti-prietaisai-ir-priedai",
+    "Energy-Research B.V.": "kiti-prietaisai-ir-priedai",
+    "HERTZ Audio": "kiti-prietaisai-ir-priedai",
+}
+TARGETS: dict[str, str] = {**NEMUS, **STOCK}
+
+
+class Command(BaseCommand):
+    help = "Sumapina Albatros (Stock + nemus.lt) kategorijas ir peržiūri offer'ius."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true", help="Tik planas, DB nepaliečiama.")
+
+    def handle(self, *args, **options):
+        supplier = Supplier.objects.get(code="albatros")
+
+        targets: dict[str, Category] = {}
+        missing: list[str] = []
+        for source_path, slug in TARGETS.items():
+            category = Category.objects.filter(slug=slug).order_by("pk").first()
+            if category is None:
+                missing.append(slug)
+                continue
+            targets[source_path] = category
+        if missing:
+            self.stdout.write(self.style.WARNING(f"Nerastos shop kategorijos: {sorted(set(missing))}"))
+
+        counts = Counter(
+            CategoryMapping.build_source_path(raw, sub)
+            for raw, sub in Offer.objects.filter(supplier=supplier).values_list("category_raw", "sub_category_raw")
+        )
+        for source_path, category in sorted(targets.items(), key=lambda kv: -counts.get(kv[0], 0)):
+            self.stdout.write(f"  {counts.get(source_path, 0):>5}  {source_path}  ->  {category.path()}")
+        unmapped = {path: n for path, n in counts.items() if path not in targets}
+        for path, n in sorted(unmapped.items(), key=lambda kv: -kv[1]):
+            self.stdout.write(f"  {n:>5}  {path}  (be eilutės)")
+        if options["dry_run"]:
+            self.stdout.write(self.style.WARNING("--dry-run: DB nepaliesta."))
+            return
+
+        created = updated = 0
+        with transaction.atomic():
+            for source_path, category in targets.items():
+                parts = [p.strip() for p in source_path.split(">")]
+                _, was_created = CategoryMapping.objects.update_or_create(
+                    supplier=supplier,
+                    source_path=source_path,
+                    defaults={"category": category},
+                    create_defaults={
+                        "category": category,
+                        "source_category_raw": parts[0],
+                        "source_sub_category_raw": " > ".join(parts[1:]),
+                    },
+                )
+                created += was_created
+                updated += not was_created
+        self.stdout.write(f"CategoryMapping: {created} sukurta, {updated} atnaujinta.")
+
+        remapped = published = unpublished = products_updated = 0
+        offers = Offer.objects.filter(supplier=supplier).select_related("product").iterator(chunk_size=500)
+        for offer in offers:
+            category = map_category(supplier, offer.category_raw, offer.sub_category_raw)
+            changed: list[str] = []
+            if offer.category_id != (category.id if category else None):
+                offer.category = category
+                changed.append("category")
+                remapped += 1
+            new_published = bool(
+                not offer.is_discontinued
+                and offer.category_id
+                and offer.selling_price is not None
+                and offer.images
+            )
+            if offer.is_published != new_published:
+                offer.is_published = new_published
+                changed.append("is_published")
+                published += new_published
+                unpublished += not new_published
+            if changed:
+                offer.save(update_fields=[*changed, "updated_at"])
+            product = offer.product
+            if product is not None and offer.category_id and product.category_id != offer.category_id:
+                product.category_id = offer.category_id
+                product.save(update_fields=["category", "updated_at"])
+                products_updated += 1
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Offers remapped: {remapped}; is_published +{published}/-{unpublished}; "
+                f"products category set: {products_updated}."
+            )
+        )
