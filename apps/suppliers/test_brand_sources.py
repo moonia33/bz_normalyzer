@@ -502,6 +502,11 @@ class NemusTests(TestCase):
         self.assertEqual(urls, [nemus.SITEMAP, *pages])
         self.assertTrue(report["complete"])
 
+    def test_unparsed_page_stays_in_sitemap_urls(self):
+        out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": "<html></html>"})
+        self.assertEqual((len(out), report["complete"]), (1, True))
+        self.assertEqual(report["urls"], {"https://nemus.lt/a-1", "https://nemus.lt/b-2"})
+
     def test_failed_page_makes_crawl_incomplete(self):
         out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": None})
         self.assertEqual(len(out), 1)

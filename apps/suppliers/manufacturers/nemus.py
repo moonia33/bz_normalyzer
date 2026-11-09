@@ -105,7 +105,8 @@ def parse_page(content: bytes, url: str = "") -> dict | None:
 def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=None):
     """Visi sitemap prekių puslapiai (visas nemus katalogas).
 
-    `report["complete"]` = True tik jei nuskaityti visi puslapiai (tada dingę puslapiai nuimami)."""
+    `report["complete"]` = True tik jei nuskaityti visi puslapiai; `report["urls"]` – sitemap'o URL
+    (nuimami tik puslapiai, kurių nebėra sitemap'e, ne tie, kurių neišparsavo)."""
     report = report if report is not None else {}
     report["complete"] = False
     delay = max(delay, MIN_DELAY)
@@ -119,6 +120,7 @@ def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=N
     urls = sitemap_urls(response.text)
     if not urls:
         return
+    report["urls"] = set(urls)
     failed = 0
     for n, url in enumerate(urls):
         if limit and n >= limit:

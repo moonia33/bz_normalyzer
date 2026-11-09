@@ -162,7 +162,7 @@ class Command(BaseCommand):
             # Pilnas nuskaitymas: puslapių, kurių nebėra sitemap'e, prekės nebeparduodamos.
             stats["stale"] = (
                 ManufacturerContent.objects.filter(source=nemus.SOURCE)
-                .exclude(url__in=seen)
+                .exclude(url__in=nemus_report["urls"])
                 .exclude(codes=[])
                 .update(codes=[])
             )
