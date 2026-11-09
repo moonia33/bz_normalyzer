@@ -319,6 +319,21 @@ def refine_categories(items: list[NormalizedItem]) -> None:
             sub = _split_sub(path, m.name) or shared
             if sub:
                 m.category_path = f"{path} > {sub}"
+    _unify_group_categories(items)
+
+
+def _unify_group_categories(items: list[NormalizedItem]) -> None:
+    """Viena prekė = viena kategorija: grupės variantai gauna dažniausią (lygiųjų – giliausią) kelią."""
+    groups: dict[str, list[NormalizedItem]] = defaultdict(list)
+    for item in items:
+        if item.extra.get("product_group"):
+            groups[item.extra["product_group"]].append(item)
+    for members in groups.values():
+        counts = Counter(m.category_path for m in members)
+        if len(counts) > 1:
+            path = max(counts, key=lambda p: (counts[p], p.count(" > "), p))
+            for m in members:
+                m.category_path = path
 
 
 def _split_sub(path: str, text: str) -> str | None:
