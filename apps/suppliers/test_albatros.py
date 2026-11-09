@@ -245,6 +245,8 @@ class AlbatrosPhotoAndFixedGroupTests(SimpleTestCase):
         self.assertEqual(items["11111"].extra["product_group"], "ps:42")
         self.assertEqual(items["11111"].extra["base_name"], "PS name")
         self.assertTrue(items["77638"].extra["product_group"].startswith("dam:photo:"))
+        self.assertTrue(items["77637"].extra["strict_group"])
+        self.assertTrue(items["77638"].extra["strict_group"])
 
 
 class AlbatrosRetailFallbackTests(TestCase):
