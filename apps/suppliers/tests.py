@@ -298,6 +298,21 @@ class AlbatrosRefineCategoriesTests(SimpleTestCase):
         refine_categories(items)
         self.assertEqual({i.category_path for i in items}, {f"{section} > Meškerykočiai"})
 
+    def test_group_prefers_nemus_category(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        nemus = "Vandens pramogos > Hidrokostiumai > Vyriški hidrokostiumai"
+        items = [
+            NormalizedItem(
+                external_id=n, sku=n, name=f"Jobe Perth {n}", category_path=path,
+                extra={"product_group": "g1", "nemus_category": path == nemus},
+            )
+            for n, path in (("L", "JOBE Wetsuits"), ("XL", "JOBE Wetsuits"), ("2XL", nemus))
+        ]
+        refine_categories(items)
+        self.assertEqual({i.category_path for i in items}, {nemus})
+
     def test_group_gets_one_category(self):
         from apps.ingestion.dto import NormalizedItem
         from apps.suppliers.adapters.albatros import refine_categories

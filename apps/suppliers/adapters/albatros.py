@@ -257,8 +257,10 @@ SECTION_SPLITS: dict[str, list[tuple[str, str]]] = {
         (r"\brod\b|\d[.,]\d{1,2} ?m\b|\d+ ?ft|\dsec\b|\d ?sec\b", "Meškerykočiai"),
         (r"\bhooks?\b|treble", "Kabliukai"),
         (
-            r"alarm|bell|bead|rattle|clonk(?! teaser)|float|stick|rig\b|sinker|lead|swivel|ring|stop"
-            r"|sleeve|buoy|snap|holder|clip|rope",
+            (
+                r"alarm|bell|bead|rattle|clonk(?! teaser)|float|stick|rig\b|sinker|lead|swivel|ring"
+                r"|stop|sleeve|buoy|snap|holder|clip|rope"
+            ),
             "Aksesuarai",
         ),
     ],
@@ -323,7 +325,7 @@ def refine_categories(items: list[NormalizedItem]) -> None:
 
 
 def _unify_group_categories(items: list[NormalizedItem]) -> None:
-    """Viena prekė = viena kategorija: grupės variantai gauna dažniausią (lygiųjų – giliausią) kelią."""
+    """Viena prekė = viena kategorija: pirmenybė nemus skyriui, tada dažniausiam, tada giliausiam."""
     groups: dict[str, list[NormalizedItem]] = defaultdict(list)
     for item in items:
         if item.extra.get("product_group"):
@@ -331,7 +333,8 @@ def _unify_group_categories(items: list[NormalizedItem]) -> None:
     for members in groups.values():
         counts = Counter(m.category_path for m in members)
         if len(counts) > 1:
-            path = max(counts, key=lambda p: (counts[p], p.count(" > "), p))
+            nemus = {m.category_path for m in members if m.extra.get("nemus_category")}
+            path = max(counts, key=lambda p: (p in nemus, counts[p], p.count(" > "), p))
             for m in members:
                 m.category_path = path
 
@@ -375,6 +378,7 @@ def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
         if category:
             # nemus skyrius (LT, giliau) tikslesnis už Stock skyrių; photo grupėms lieka `category_raw`
             item.category_path = category
+            item.extra["nemus_category"] = True
         net = nemus_net_price(content) if content is not None else None
         if net is None:
             continue
@@ -414,6 +418,7 @@ def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=())
         extra = {
             "base_name": name,
             "category_raw": section,
+            "nemus_category": section != "Nemus",
             "rrp_price": str(net),
             "nemus_price": str(net),
             "retail_url": content.url,
