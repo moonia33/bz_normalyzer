@@ -1501,10 +1501,10 @@ class StripIntensifiersTests(SimpleTestCase):
 
 
 class StaleMainImageTests(TestCase):
-    def _import(self, link: str) -> Offer:
+    def _import(self, link: str, extra=()) -> Offer:
         from apps.suppliers.test_albatros import HEADER, _xlsx
 
-        rows = [HEADER, ["Reel"], ["", 5, "TiCA Q", 10, None, 3, None, link]]
+        rows = [HEADER, ["Reel"], *extra, ["", 5, "TiCA Q", 10, None, 3, None, link]]
         self.feed.file.save("al.xlsx", ContentFile(_xlsx(rows)), save=True)
         run_import(ImportJob.objects.create(supplier=self.supplier, feed=self.feed))
         return Offer.objects.select_related("product").get(supplier=self.supplier, external_id="5")
@@ -1520,3 +1520,13 @@ class StaleMainImageTests(TestCase):
         self.assertEqual(self._import("http://x/5.jpg").product.main_image_url, "http://x/5.jpg")
         offer = self._import("http://www.albatros.lt/public/pdf/5.pdf")
         self.assertEqual((offer.images, offer.product.main_image_url, offer.product.images), ([], "", []))
+
+    def test_group_keeps_other_variant_main_image(self):
+        self.feed.config = {**self.feed.config, "fixed_groups": {
+            "4": {"group": "ps:1", "base_name": "TiCA"}, "5": {"group": "ps:1", "base_name": "TiCA"}}}
+        self.feed.save()
+        sibling = [["", 4, "TiCA P", 10, None, 3, None, "http://x/4.jpg"]]
+        self._import("http://x/5.jpg", sibling)
+        offer = self._import("http://www.albatros.lt/public/pdf/5.pdf", sibling)
+        self.assertEqual(Offer.objects.get(supplier=self.supplier, external_id="4").product_id, offer.product_id)
+        self.assertEqual(offer.product.main_image_url, "http://x/4.jpg")
