@@ -274,3 +274,17 @@ class AlbatrosRetailFallbackTests(TestCase):
         (item,) = AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Vests"], *rows]))
         self.assertEqual(item.extra["retail_url"], "https://nemus.lt/j")
         self.assertEqual(item.images, ["https://nemus.lt/j.jpg"])
+
+    def test_retail_with_images_preferred(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        ManufacturerContent.objects.create(
+            source="nemus", url="https://nemus.lt/j", language="lt", series="Jobe", codes=["244823001-S"]
+        )
+        ManufacturerContent.objects.create(
+            source="zuklys", url="https://zuklys.lt/j-lt.html", language="lt", series="Jobe",
+            codes=["244823001-S"], images=["https://zuklys.lt/j.jpg"],
+        )
+        rows = [[None, "244823001-S", "Jobe 4 Buckle Life Vest S", 2, None, 1, None, None, None]]
+        (item,) = AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Vests"], *rows]))
+        self.assertEqual(item.images, ["https://zuklys.lt/j.jpg"])

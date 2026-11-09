@@ -252,17 +252,12 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
         source = slugify(item.brand_name or "")
         content = lookup.get((source, item.external_id.upper()))
         if content is None:
-            _apply_retail(
-                item,
-                next(
-                    (
-                        lookup[(retail, item.external_id.upper())]
-                        for retail in RETAIL_SOURCES
-                        if (retail, item.external_id.upper()) in lookup
-                    ),
-                    None,
-                ),
-            )
+            retail = [
+                lookup[(source, item.external_id.upper())]
+                for source in RETAIL_SOURCES
+                if (source, item.external_id.upper()) in lookup
+            ]
+            _apply_retail(item, next((c for c in retail if c.images), retail[0] if retail else None))
             continue
         slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
         item.extra["product_group"] = f"{source}:{slug}"
