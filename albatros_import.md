@@ -277,7 +277,7 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
   - **nemus.lt** (`scrape_manufacturer --source nemus`, vartotojas leido; Albatros el. parduotuvė,
     vienintelė Jobe / Humminbird / Minn Kota / Borika tiesioginė): sitemap.xml -> **visas katalogas**
     (~1 500 puslapių, robots.txt leidžia; paieška uždrausta). Kodas = JSON-LD `model` (= Albatros kodas).
-    Saugoma: 1000×1000 nuotraukos, LT aprašymas (`description`, prekėje dar nenaudojamas – jau LT),
+    Saugoma: 1000×1000 nuotraukos, LT aprašymas (`description`; neverčiamas: `translate_lang --apply` ir `apply_retail_texts --supplier albatros` jį įrašo į LT tekstą kaip <p>/<ul>),
     `specs.offer` = {price su PVM, in_stock, brand}. Prekių URL be skyriaus (`nemus.lt/xo-explr-9`),
     todėl `specs.category` = breadcrumb iš kategorijų puslapių (sitemap'e, su `?page=N`), giliausia,
     jei prekė keliose. Ženklas: pavadinimas -> `offer.brand` per aliasus (Minnkota -> Minn Kota). Pauzė ≥2,5 s,
