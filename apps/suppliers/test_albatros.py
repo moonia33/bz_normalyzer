@@ -291,13 +291,13 @@ class AlbatrosRetailFallbackTests(TestCase):
         self.assertEqual(item.images, ["https://zuklys.lt/j.jpg"])
 
 
-def _nemus(code, name, price="121.00", in_stock=True, url=None, images=None):
+def _nemus(code, name, price="121.00", in_stock=True, url=None, images=None, brand="Jobe"):
     from apps.suppliers.models import ManufacturerContent
 
     return ManufacturerContent.objects.create(
         source="nemus", url=url or f"https://nemus.lt/{code.lower()}", language="lt", series=name,
         codes=[code], images=images or [],
-        specs={"offer": {"price": price, "in_stock": in_stock, "brand": "Jobe"}},
+        specs={"offer": {"price": price, "in_stock": in_stock, "brand": brand}},
     )
 
 
@@ -314,6 +314,12 @@ class AlbatrosNemusTests(TestCase):
         self.assertEqual(a.brand_name, "Humminbird")
         self.assertEqual(a.extra["main_image_url"], "https://nemus.lt/a.webp")
         self.assertEqual((b.extra["rrp_price"], b.stock, b.is_available), ("50.00", 0, False))
+
+    def test_nemus_only_brand_alias_from_offer(self):
+        _nemus("M-1", "ELEKTRINIS VARIKLIS ENDURA C2 30", brand="Minnkota")
+        _nemus("R-1", "AKUMULIATORIUS 12V 100AH", brand="Rebelcell")
+        items = self._items()
+        self.assertEqual((items["M-1"].brand_name, items["R-1"].brand_name), ("Minn Kota", "RebelCell"))
 
     def test_nemus_without_price_is_skipped(self):
         _nemus("X-1", "Jobe X", price="")

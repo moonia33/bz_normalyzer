@@ -60,7 +60,7 @@ _GENERIC_WORDS = {
 BRAND_ALIASES: list[tuple[str, str]] = [
     ("SAVAGE GEAR", "Savage Gear"), ("SAVAGEAR", "Savage Gear"), ("SAVAGE", "Savage Gear"),
     ("SG", "Savage Gear"), ("CRAZY FISH", "Crazy Fish"), ("LUCKY JOHN", "Lucky John"),
-    ("LUCKY CRAFT", "Lucky Craft"), ("MINN KOTA", "Minn Kota"), ("OLD TOWN", "Old Town"),
+    ("LUCKY CRAFT", "Lucky Craft"), ("MINN KOTA", "Minn Kota"), ("MINNKOTA", "Minn Kota"), ("OLD TOWN", "Old Town"),
     ("ROY POW", "RoyPow"), ("ROYPOW", "RoyPow"), ("CC MOORE", "CC Moore"),
     ("BOSS AUDIO", "BOSS Audio"), ("RAM MOUNTS", "RAM Mounts"), ("RAM", "RAM Mounts"),
     ("PROLOGIC", "Prologic"), ("PL", "Prologic"), ("MADCAT", "Madcat"), ("MAD", "MAD"),
@@ -325,7 +325,10 @@ def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=())
                 external_id=code,
                 sku=code,
                 name=name,
-                brand_name=detect_brand(name, "", aliases) or offer.get("brand") or "",
+                brand_name=detect_brand(name, "", aliases)
+                or detect_brand(offer.get("brand") or "", "", aliases)
+                or offer.get("brand")
+                or "",
                 category_path=section,
                 images=images,
                 stock=stock,
