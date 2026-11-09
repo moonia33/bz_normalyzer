@@ -208,9 +208,14 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 3. **Gamintojo turinys:** `scrape_manufacturer --source <x>`; susiejimas pagal kodą
    (`ManufacturerContent.codes`), grupavimas į bazinę prekę + variantus.
 4. **Esamų prekių susiejimas:** PS → re-key, kiti tiekėjai → tik sandėlis.
-5. **Kategorijų mapingas** `map_albatros_categories.py`: 116 skyrių → BE kategorijos,
-   nesumapinta → `Nepriskirta`. Per stambius skyrius (`Bait / Wobbler`) tikslinti pagal
-   gamintojo kategoriją.
+5. **Kategorijų mapingas** `map_albatros_categories` (`--dry-run` – tik planas): kelias → shop
+   kategorijos **slug** (ne kelias: `Vandens Sportas > Kitos prekės` yra 2 kategorijos).
+   - Stock kodas su nemus.lt puslapiu gauna nemus skyrių (`category_path`; nuotraukų grupėms
+     lieka Stock skyrius `extra.category_raw`), kiti – Stock skyrių, nemus-only be skyriaus – `Nemus`.
+   - Sumapinta: visi nemus.lt skyriai + 20 nemus ženklų Stock skyrių (Jobe, Borika, RAM,
+     Humminbird, Minn Kota, RebelCell, Hertz ir kt.). Laivai/kateriai → `Nepriskirta`, kol nėra kategorijos.
+   - Liko kiti ~90 Stock skyrių (`Bait / Wobbler` ir pan.); nesumapinta → `Nepriskirta`.
+   - nemus.lt prekės be SEO slug'o (`?product_id=N`) kategorijoje raktuojamos `product_id=N`.
 6. **Vertimas į LT** (`translate_lang`, ta pati schema).
 7. **Eksportas:** `export_catalog --supplier albatros --dry-run` → ataskaita → `--push`;
    BE ImportRun be klaidų; **Typesense** reindex (`search.services.index_products`) ir patikra.
