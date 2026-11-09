@@ -23,6 +23,7 @@ LANGUAGE = "lt"
 SITEMAP = "https://nemus.lt/sitemap.xml"
 HOSTS = {"nemus.lt", "www.nemus.lt"}
 MIN_DELAY = 2.5
+MAX_PAGES = 50
 _LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>")
 
 
@@ -102,11 +103,45 @@ def parse_page(content: bytes, url: str = "") -> dict | None:
     }
 
 
+def parse_category(content: bytes) -> tuple[str, list[str], int]:
+    """Kategorijos puslapis -> ('Aksesuarai > Ram Laikikliai', prekių slug'ai, puslapių skaičius)."""
+    try:
+        tree = lxml_html.fromstring(content.decode("utf-8", errors="replace"))
+    except etree.ParserError:
+        return "", [], 0
+    crumbs = [_clean(t) for t in tree.xpath('//ul[@class="breadcrumb"]/li/a/text()')]
+    path = " > ".join(c for c in crumbs if c)
+    links = tree.xpath('//div[contains(@class,"product-thumb")]//a/@href')
+    slugs = [
+        _slug(u) for u in links if urlsplit(u).hostname in HOSTS and "route=" not in u
+    ]
+    pages = [int(n) for n in re.findall(r"[?&]page=(\d+)", " ".join(tree.xpath("//a/@href")))]
+    return path, list(dict.fromkeys(s for s in slugs if s)), min(max(pages, default=1), MAX_PAGES)
+
+
+def _slug(url: str) -> str:
+    parts = [p for p in urlsplit(url).path.split("/") if p]
+    return parts[-1] if parts else ""
+
+
+def _add_category(categories: dict, path: str, slugs: list[str]) -> None:
+    """Prekė keliose kategorijose -> giliausia (daugiausia lygių)."""
+    for slug in slugs:
+        if path.count(">") > categories.get(slug, "").count(">") or slug not in categories:
+            categories[slug] = path
+
+
+def category_of(url: str, categories: dict) -> str:
+    return categories.get(_slug(url), "")
+
+
 def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=None):
     """Visi sitemap prekių puslapiai (visas nemus katalogas).
 
     `report["complete"]` = True tik jei nuskaityti visi puslapiai; `report["urls"]` – sitemap'o URL
-    (nuimami tik puslapiai, kurių nebėra sitemap'e, ne tie, kurių neišparsavo)."""
+    (nuimami tik puslapiai, kurių nebėra sitemap'e, ne tie, kurių neišparsavo).
+    Prekių URL sitemap'e be skyriaus, todėl `report["categories"]` = {slug: kelias} iš
+    kategorijų puslapių (su puslapiavimu); jį pritaiko `category_of`."""
     report = report if report is not None else {}
     report["complete"] = False
     delay = max(delay, MIN_DELAY)
@@ -121,6 +156,7 @@ def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=N
     if not urls:
         return
     report["urls"] = set(urls)
+    categories = report["categories"] = {}
     failed = 0
     for n, url in enumerate(urls):
         if limit and n >= limit:
@@ -132,4 +168,22 @@ def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=N
         parsed = parse_page(page.content, url)
         if parsed:
             yield LANGUAGE, url, parsed
+            continue
+        failed += _crawl_category(s, url, page.content, categories, delay, kwargs)
     report["complete"] = failed == 0
+
+
+def _crawl_category(s, url: str, content: bytes, categories: dict, delay: float, kwargs) -> int:
+    path, slugs, pages = parse_category(content)
+    if not path or not slugs:
+        return 0
+    _add_category(categories, path, slugs)
+    failed = 0
+    base = url.split("?", 1)[0]
+    for number in range(2, pages + 1):
+        page = http.get(s, f"{base}?page={number}", delay, **kwargs)
+        if page is None or page.status_code != 200:
+            failed += 1
+            continue
+        _add_category(categories, path, parse_category(page.content)[1])
+    return failed

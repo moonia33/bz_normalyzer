@@ -502,6 +502,39 @@ class NemusTests(TestCase):
         self.assertEqual(urls, [nemus.SITEMAP, *pages])
         self.assertTrue(report["complete"])
 
+    def test_category_pages_map_products_with_pagination(self):
+        from apps.suppliers.manufacturers import nemus
+
+        def cat(slugs, pages=2):
+            thumbs = "".join(
+                f'<div class="product-thumb"><a href="https://nemus.lt/aksesuarai/ram/{s}">x</a></div>' for s in slugs
+            )
+            nav = "".join(f'<a href="https://nemus.lt/aksesuarai/ram?page={n}">{n}</a>' for n in range(2, pages + 1))
+            return (
+                '<html><body><ul class="breadcrumb"><li><a href="https://nemus.lt/pagrindinis"><i></i></a></li>'
+                '<li><a href="https://nemus.lt/aksesuarai">Aksesuarai</a></li>'
+                f'<li><a href="https://nemus.lt/aksesuarai/ram">Ram Laikikliai</a></li></ul>{thumbs}{nav}</body></html>'
+            )
+
+        top = cat(["a-1"], pages=1).replace(
+            '<li><a href="https://nemus.lt/aksesuarai/ram">Ram Laikikliai</a></li>', ""
+        )
+        pages = {
+            "https://nemus.lt/a-1": _NEMUS_PAGE,
+            "https://nemus.lt/aksesuarai": top,
+            "https://nemus.lt/aksesuarai/ram": cat(["a-1"]),
+            "https://nemus.lt/aksesuarai/ram?page=2": cat(["b-2"]),
+        }
+        xml = "<urlset>" + "".join(f"<url><loc>{u}</loc></url>" for u in list(pages)[:3]) + "</urlset>"
+        out, urls, report = self._crawl(pages, xml)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(report["complete"])
+        self.assertIn("https://nemus.lt/aksesuarai/ram?page=2", urls)
+        self.assertEqual(
+            report["categories"], {"a-1": "Aksesuarai > Ram Laikikliai", "b-2": "Aksesuarai > Ram Laikikliai"}
+        )
+        self.assertEqual(nemus.category_of("https://nemus.lt/b-2", report["categories"]), "Aksesuarai > Ram Laikikliai")
+
     def test_unparsed_page_stays_in_sitemap_urls(self):
         out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": "<html></html>"})
         self.assertEqual((len(out), report["complete"]), (1, True))

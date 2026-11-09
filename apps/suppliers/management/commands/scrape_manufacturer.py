@@ -158,6 +158,8 @@ class Command(BaseCommand):
             stats["pages"] += 1
             codes_seen.update(parsed["codes"])
         stats["codes"] = len(codes_seen)
+        if module is nemus and nemus_report.get("categories"):
+            stats["categorized"] = _nemus_categories(nemus_report["categories"])
         if module is nemus and nemus_report.get("complete"):
             # Pilnas nuskaitymas: puslapių, kurių nebėra sitemap'e, prekės nebeparduodamos.
             stats["stale"] = (
@@ -185,3 +187,15 @@ class Command(BaseCommand):
                 )
             stats["dropped"] = _keep_most_specific(opts["source"], seen)
         self.stdout.write(" ".join(f"{k}={v}" for k, v in stats.items()))
+
+
+def _nemus_categories(categories: dict) -> int:
+    """Prekių URL be skyriaus -> kategorija iš kategorijų puslapių (`specs.category`)."""
+    changed = []
+    for content in ManufacturerContent.objects.filter(source=nemus.SOURCE):
+        path = nemus.category_of(content.url, categories)
+        if path and (content.specs or {}).get("category") != path:
+            content.specs = {**(content.specs or {}), "category": path}
+            changed.append(content)
+    ManufacturerContent.objects.bulk_update(changed, ["specs"], batch_size=500)
+    return len(changed)
