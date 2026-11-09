@@ -1540,3 +1540,74 @@ class StaleMainImageTests(TestCase):
         offer = self._import("http://www.albatros.lt/public/pdf/5.pdf")
         self.assertEqual(offer.product.main_image_url, "")
 
+
+
+class RetailTextTests(TestCase):
+    def setUp(self):
+        from apps.suppliers.models import ManufacturerContent
+
+        Language.objects.create(code="en", name="English", is_base=True)
+        self.lang = Language.objects.create(code="lt", name="Lithuanian")
+        self.supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        self.product = Product.objects.create(sku="AL.J1", name="Jobe liemenė")
+        self.offer = Offer.objects.create(
+            supplier=self.supplier, external_id="J1", sku="J1", product=self.product,
+            name="Jobe vest, L", is_published=True, selling_price=Decimal("10.00"),
+        )
+        ManufacturerContent.objects.create(
+            source="nemus", url="https://nemus.lt/j1", language="lt", series="Jobe liemenė, L",
+            description="Plūdrumo liemenė <50 N>.\nTechninės detalės: - ISO sertifikuota - YKK užtrauktukas",
+            codes=["J1"],
+        )
+
+    def test_retail_html(self):
+        from apps.ingestion.management.commands.translate_lang import retail_html
+
+        self.assertEqual(
+            retail_html("Pirma.\nDetalės: - a - b\n- c\nDydis 9,5 - 43 cm"),
+            "<p>Pirma.</p><p>Detalės:</p><ul><li>a</li><li>b</li></ul>"
+            "<ul><li>c</li></ul><p>Dydis 9,5 - 43 cm</p>",
+        )
+
+    def test_only_configured_supplier(self):
+        from apps.ingestion.management.commands.translate_lang import retail_description
+
+        self.assertIn("<li>YKK užtrauktukas</li>", retail_description(self.offer, "lt"))
+        self.assertIn("&lt;50 N&gt;", retail_description(self.offer, "lt"))
+        self.assertEqual(retail_description(self.offer, "en"), "")
+        other = Offer.objects.create(
+            supplier=Supplier.objects.create(code="fox", name="Fox"), external_id="J1", sku="J1",
+            name="Other", is_published=True, selling_price=Decimal("1.00"),
+        )
+        self.assertEqual(retail_description(other, "lt"), "")
+
+    def test_command_overwrites_translated_description(self):
+        OfferText.objects.create(offer=self.offer, language=self.lang, name="Liemenė", description="<p>GPT</p>")
+        ProductText.objects.create(
+            product=self.product, language=self.lang, name="Liemenė", description="<p>GPT</p>",
+            source_offer=self.offer,
+        )
+        call_command("apply_retail_texts", "--supplier", "albatros", "--dry-run", stdout=StringIO())
+        self.assertEqual(OfferText.objects.get().description, "<p>GPT</p>")
+        call_command("apply_retail_texts", "--supplier", "albatros", stdout=StringIO())
+        self.assertIn("Plūdrumo liemenė", OfferText.objects.get().description)
+        self.assertIn("Plūdrumo liemenė", ProductText.objects.get().description)
+        self.assertEqual(OfferText.objects.get().name, "Liemenė")
+
+    def test_product_text_uses_shared_variant_description(self):
+        from apps.ingestion.management.commands.translate_lang import product_retail_description
+        from apps.suppliers.models import ManufacturerContent
+
+        for code, desc in (("J2", "Plūdrumo liemenė <50 N>.\nTechninės detalės: - ISO sertifikuota - YKK užtrauktukas"),
+                           ("J3", "Kita, M dydis.")):
+            Offer.objects.create(
+                supplier=self.supplier, external_id=code, sku=code, product=self.product,
+                name=f"Jobe vest, {code}", is_published=True, selling_price=Decimal("10.00"),
+            )
+            ManufacturerContent.objects.create(
+                source="nemus", url=f"https://nemus.lt/{code}", language="lt", series=code,
+                description=desc, codes=[code],
+            )
+        self.assertIn("Plūdrumo liemenė", product_retail_description(self.product.id, "lt"))
+        Offer.objects.filter(external_id="J2").update(is_published=False)
+        self.assertEqual(product_retail_description(self.product.id, "lt"), "")

@@ -1,11 +1,13 @@
 import json
 import math
 import re
+from collections import Counter
 
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from django.utils.html import escape
 from django.utils.text import slugify
 
 from apps.catalog.models import ProductText
@@ -217,6 +219,67 @@ def _manufacturer_source(offer) -> tuple[str, dict] | None:
         if text:
             return text, dict((section.get("rows") or {}).get(code) or {})
     return None
+
+
+# Tiekėjo mažmeninės parduotuvės tekstas jau tiekėjo kalba – naudojamas tiesiogiai, neverčiamas.
+RETAIL_TEXT_SOURCES = {"albatros": ("nemus",)}
+_INLINE_LIST = re.compile(r"^(.*?:)\s+-\s+(.+)$")
+
+
+def retail_html(text: str) -> str:
+    """nemus.lt aprašymo eilutės -> <p>; „Techninės detalės: - a - b“ / „- a“ -> <ul><li>."""
+    out: list[str] = []
+    items: list[str] = []
+
+    def flush():
+        if items:
+            out.append("<ul>" + "".join(f"<li>{escape(item)}</li>" for item in items) + "</ul>")
+            items.clear()
+
+    for line in (raw.strip() for raw in (text or "").splitlines()):
+        if not line:
+            continue
+        if line[:2] in ("- ", "• "):
+            items.append(line[2:].strip())
+            continue
+        flush()
+        match = _INLINE_LIST.match(line)
+        parts = [part.strip() for part in match.group(2).split(" - ")] if match else []
+        if len(parts) >= 2:
+            out.append(f"<p>{escape(match.group(1))}</p>")
+            items.extend(part for part in parts if part)
+            flush()
+            continue
+        out.append(f"<p>{escape(line)}</p>")
+    flush()
+    return "".join(out)
+
+
+def retail_description(offer, lang_code: str) -> str:
+    """Tiekėjo parduotuvės (nemus.lt) aprašymas tos pačios kalbos tekstui, jei yra."""
+    sources = RETAIL_TEXT_SOURCES.get(getattr(offer.supplier, "code", ""), ())
+    code = str(offer.external_id or "").strip().upper()
+    if not sources or not code:
+        return ""
+    content = (
+        ManufacturerContent.objects.filter(source__in=sources, language=lang_code, codes__contains=[code])
+        .exclude(description="")
+        .order_by("-updated_at")
+        .first()
+    )
+    return retail_html(content.description) if content else ""
+
+
+def product_retail_description(product_id: int, lang_code: str) -> str:
+    """Bendras kelių variantų prekės tekstas: tik aprašymas, kurį turi bent 2 variantai (dažniausias).
+
+    Visi skirtingi -> "" (aprašymai priklauso nuo varianto, lieka vertėjo bendras tekstas)."""
+    offers = Offer.objects.filter(product_id=product_id, is_published=True).select_related("supplier").order_by("id")
+    texts = [text for text in (retail_description(offer, lang_code) for offer in offers) if text]
+    if not texts:
+        return ""
+    best, count = Counter(texts).most_common(1)[0]
+    return best if count >= 2 or len(texts) == 1 else ""
 
 
 _INTENSIFIER = re.compile(
@@ -592,7 +655,10 @@ class Command(BaseCommand):
 
         from apps.catalog.models import Product
 
-        offers = {o.id: o for o in Offer.objects.filter(id__in=offer_ids).select_related("product")}
+        offers = {
+            o.id: o
+            for o in Offer.objects.filter(id__in=offer_ids).select_related("product", "supplier")
+        }
         texts = {
             t.id: t
             for t in OfferText.objects.filter(id__in=text_ids).select_related("offer", "offer__product")
@@ -627,7 +693,8 @@ class Command(BaseCommand):
                 self._write_product_text(int(raw_id), lang, {
                     "name": (content.get("name") or "").strip(),
                     "base_name": (content.get("base_name") or "").strip(),
-                    "description": (content.get("description") or "").strip(),
+                    "description": product_retail_description(int(raw_id), lang.code)
+                    or (content.get("description") or "").strip(),
                     **seo,
                 })
                 ok += 1
@@ -655,7 +722,8 @@ class Command(BaseCommand):
             fields = {
                 "name": (content.get("name") or "").strip(),
                 "base_name": (content.get("base_name") or "").strip(),
-                "description": (content.get("description") or "").strip(),
+                "description": retail_description(offer, lang.code)
+                or (content.get("description") or "").strip(),
                 "technical_description": (content.get("technical_description") or "").strip(),
                 **seo,
             }
