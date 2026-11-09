@@ -1,6 +1,6 @@
 from collections import Counter
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.catalog.models import Category
@@ -55,6 +55,7 @@ NEMUS: dict[str, str] = {
     "Vandens pramogos > Hidrokostiumai > Moteriški hidrokostiumai": "apranga-bei-avalyne",
     "Vandens pramogos > Hidrokostiumai > Vaikiški hidrokostiumai": "apranga-bei-avalyne",
     "Vandens pramogos > Hidrokostiumai > Vyriški hidrokostiumai": "apranga-bei-avalyne",
+    "Vandens pramogos > Liemenės": "apranga-bei-avalyne",
     "Vandens pramogos > Liemenės > Moteriškos liemenės": "apranga-bei-avalyne",
     "Vandens pramogos > Liemenės > Vaikiškos liemenės": "apranga-bei-avalyne",
     "Vandens pramogos > Liemenės > Vyriškos liemenės": "apranga-bei-avalyne",
@@ -96,7 +97,9 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", help="Tik planas, DB nepaliečiama.")
 
     def handle(self, *args, **options):
-        supplier = Supplier.objects.get(code="albatros")
+        supplier = Supplier.objects.filter(code="albatros").first()
+        if supplier is None:
+            raise CommandError("Tiekėjo 'albatros' nėra – pirma importuok Stock failą.")
 
         targets: dict[str, Category] = {}
         missing: list[str] = []
