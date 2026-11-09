@@ -326,7 +326,7 @@ def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=())
                 external_id=code,
                 sku=code,
                 name=name,
-                brand_name=detect_brand(name, "", aliases)
+                brand_name=detect_brand(re.sub(r"[®™]", " ", name), "", aliases)
                 or detect_brand(offer.get("brand") or "", "", aliases)
                 or offer.get("brand")
                 or "",

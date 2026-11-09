@@ -410,6 +410,10 @@ class AlbatrosNemusTests(TestCase):
         items = self._items()
         self.assertNotEqual(items["J-L"].extra["product_group"], items["H-L"].extra["product_group"])
 
+    def test_nemus_only_brand_with_registered_sign(self):
+        _nemus("RAM-1", "RAM® C dydžio rankena, trumpa", brand="")
+        self.assertEqual(self._items()["RAM-1"].brand_name, "RAM Mounts")
+
     def test_split_color(self):
         self.assertEqual(split_color("smaragdinė spalva S"), ("smaragdinė spalva", "S"))
         self.assertEqual(split_color("juodas / pilkas"), ("juodas / pilkas", ""))
