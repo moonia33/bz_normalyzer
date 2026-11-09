@@ -535,6 +535,18 @@ class NemusTests(TestCase):
         )
         self.assertEqual(nemus.category_of("https://nemus.lt/b-2", report["categories"]), "Aksesuarai > Ram Laikikliai")
 
+    def test_product_id_urls_keyed_by_id(self):
+        from apps.suppliers.manufacturers import nemus
+
+        categories = {}
+        thumbs = '<div class="product-thumb"><a href="https://nemus.lt/aksesuarai/borika?product_id=3849">x</a></div>'
+        crumbs = '<ul class="breadcrumb"><li><a href="https://nemus.lt/aksesuarai">Aksesuarai</a></li></ul>'
+        path, slugs, _ = nemus.parse_category(f"<html><body>{crumbs}{thumbs}</body></html>".encode())
+        nemus._add_category(categories, path, slugs)
+        url = "https://nemus.lt/index.php?route=product/product&product_id=3849"
+        self.assertEqual(nemus.category_of(url, categories), "Aksesuarai")
+        self.assertEqual(nemus.category_of("https://nemus.lt/index.php?route=product/product&product_id=1", categories), "")
+
     def test_unparsed_page_stays_in_sitemap_urls(self):
         out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": "<html></html>"})
         self.assertEqual((len(out), report["complete"]), (1, True))

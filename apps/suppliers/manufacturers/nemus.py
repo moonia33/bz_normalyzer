@@ -11,7 +11,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from lxml import etree
 from lxml import html as lxml_html
@@ -120,7 +120,13 @@ def parse_category(content: bytes) -> tuple[str, list[str], int]:
 
 
 def _slug(url: str) -> str:
-    parts = [p for p in urlsplit(url).path.split("/") if p]
+    """Prekės raktas: SEO slug arba 'product_id=N' (be slug'o: sitemap'e `?route=...&product_id=N`,
+    kategorijoje `<kategorija>?product_id=N`)."""
+    split = urlsplit(url)
+    product_id = parse_qs(split.query).get("product_id")
+    if product_id:
+        return f"product_id={product_id[0]}"
+    parts = [p for p in split.path.split("/") if p]
     return parts[-1] if parts else ""
 
 

@@ -1,7 +1,7 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.suppliers.adapters.base import BaseAdapter
 from apps.suppliers.adapters.generic_excel import GenericExcelAdapter
@@ -253,3 +253,77 @@ class MossAccessoryTests(TestCase):
         self.assertEqual(items["981"].extra["description_cleared"], "Complete feeder set")
         self.assertEqual(items["982"].extra["description_cleared"], "")
         self.assertEqual(items["982"].description, "Own spool text")
+
+
+class AlbatrosRefineCategoriesTests(SimpleTestCase):
+    def test_mixed_section_split_by_name(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        def item(name, path):
+            return NormalizedItem(external_id=name, sku=name, name=name, category_path=path)
+
+        section = "CAT Fishing - Šamų žvejyba"
+        items = [
+            item("MADCAT Spin Tail 35g 10cm T2 Roach", section),
+            item("MADCAT Power Leader 15M 1.30MM", section),
+            item("MADCAT Black Spin 270 9FT/2.70M 40-150G 2SEC", section),
+            item("Mepps SYCLOPS Original Gold 8g size 0", "Bait / MEPPS"),
+            item("Lucky Craft Pointer 78DD", "Bait / Wobbler"),
+        ]
+        refine_categories(items)
+        self.assertEqual(
+            [i.category_path for i in items],
+            [
+                section,
+                f"{section} > Valai",
+                f"{section} > Meškerykočiai",
+                "Bait / MEPPS > Blizgės",
+                "Bait / Wobbler",
+            ],
+        )
+
+    def test_group_shares_subcategory_from_variant_names(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        section = "CAT Fishing - Šamų žvejyba"
+        items = [
+            NormalizedItem(
+                external_id=f"R-{n}", sku=f"R-{n}", name=f"MADCAT Black Spin {n}", category_path=section,
+                extra={"product_group": "g1", "base_name": "MADCAT Black Spin"},
+            )
+            for n in ("2.70M 40-150G", "3.00M 50-200G")
+        ]
+        refine_categories(items)
+        self.assertEqual({i.category_path for i in items}, {f"{section} > Meškerykočiai"})
+
+    def test_group_prefers_nemus_category(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        nemus = "Vandens pramogos > Hidrokostiumai > Vyriški hidrokostiumai"
+        items = [
+            NormalizedItem(
+                external_id=n, sku=n, name=f"Jobe Perth {n}", category_path=path,
+                extra={"product_group": "g1", "nemus_category": path == nemus},
+            )
+            for n, path in (("L", "JOBE Wetsuits"), ("XL", "JOBE Wetsuits"), ("2XL", nemus))
+        ]
+        refine_categories(items)
+        self.assertEqual({i.category_path for i in items}, {nemus})
+
+    def test_group_gets_one_category(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        section = "Suit - Jacket+Trousers"
+        items = [
+            NormalizedItem(
+                external_id=n, sku=n, name=f"Savage Gear WP Suit {n}", category_path=section,
+                extra={"product_group": "g1", "base_name": "Savage Gear WP Suit"},
+            )
+            for n in ("Jacket L", "Jacket XL", "Bib Trousers L")
+        ]
+        refine_categories(items)
+        self.assertEqual({i.category_path for i in items}, {f"{section} > Striukės"})

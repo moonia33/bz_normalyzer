@@ -208,9 +208,21 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
 3. **Gamintojo turinys:** `scrape_manufacturer --source <x>`; susiejimas pagal kodą
    (`ManufacturerContent.codes`), grupavimas į bazinę prekę + variantus.
 4. **Esamų prekių susiejimas:** PS → re-key, kiti tiekėjai → tik sandėlis.
-5. **Kategorijų mapingas** `map_albatros_categories.py`: 116 skyrių → BE kategorijos,
-   nesumapinta → `Nepriskirta`. Per stambius skyrius (`Bait / Wobbler`) tikslinti pagal
-   gamintojo kategoriją.
+5. **Kategorijų mapingas** `map_albatros_categories` (`--dry-run` – tik planas): kelias → shop
+   kategorijos **slug** (ne kelias: `Vandens Sportas > Kitos prekės` yra 2 kategorijos).
+   - Stock kodas su nemus.lt puslapiu gauna nemus skyrių (`category_path`; nuotraukų grupėms
+     lieka Stock skyrius `extra.category_raw`), kiti – Stock skyrių, nemus-only be skyriaus – `Nemus`.
+   - Visi Stock skyriai susieti su **esamomis** kategorijomis (`FISHING`, pvz. `Bait / Wobbler` →
+     `vobleriai`). Mišrūs skyriai adapteryje skaidomi pagal pavadinimą (`SECTION_SPLITS`, pvz.
+     `CAT Fishing - Šamų žvejyba > Valai`), nes pipeline mapina tik pagal kelią.
+   - nemus skyriams, kurių BE neturi (laivai, kateriai, atrakcionai, liemenės, hidrokostiumai ir kt.),
+     kuriamos naujos kategorijos pagal nemus medį (BE `seed_nemus_categories`, taip pat
+     „Laivų aksesuarai“ > Laikikliai / Priedai RAM, Borika, Nexo/Marinac prekėms). Kol jų nėra,
+     `map_albatros_categories` jas praneša kaip nerastas, o prekės lieka nepublikuotos.
+   - Eiga: BE `seed_nemus_categories --dry-run` → be `--dry-run` → normalyzer `sync_shop_categories`
+     → `map_albatros_categories --dry-run` → `map_albatros_categories`.
+   - Kelias be eilutės → kategorijos nėra, prekė nepublikuojama (kaip importe), kol nesumapinta.
+   - nemus.lt prekės be SEO slug'o (`?product_id=N`) kategorijoje raktuojamos `product_id=N`.
 6. **Vertimas į LT** (`translate_lang`, ta pati schema).
 7. **Eksportas:** `export_catalog --supplier albatros --dry-run` → ataskaita → `--push`;
    BE ImportRun be klaidų; **Typesense** reindex (`search.services.index_products`) ir patikra.

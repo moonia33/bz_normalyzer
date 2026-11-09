@@ -22,7 +22,7 @@ import io
 import json
 import logging
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterator
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -192,6 +192,7 @@ class AlbatrosAdapter(BaseAdapter):
             apply_photo_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
         _distinguish_twins(items)
+        refine_categories(items)
         yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
@@ -246,6 +247,102 @@ class AlbatrosAdapter(BaseAdapter):
         )
 
 
+# Mišrūs skyriai -> "skyrius > pogrupis" pagal pavadinimą (pirma tinkanti taisyklė);
+# CategoryMapping mapina tik pagal kelią, todėl pogrupis turi būti kelyje.
+SECTION_SPLITS: dict[str, list[tuple[str, str]]] = {
+    "Bait / MEPPS": [(r"syclops|spoon", "Blizgės")],
+    "Bait / RAPALA": [(r"spoon|blizg", "Blizgės"), (r"balansyr", "Balansyrai")],
+    "CAT Fishing - Šamų žvejyba": [
+        (r"\b(line|braid|pe x\d|mono|leader|backbone|mcbb|cable)", "Valai"),
+        (r"\brod\b|\d[.,]\d{1,2} ?m\b|\d+ ?ft|\dsec\b|\d ?sec\b", "Meškerykočiai"),
+        (r"\bhooks?\b|treble", "Kabliukai"),
+        (
+            (
+                r"alarm|bell|bead|rattle|clonk(?! teaser)|float|stick|rig\b|sinker|lead|swivel|ring"
+                r"|stop|sleeve|buoy|snap|holder|clip|rope"
+            ),
+            "Aksesuarai",
+        ),
+    ],
+    "LEAD / JIG HEAD": [(r"\blead|weight|sinker", "Svareliai")],
+    "HOOKS - KABLIUKAI": [(r"madcat", "Šamams")],
+    "Reel - Ritė": [(r"feeder", "Dugninei")],
+    "Reel / Longcast": [(r"spod", "Spodinės"), (r"surf", "Dugninei")],
+    "Rod / Sea": [(r"troll", "Velkiavimui")],
+    "Rod / Tele": [(r"spin", "Spiningai")],
+    "Winter Fishing Reels&Rods": [(r"\btip\b|meškeryt", "Meškerytės")],
+    "Line / Carp, Leader - Karpinis valas, pavadėliai": [(r"leader", "Pavadėliai")],
+    "Line/Fly - Muselinis valas": [(r"leader|tapered|flytrace", "Konusiniai")],
+    "Traces / Leaders / Crimps - Pavadėliai / Viela / Užspaudėj": [
+        (r"wire|titan|wolfram|steel|black7|7x7", "Metaliniai")
+    ],
+    "FEEDER SYSTEM": [
+        (r"\brig\b", "Sistemėlės"),
+        (r"holder|support|rest", "Laikikliai"),
+        (r"feeder", "Šėryklėlės"),
+    ],
+    "Carp Hooks / Rigs - Carp kabliukai / su pavadėliu": [(r"\brigs?\b", "Sistemėlės")],
+    "Carp Tools, Spombs, Markers - Karpiniai įrankiai": [(r"spomb|spod|throwing|cobra", "Laidynės")],
+    "Carp Landing Net, MAT, Carp Care": [(r"landing net", "Graibštai")],
+    "Bait / Carp PVA": [(r"pellet", "Peletės")],
+    "Bag / Box - Krepšys / dėžė": [(r"box|wallet", "Dėžutės")],
+    "ROD POD - STOVAI - ROD HOLDERS, ROD REST": [
+        (r"bank ?stick|spike", "Kuoliukai"),
+        (r"\brest|buzz ?bar|holder", "Laikikliai"),
+    ],
+    "BITE ALARM / SWINGER": [(r"swinger", "Svingai")],
+    "NETS - GRAIBŠTAI, TINKLELIAI": [(r"handle", "Kotai")],
+    "Suit - Jacket+Trousers": [(r"jacket", "Striukės"), (r"bib|trouser", "Kelnės")],
+    "Chair / Bedchair - Kėdės / Gultai": [(r"bed|sleep", "Gultai")],
+    "Tent / Sleeping Bag - Palapinės, skėčiai, miegmaišiai": [(r"sleeping bag", "Miegmaišiai")],
+    "Tools, Pliers - Žnyplės, žirklės": [(r"žirkl", "Žirklutės")],
+    "Cannon Accessories": [(r"minn ?kota", "Minn Kota")],
+    "Vandens pramogos > Wake lentos ir vandens slidės": [(r"slid", "Vandens slidės")],
+}
+_SPLIT_RE = {
+    section: [(re.compile(pattern, re.IGNORECASE), sub) for pattern, sub in rules]
+    for section, rules in SECTION_SPLITS.items()
+}
+
+
+def refine_categories(items: list[NormalizedItem]) -> None:
+    """Mišrus skyrius -> pogrupis pagal prekės pavadinimą, o jei jis neatpažintas – pagal visą grupę."""
+    groups: dict[tuple[str, str], list[NormalizedItem]] = defaultdict(list)
+    for item in items:
+        if item.category_path in _SPLIT_RE:
+            key = item.extra.get("product_group") or item.external_id
+            groups[(item.category_path, key)].append(item)
+    for (path, _), members in groups.items():
+        text = " ".join(
+            dict.fromkeys(t for m in members for t in (m.extra.get("base_name"), m.name) if t)
+        )
+        shared = _split_sub(path, text)
+        for m in members:
+            sub = _split_sub(path, m.name) or shared
+            if sub:
+                m.category_path = f"{path} > {sub}"
+    _unify_group_categories(items)
+
+
+def _unify_group_categories(items: list[NormalizedItem]) -> None:
+    """Viena prekė = viena kategorija: pirmenybė nemus skyriui, tada dažniausiam, tada giliausiam."""
+    groups: dict[str, list[NormalizedItem]] = defaultdict(list)
+    for item in items:
+        if item.extra.get("product_group"):
+            groups[item.extra["product_group"]].append(item)
+    for members in groups.values():
+        counts = Counter(m.category_path for m in members)
+        if len(counts) > 1:
+            nemus = {m.category_path for m in members if m.extra.get("nemus_category")}
+            path = max(counts, key=lambda p: (p in nemus, counts[p], p.count(" > "), p))
+            for m in members:
+                m.category_path = path
+
+
+def _split_sub(path: str, text: str) -> str | None:
+    return next((sub for pattern, sub in _SPLIT_RE[path] if pattern.search(text)), None)
+
+
 def nemus_contents() -> dict[str, Any]:
     """Kodas -> ManufacturerContent(source=nemus) (vienas puslapis = vienas kodas)."""
     from apps.suppliers.models import ManufacturerContent
@@ -274,9 +371,14 @@ def nemus_net_price(content) -> Decimal | None:
 
 
 def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
-    """Kodas ir Stock faile, ir nemus: savikaina iš Albatros, kaina – mažesnioji."""
+    """Kodas ir Stock faile, ir nemus: savikaina iš Albatros, kaina – mažesnioji, skyrius iš nemus."""
     for item in items:
         content = nemus.get(item.external_id.upper())
+        category = (content.specs or {}).get("category") if content is not None else ""
+        if category:
+            # nemus skyrius (LT, giliau) tikslesnis už Stock skyrių; photo grupėms lieka `category_raw`
+            item.category_path = category
+            item.extra["nemus_category"] = True
         net = nemus_net_price(content) if content is not None else None
         if net is None:
             continue
@@ -316,6 +418,7 @@ def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=())
         extra = {
             "base_name": name,
             "category_raw": section,
+            "nemus_category": section != "Nemus",
             "rrp_price": str(net),
             "nemus_price": str(net),
             "retail_url": content.url,
