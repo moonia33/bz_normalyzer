@@ -192,6 +192,7 @@ class AlbatrosAdapter(BaseAdapter):
             apply_photo_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
         _distinguish_twins(items)
+        mark_strict_groups(items)
         refine_categories(items)
         yield from items
 
@@ -667,6 +668,13 @@ def apply_fixed_groups(items: list[NormalizedItem], groups: dict) -> None:
                 item.extra["base_name"] = value["base_name"]
         else:
             item.extra["product_group"] = str(value)
+
+
+def mark_strict_groups(items: list[NormalizedItem]) -> None:
+    """Grupes nustato adapteris – importas nejungia skirtingų grupių pagal base_name/EAN."""
+    for item in items:
+        if item.extra.get("product_group"):
+            item.extra["strict_group"] = True
 
 
 def _distinguish_twins(items: list[NormalizedItem]) -> None:

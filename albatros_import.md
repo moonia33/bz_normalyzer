@@ -311,6 +311,10 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
   `fixed_groups: {kodas: "ps:<BE product id>"}` (arba `{"group": …, "base_name": …}`) perrašo
   gamintojo ir FOTO grupę. Užpildoma iš BE atitikmenų (617 kodų, 231 PS prekė) prieš pirmą importą.
 - Eilė: gamintojo turinys → zuklys → FOTO grupės → `fixed_groups` → `_distinguish_twins`.
+- Visos adapterio grupės pažymimos `extra.strict_group`: importas nejungia skirtingų grupių
+  (PS, FOTO, gamintojo) į vieną prekę pagal sutampantį `base_name` ar EAN. Be to, prod'o
+  importe 72 prekės maišė kelias grupes. `fixed_groups` verta duoti su PS prekės pavadinimu
+  (`{"group": "ps:<id>", "base_name": "<PS pavadinimas>"}`), kad prekės vardas būtų bendras.
 
 Dry-run su `Stock 10.21` (lokaliai, be BE rašymo):
 
