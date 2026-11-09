@@ -1,6 +1,7 @@
 import json
 import math
 import re
+from collections import Counter
 
 import requests
 from django.conf import settings
@@ -270,13 +271,15 @@ def retail_description(offer, lang_code: str) -> str:
 
 
 def product_retail_description(product_id: int, lang_code: str) -> str:
-    for offer in (
-        Offer.objects.filter(product_id=product_id, is_published=True).select_related("supplier").order_by("id")
-    ):
-        text = retail_description(offer, lang_code)
-        if text:
-            return text
-    return ""
+    """Bendras kelių variantų prekės tekstas: tik aprašymas, kurį turi bent 2 variantai (dažniausias).
+
+    Visi skirtingi -> "" (aprašymai priklauso nuo varianto, lieka vertėjo bendras tekstas)."""
+    offers = Offer.objects.filter(product_id=product_id, is_published=True).select_related("supplier").order_by("id")
+    texts = [text for text in (retail_description(offer, lang_code) for offer in offers) if text]
+    if not texts:
+        return ""
+    best, count = Counter(texts).most_common(1)[0]
+    return best if count >= 2 or len(texts) == 1 else ""
 
 
 _INTENSIFIER = re.compile(

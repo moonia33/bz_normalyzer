@@ -1593,3 +1593,21 @@ class RetailTextTests(TestCase):
         self.assertIn("Plūdrumo liemenė", OfferText.objects.get().description)
         self.assertIn("Plūdrumo liemenė", ProductText.objects.get().description)
         self.assertEqual(OfferText.objects.get().name, "Liemenė")
+
+    def test_product_text_uses_shared_variant_description(self):
+        from apps.ingestion.management.commands.translate_lang import product_retail_description
+        from apps.suppliers.models import ManufacturerContent
+
+        for code, desc in (("J2", "Plūdrumo liemenė <50 N>.\nTechninės detalės: - ISO sertifikuota - YKK užtrauktukas"),
+                           ("J3", "Kita, M dydis.")):
+            Offer.objects.create(
+                supplier=self.supplier, external_id=code, sku=code, product=self.product,
+                name=f"Jobe vest, {code}", is_published=True, selling_price=Decimal("10.00"),
+            )
+            ManufacturerContent.objects.create(
+                source="nemus", url=f"https://nemus.lt/{code}", language="lt", series=code,
+                description=desc, codes=[code],
+            )
+        self.assertIn("Plūdrumo liemenė", product_retail_description(self.product.id, "lt"))
+        Offer.objects.filter(external_id="J2").update(is_published=False)
+        self.assertEqual(product_retail_description(self.product.id, "lt"), "")
