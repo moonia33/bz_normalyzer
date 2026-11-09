@@ -214,7 +214,8 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
      lieka Stock skyrius `extra.category_raw`), kiti – Stock skyrių, nemus-only be skyriaus – `Nemus`.
    - Sumapinta: visi nemus.lt skyriai + 20 nemus ženklų Stock skyrių (Jobe, Borika, RAM,
      Humminbird, Minn Kota, RebelCell, Hertz ir kt.). Laivai/kateriai → `Nepriskirta`, kol nėra kategorijos.
-   - Liko kiti ~90 Stock skyrių (`Bait / Wobbler` ir pan.); nesumapinta → `Nepriskirta`.
+   - Liko kiti ~90 Stock skyrių (`Bait / Wobbler` ir pan.). Kelias be eilutės → kategorijos nėra,
+     prekė nepublikuojama (kaip importe), kol nesumapinta; `Nepriskirta` – tik aiški eilutė.
    - nemus.lt prekės be SEO slug'o (`?product_id=N`) kategorijoje raktuojamos `product_id=N`.
 6. **Vertimas į LT** (`translate_lang`, ta pati schema).
 7. **Eksportas:** `export_catalog --supplier albatros --dry-run` → ataskaita → `--push`;
