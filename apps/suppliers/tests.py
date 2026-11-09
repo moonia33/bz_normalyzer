@@ -282,3 +282,18 @@ class AlbatrosRefineCategoriesTests(SimpleTestCase):
                 "Bait / Wobbler",
             ],
         )
+
+    def test_group_shares_subcategory_from_variant_names(self):
+        from apps.ingestion.dto import NormalizedItem
+        from apps.suppliers.adapters.albatros import refine_categories
+
+        section = "CAT Fishing - Šamų žvejyba"
+        items = [
+            NormalizedItem(
+                external_id=f"R-{n}", sku=f"R-{n}", name=f"MADCAT Black Spin {n}", category_path=section,
+                extra={"product_group": "g1", "base_name": "MADCAT Black Spin"},
+            )
+            for n in ("2.70M 40-150G", "3.00M 50-200G")
+        ]
+        refine_categories(items)
+        self.assertEqual({i.category_path for i in items}, {f"{section} > Meškerykočiai"})

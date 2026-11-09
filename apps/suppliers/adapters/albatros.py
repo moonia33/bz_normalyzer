@@ -22,7 +22,7 @@ import io
 import json
 import logging
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Iterator
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -253,10 +253,14 @@ SECTION_SPLITS: dict[str, list[tuple[str, str]]] = {
     "Bait / MEPPS": [(r"syclops|spoon", "Blizgės")],
     "Bait / RAPALA": [(r"spoon|blizg", "Blizgės"), (r"balansyr", "Balansyrai")],
     "CAT Fishing - Šamų žvejyba": [
-        (r"\b(line|braid|pe x\d|mono|leader|backbone|mcbb)", "Valai"),
+        (r"\b(line|braid|pe x\d|mono|leader|backbone|mcbb|cable)", "Valai"),
         (r"\brod\b|\d[.,]\d{1,2} ?m\b|\d+ ?ft|\dsec\b|\d ?sec\b", "Meškerykočiai"),
         (r"\bhooks?\b|treble", "Kabliukai"),
-        (r"alarm|bell|bead|rattle|clonk|float|stick|rig\b|sinker|lead", "Aksesuarai"),
+        (
+            r"alarm|bell|bead|rattle|clonk(?! teaser)|float|stick|rig\b|sinker|lead|swivel|ring|stop"
+            r"|sleeve|buoy|snap|holder|clip|rope",
+            "Aksesuarai",
+        ),
     ],
     "LEAD / JIG HEAD": [(r"\blead|weight|sinker", "Svareliai")],
     "HOOKS - KABLIUKAI": [(r"madcat", "Šamams")],
@@ -300,10 +304,20 @@ _SPLIT_RE = {
 
 
 def refine_categories(items: list[NormalizedItem]) -> None:
+    """Mišrus skyrius -> pogrupis pagal pavadinimą; visa variantų grupė gauna tą patį pogrupį."""
+    groups: dict[tuple[str, str], list[NormalizedItem]] = defaultdict(list)
     for item in items:
-        for pattern, sub in _SPLIT_RE.get(item.category_path, ()):
-            if pattern.search(item.extra.get("base_name") or item.name):
-                item.category_path = f"{item.category_path} > {sub}"
+        if item.category_path in _SPLIT_RE:
+            key = item.extra.get("product_group") or item.external_id
+            groups[(item.category_path, key)].append(item)
+    for (path, _), members in groups.items():
+        text = " ".join(
+            dict.fromkeys(t for m in members for t in (m.extra.get("base_name"), m.name) if t)
+        )
+        for pattern, sub in _SPLIT_RE[path]:
+            if pattern.search(text):
+                for m in members:
+                    m.category_path = f"{path} > {sub}"
                 break
 
 
