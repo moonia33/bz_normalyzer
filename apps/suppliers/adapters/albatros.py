@@ -22,6 +22,7 @@ import io
 import json
 import logging
 import re
+from collections import Counter
 from collections.abc import Iterator
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -354,7 +355,7 @@ def split_variant_name(name: str) -> tuple[str, str]:
 def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
     """nemus neturi variantų: tas pats ženklas + pavadinimas iki paskutinio kablelio -> viena prekė.
 
-    Jungiama tik jei ≥ 2 kodai; gamintojo / PS grupės lieka pirmesnės."""
+    Jungiama tik jei ≥ 2 kodai su skirtingomis reikšmėmis; gamintojo / PS grupės lieka pirmesnės."""
     from django.utils.text import slugify
 
     groups: dict[tuple[str, str], list[tuple[NormalizedItem, str, str]]] = {}
@@ -367,6 +368,9 @@ def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
             key = (slugify(item.brand_name or ""), base.casefold())
             groups.setdefault(key, []).append((item, base, value))
     for members in groups.values():
+        # Ta pati reikšmė keliems kodams (pvz. dydis pavadinime neįrašytas) -> tų kodų nejungiam.
+        counts = Counter(value.casefold() for _, _, value in members)
+        members = [m for m in members if counts[m[2].casefold()] == 1]
         if len(members) < 2:
             continue
         base = members[0][1]

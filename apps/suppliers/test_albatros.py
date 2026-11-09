@@ -370,6 +370,14 @@ class AlbatrosNemusTests(TestCase):
         self.assertNotIn("product_group", items["1-1"].extra)
         self.assertNotIn("product_group", items["2-2"].extra)
 
+    def test_same_value_codes_are_not_grouped(self):
+        for code, value in (("H-1", "juodas"), ("H-2", "Juodas"), ("H-3", "pilkas"), ("H-4", "balta")):
+            _nemus(code, f"JOBE šalmas, {value}")
+        items = self._items()
+        self.assertNotIn("product_group", items["H-1"].extra)
+        self.assertNotIn("product_group", items["H-2"].extra)
+        self.assertEqual(items["H-3"].extra["product_group"], items["H-4"].extra["product_group"])
+
     def test_split_variant_name(self):
         self.assertEqual(split_variant_name("Jobe liemenė, dydis 10"), ("Jobe liemenė", "dydis 10"))
         self.assertEqual(split_variant_name("DAVIKLIS XI 14 HW"), ("DAVIKLIS XI 14 HW", ""))
