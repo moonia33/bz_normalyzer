@@ -414,6 +414,13 @@ class AlbatrosNemusTests(TestCase):
         _nemus("RAM-1", "RAM® C dydžio rankena, trumpa", brand="")
         self.assertEqual(self._items()["RAM-1"].brand_name, "RAM Mounts")
 
+    def test_single_word_size_is_grouped(self):
+        _nemus("W-1", "JOBE pirštinės, dydis mažas")
+        _nemus("W-2", "JOBE kepurė, Small")
+        items = self._items()
+        self.assertEqual(items["W-1"].attributes["axes"], {"size": "dydis mažas"})
+        self.assertEqual(items["W-2"].attributes["axes"], {"size": "Small"})
+
     def test_single_non_size_value_is_not_grouped(self):
         _nemus("Z-1", "JOBE liemenė, pripučiama")
         item = self._items()["Z-1"]
