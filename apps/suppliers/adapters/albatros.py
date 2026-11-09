@@ -49,6 +49,19 @@ _MAX_VARIANT_LEN = 40
 # Antraštės (lower), pagal kurias atpažįstamas pilnas Stock failas
 _REQUIRED = {"code": "code", "item": "item", "export": "be pvm, export", "sale": "sale", "qty": "q-ty"}
 
+# Stock „foto“ stulpelyje būna ir PDF, nukirpti adresai ar gamintojo puslapiai – ne nuotraukos.
+_IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|webp|gif)$", re.IGNORECASE)
+_IMAGE_HOSTS = ("asset.productmarketingcloud.com", "media.purefishing.com")
+
+
+def is_image_url(url: str) -> bool:
+    path = url.split("?", 1)[0].split("#", 1)[0]
+    if _IMAGE_EXT_RE.search(path):
+        return True
+    host = path.split("://", 1)[-1].split("/", 1)[0].lower()
+    return host in _IMAGE_HOSTS and "/" in path.split("://", 1)[-1].rstrip("/")
+
+
 _NEW_MARK_RE = re.compile(r"^\s*new\s*(\d{4})\s*$", re.IGNORECASE)
 
 # Lietuviški bendriniai pirmi žodžiai – ne ženklas
@@ -218,7 +231,8 @@ class AlbatrosAdapter(BaseAdapter):
             # tuščias/netaisyklingas kiekis – eilutės klaida, ne 0 (klaida blokuoja nulinimą)
             raise AdapterError(f"Albatros {code}: netaisyklingas Q-ty ({row.get('qty')!r})")
         stock = max(int(qty), 0)
-        photo = row.get("photo") or ""
+        link = row.get("photo") or ""
+        photo = link if is_image_url(link) else ""
         section = row.get("section") or ""
         extra = {
             "base_name": name,
@@ -227,7 +241,7 @@ class AlbatrosAdapter(BaseAdapter):
             "export_price": str(export) if export is not None else None,
             "sale": str(sale) if sale is not None else None,
             # ta pati nuotrauka keliems kodams – variantų grupavimo užuomina
-            "photo_group": photo,
+            "photo_group": link,
             "main_image_url": photo,
         }
         return NormalizedItem(

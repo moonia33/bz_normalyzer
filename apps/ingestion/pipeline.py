@@ -598,6 +598,20 @@ def _ensure_product(job: ImportJob, item: NormalizedItem, offer: Offer) -> Produ
     elif product.images:
         product.images = []
         changed_fields.append("images")
+    if (
+        product.main_image_url
+        and not offer.main_image_url
+        and product.main_image_url not in (product.images or [])
+    ):
+        # offer'is nuotraukos nebeturi (pvz. PDF atmestas): paliekama tik kito varianto nuotrauka
+        siblings = Offer.objects.filter(product_id=product.pk).exclude(pk=offer.pk).exclude(main_image_url="")
+        if job.started_at:
+            # to paties tiekėjo offer'iai, neimportuoti šiame job'e, gali turėti pasenusį (PDF) URL
+            siblings = siblings.exclude(supplier_id=offer.supplier_id, last_imported_at__lt=job.started_at)
+        others = list(siblings.values_list("main_image_url", flat=True))
+        if product.main_image_url not in others:
+            product.main_image_url = others[0] if others else ""
+            changed_fields.append("main_image_url")
     if isinstance(offer.videos, list):
         merged_videos = _merge_video_lists(product.videos, offer.videos)
         if product.videos != merged_videos:

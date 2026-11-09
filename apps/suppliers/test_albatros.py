@@ -61,6 +61,13 @@ class AlbatrosAdapterTests(SimpleTestCase):
         self.assertEqual(a.discount_percent, 30)
         self.assertEqual(a.category_path, "Reel - Ritė")
         self.assertEqual(a.images, ["http://x/1.jpg"])
+        for link in ("http://www.albatros.lt/public/pdf/52190.pdf", "https://x/4.jp",
+                     "https://humminbird.johnsonoutdoors.com/us/shop/cables/eth-5pgl"):
+            b = self._items([["Reel - Ritė"], ["", 2, "TiCA Y", 10, None, 3, None, link]])[0]
+            self.assertEqual((b.images, b.extra.get("main_image_url", "")), ([], ""))
+            self.assertEqual(b.extra["photo_group"], link)
+        cdn = "https://media.purefishing.com/s/purefishing/1632528_MS"
+        self.assertEqual(self._items([["Reel"], ["", 3, "TiCA Z", 10, None, 3, None, cdn]])[0].images, [cdn])
         self.assertEqual(a.badges, [])
         self.assertEqual(a.brand_name, "TiCA")
         new = by["10005-100"]
