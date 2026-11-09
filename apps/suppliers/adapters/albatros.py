@@ -388,7 +388,7 @@ def split_color(value: str) -> tuple[str, str]:
         if word.startswith("spalv"):
             color[i] = True
             j = i - 1
-            while j >= 0 and not any(ch.isdigit() for ch in tokens[j]) and not tokens[j].isupper():
+            while j >= 0 and not is_size(tokens[j]):
                 color[j] = True
                 j -= 1
     for i, word in enumerate(words):
