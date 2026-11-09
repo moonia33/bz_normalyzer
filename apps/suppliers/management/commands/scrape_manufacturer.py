@@ -29,17 +29,6 @@ def _codes_file(path: str) -> list[str]:
         return [line.strip().upper() for line in fh if line.strip()]
 
 
-def _albatros_codes() -> list[str]:
-    return sorted(
-        {
-            str(code).strip().upper()
-            for code in Offer.objects.filter(supplier__code="albatros").values_list(
-                "external_id", flat=True
-            )
-        }
-    )
-
-
 def _zuklys_codes(path: str | None) -> list[str]:
     """Albatros kodai, kuriems dar nėra jokio turinio (gamintojo ar zuklys)."""
     if path:
@@ -107,7 +96,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--codes-file",
-            help="zuklys/nemus: kodų sąrašas (po vieną eilutėje); be jo – tiekėjo albatros kodai be turinio.",
+            help="zuklys: kodų sąrašas (po vieną eilutėje); be jo – tiekėjo albatros kodai be turinio.",
         )
 
     def handle(self, *args, **opts):
@@ -123,8 +112,8 @@ class Command(BaseCommand):
         if module is zuklys:
             pages = zuklys.crawl(_zuklys_codes(opts.get("codes_file")), opts["delay"], opts["limit"])
         elif module is nemus:
-            path = opts.get("codes_file")
-            pages = nemus.crawl(_codes_file(path) if path else _albatros_codes(), opts["delay"], opts["limit"])
+            nemus_report: dict = {}
+            pages = nemus.crawl(opts["delay"], opts["limit"], report=nemus_report)
         else:
             pages = module.crawl(languages, opts["delay"], opts["limit"])
         for lang, url, parsed in pages:
@@ -159,6 +148,7 @@ class Command(BaseCommand):
                             if parsed.get("category")
                             else {}
                         ),
+                        **({"offer": parsed["offer"]} if parsed.get("offer") else {}),
                     },
                     "codes": parsed["codes"],
                     "images": parsed["images"],
@@ -168,6 +158,14 @@ class Command(BaseCommand):
             stats["pages"] += 1
             codes_seen.update(parsed["codes"])
         stats["codes"] = len(codes_seen)
+        if module is nemus and nemus_report.get("complete"):
+            # Pilnas nuskaitymas: puslapių, kurių nebėra sitemap'e, prekės nebeparduodamos.
+            stats["stale"] = (
+                ManufacturerContent.objects.filter(source=nemus.SOURCE)
+                .exclude(url__in=seen)
+                .exclude(codes=[])
+                .update(codes=[])
+            )
         if isinstance(module, BrandSource) and not opts["limit"]:
             stale = ManufacturerContent.objects.none()
             for prefix in module.complete_prefixes:

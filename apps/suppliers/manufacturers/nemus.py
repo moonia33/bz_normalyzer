@@ -53,7 +53,13 @@ def _product_ld(text: str) -> dict:
     return {}
 
 
-def parse_page(content: bytes) -> dict | None:
+def _category(url: str) -> str:
+    """'https://nemus.lt/laivai/pripuciami/x-12' -> 'laivai > pripuciami' (jei kelias turi skyrius)."""
+    parts = [p for p in urlsplit(url).path.split("/") if p][:-1]
+    return " > ".join(parts)
+
+
+def parse_page(content: bytes, url: str = "") -> dict | None:
     """Prekės puslapis -> turinys vienam kodui; be kodo (model) -> None."""
     text = content.decode("utf-8", errors="replace")
     ld = _product_ld(text)
@@ -78,20 +84,30 @@ def parse_page(content: bytes) -> dict | None:
             )
     images = tree.xpath('//div[contains(@class,"swiper-slide")]/img/@data-largeimg')
     images = [u for u in dict.fromkeys(images) if urlsplit(u).hostname in HOSTS]
+    offers = ld.get("offers") if isinstance(ld.get("offers"), dict) else {}
+    brand = ld.get("brand") if isinstance(ld.get("brand"), dict) else {}
     return {
         "series": name,
         "intro": description,
         "codes": [code],
         "images": images,
         "sections": [{"heading": name, "text": "", "rows": {code: {}}}],
+        "category": _category(url),
+        # Kaina su PVM (mažmeninė), prieinamumas – tik yra/nėra.
+        "offer": {
+            "price": str(offers.get("price") or ""),
+            "in_stock": str(offers.get("availability") or "").endswith("/InStock"),
+            "brand": _clean(brand.get("name") or ""),
+        },
     }
 
 
-def crawl(codes, delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None):
-    """Visi sitemap puslapiai; grąžinami tik tie, kurių kodas yra `codes` (tuščias -> nieko)."""
-    wanted = {str(code).strip().upper() for code in codes} - {""}
-    if not wanted:
-        return False
+def crawl(delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None, report=None):
+    """Visi sitemap prekių puslapiai (visas nemus katalogas).
+
+    `report["complete"]` = True tik jei nuskaityti visi puslapiai (tada dingę puslapiai nuimami)."""
+    report = report if report is not None else {}
+    report["complete"] = False
     delay = max(delay, MIN_DELAY)
     s = s or http.session()
     # Svetainė nutraukia keep-alive ryšius, kai užklausos dažnos.
@@ -99,14 +115,19 @@ def crawl(codes, delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None):
     kwargs = {"sleep": sleep} if sleep else {}
     response = http.get(s, SITEMAP, delay, **kwargs)
     if response is None or response.status_code != 200:
-        return False
-    for n, url in enumerate(sitemap_urls(response.text)):
+        return
+    urls = sitemap_urls(response.text)
+    if not urls:
+        return
+    failed = 0
+    for n, url in enumerate(urls):
         if limit and n >= limit:
-            return False
+            return
         page = http.get(s, url, delay, **kwargs)
         if page is None or page.status_code != 200:
+            failed += 1
             continue
-        parsed = parse_page(page.content)
-        if parsed and parsed["codes"][0] in wanted:
+        parsed = parse_page(page.content, url)
+        if parsed:
             yield LANGUAGE, url, parsed
-    return True
+    report["complete"] = failed == 0

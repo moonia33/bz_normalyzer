@@ -8,6 +8,12 @@ Kainodara (vartotojo sprendimas):
     cost     = export × (1 + SALE)      -> purchase_price (BE cost_eur)
     price    = export × 1,5             -> rrp_price (be PVM; pricing engine ima RRP bazę)
     discount = round(−SALE × 100)       -> discount_percent (BE offer_discount_percent)
+
+nemus.lt (Albatros el. parduotuvė) – visas katalogas (`scrape_manufacturer --source nemus`):
+    kodas ir Stock faile -> savikaina iš Albatros; kaina = min(export × 1,5, nemus be PVM),
+                            galutinė = min(export × (1 + SALE) × 1,5, nemus be PVM)
+    kodo Stock faile nėra -> kaina = nemus be PVM, savikaina = × 0,8, likutis 19 jei „yra“
+    variantai: pavadinimo dalis po paskutinio kablelio ('..., L') -> ašis `size`
 """
 from __future__ import annotations
 
@@ -32,6 +38,12 @@ logger = logging.getLogger(__name__)
 RETAIL_SOURCES = ("nemus", "zuklys")
 PRICE_FACTOR = Decimal("1.5")
 CENT = Decimal("0.01")
+NEMUS = "nemus"
+VAT = Decimal("1.21")
+NEMUS_COST_FACTOR = Decimal("0.8")
+# nemus „yra“ = prekė parduotuvėje (pristatymas kaip iš Centrinio sandėlio)
+NEMUS_IN_STOCK = 19
+_MAX_VARIANT_LEN = 40
 
 # Antraštės (lower), pagal kurias atpažįstamas pilnas Stock failas
 _REQUIRED = {"code": "code", "item": "item", "export": "be pvm, export", "sale": "sale", "qty": "q-ty"}
@@ -164,8 +176,15 @@ class AlbatrosAdapter(BaseAdapter):
             except AdapterError as exc:
                 self.fetch_errors += 1
                 logger.warning("%s", exc)
+        use_nemus = self.config.get("nemus_catalog", self.config.get("manufacturer_groups", True))
+        nemus = nemus_contents() if use_nemus else {}
+        if nemus:
+            apply_nemus_prices(items, nemus)
+            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases")))
         if self.config.get("manufacturer_groups", True):
             apply_manufacturer_content(items, manufacturer_lookup(items))
+        if nemus:
+            apply_nemus_groups(items, nemus)
         if self.config.get("photo_groups", True):
             apply_photo_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
@@ -222,6 +241,135 @@ class AlbatrosAdapter(BaseAdapter):
             extra={k: v for k, v in extra.items() if v not in (None, "")},
             raw={k: str(v) if v is not None else None for k, v in row.items()},
         )
+
+
+def nemus_contents() -> dict[str, Any]:
+    """Kodas -> ManufacturerContent(source=nemus) (vienas puslapis = vienas kodas)."""
+    from apps.suppliers.models import ManufacturerContent
+
+    out: dict[str, Any] = {}
+    for content in ManufacturerContent.objects.filter(source=NEMUS).exclude(codes=[]).order_by("url"):
+        for code in content.codes:
+            out.setdefault(str(code).strip().upper(), content)
+    return out
+
+
+def _nemus_offer(content) -> dict:
+    offer = (content.specs or {}).get("offer")
+    return offer if isinstance(offer, dict) else {}
+
+
+def nemus_net_price(content) -> Decimal | None:
+    """nemus kaina su PVM -> be PVM (vidiniai skaičiavimai visada be PVM)."""
+    try:
+        gross = Decimal(str(_nemus_offer(content).get("price") or ""))
+    except ArithmeticError:
+        return None
+    if not gross.is_finite() or gross <= 0:
+        return None
+    return (gross / VAT).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
+    """Kodas ir Stock faile, ir nemus: savikaina iš Albatros, kaina – mažesnioji."""
+    for item in items:
+        content = nemus.get(item.external_id.upper())
+        net = nemus_net_price(content) if content is not None else None
+        if net is None:
+            continue
+        item.extra["nemus_price"] = str(net)
+        rrp = item.extra.get("rrp_price")
+        if rrp is None:
+            # Albatros kainos nenurodė -> kaip nemus-only prekė
+            item.extra["rrp_price"] = str(net)
+            item.purchase_price = (net * NEMUS_COST_FACTOR).quantize(CENT, rounding=ROUND_HALF_UP)
+            continue
+        rrp = Decimal(rrp)
+        final = rrp * (100 - (item.discount_percent or 0)) / 100
+        new_rrp, new_final = min(rrp, net), min(final, net)
+        item.extra["rrp_price"] = str(new_rrp)
+        discount = int(((1 - new_final / new_rrp) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+        item.discount_percent = discount or None
+
+
+def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None) -> list[NormalizedItem]:
+    """nemus prekės, kurių nėra Stock faile: kaina nemus be PVM, savikaina × 0,8."""
+    known = {item.external_id.upper() for item in items}
+    out = []
+    for code, content in nemus.items():
+        if code in known:
+            continue
+        net = nemus_net_price(content)
+        if net is None:
+            continue
+        offer = _nemus_offer(content)
+        name = content.series or code
+        section = (content.specs or {}).get("category") or "Nemus"
+        stock = NEMUS_IN_STOCK if offer.get("in_stock") else 0
+        images = list(content.images or [])
+        extra = {
+            "base_name": name,
+            "category_raw": section,
+            "rrp_price": str(net),
+            "nemus_price": str(net),
+            "retail_url": content.url,
+            "main_image_url": images[0] if images else "",
+        }
+        out.append(
+            NormalizedItem(
+                external_id=code,
+                sku=code,
+                name=name,
+                brand_name=detect_brand(name, "", aliases) or offer.get("brand") or "",
+                category_path=section,
+                images=images,
+                stock=stock,
+                purchase_price=(net * NEMUS_COST_FACTOR).quantize(CENT, rounding=ROUND_HALF_UP),
+                currency="EUR",
+                is_available=stock > 0,
+                extra={k: v for k, v in extra.items() if v not in (None, "")},
+                raw={"source": NEMUS, "url": content.url, **offer},
+            )
+        )
+    return out
+
+
+def split_variant_name(name: str) -> tuple[str, str]:
+    """'BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims, L' -> (bazė, 'L')."""
+    base, sep, value = (name or "").rpartition(",")
+    base, value = base.strip(), value.strip()
+    if not sep or not base or not value or len(value) > _MAX_VARIANT_LEN:
+        return name.strip(), ""
+    return base, value
+
+
+def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
+    """nemus neturi variantų: tas pats ženklas + pavadinimas iki paskutinio kablelio -> viena prekė.
+
+    Jungiama tik jei ≥ 2 kodai; gamintojo / PS grupės lieka pirmesnės."""
+    from django.utils.text import slugify
+
+    groups: dict[tuple[str, str], list[tuple[NormalizedItem, str, str]]] = {}
+    for item in items:
+        content = nemus.get(item.external_id.upper())
+        if content is None or item.extra.get("product_group"):
+            continue
+        base, value = split_variant_name(content.series or "")
+        if value:
+            key = (slugify(item.brand_name or ""), base.casefold())
+            groups.setdefault(key, []).append((item, base, value))
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        base = members[0][1]
+        digest = hashlib.sha1(base.casefold().encode()).hexdigest()[:8]
+        group = f"{NEMUS}:{slugify(base)[:60]}-{digest}"
+        for item, _, value in members:
+            item.extra["product_group"] = group
+            item.extra["base_name"] = base
+            axes = dict((item.attributes or {}).get("axes") or {})
+            axes.setdefault("size", value)
+            item.attributes = {**(item.attributes or {}), "axes": axes}
 
 
 def manufacturer_lookup(items: list[NormalizedItem]) -> dict[tuple[str, str], Any]:

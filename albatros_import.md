@@ -262,12 +262,23 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
     Lokalus rezultatas (Stock 10.21): 2 721 zuklys puslapis, 2 241 prekė su zuklys turiniu; be nuotraukos
     liko 2 447 prekės iš 7 246 (buvo 3 464). Daugiausia be nuotraukos: Mepps 550, Crazy Fish 367,
     Rapala 340, Lucky Craft 210, Borika 161, Kuusamo 94, Savage Gear 86, RAM Mounts 84, Stroft 77.
-  - **nemus.lt** (`scrape_manufacturer --source nemus [--codes-file]`, vartotojas leido; vienintelė
-    Jobe / Humminbird / Minn Kota / Borika tiekėjo el. parduotuvė): sitemap.xml -> visi ~1 500 prekių
-    puslapių (robots.txt leidžia), kodas = JSON-LD `model` (= Albatros kodas). Imamos 1000×1000
-    nuotraukos, LT aprašymas saugomas `ManufacturerContent.description`. Pauzė ≥2,5 s ir
-    `Connection: close` (svetainė nutraukia dažnus keep-alive ryšius). Be `--codes-file` – visi
-    `albatros` offer'ių kodai. Adapteryje `RETAIL_SOURCES = ("nemus", "zuklys")`: nemus pirmas.
+  - **nemus.lt** (`scrape_manufacturer --source nemus`, vartotojas leido; Albatros el. parduotuvė,
+    vienintelė Jobe / Humminbird / Minn Kota / Borika tiesioginė): sitemap.xml -> **visas katalogas**
+    (~1 500 puslapių, robots.txt leidžia; paieška uždrausta). Kodas = JSON-LD `model` (= Albatros kodas).
+    Saugoma: 1000×1000 nuotraukos, LT aprašymas (`description`, prekėje dar nenaudojamas – jau LT),
+    `specs.offer` = {price su PVM, in_stock, brand}, `specs.category` iš URL kelio. Pauzė ≥2,5 s,
+    `Connection: close`. Pilnas nuskaitymas be klaidų -> dingusių puslapių `codes=[]` (nebeparduodama).
+    Adapteris (`nemus_catalog`, numatyta kaip `manufacturer_groups`), vartotojo sprendimai:
+    - kodas ir Stock faile: savikaina iš Albatros; `rrp = min(export × 1,5, nemus / 1,21)`,
+      galutinė `min(export × (1 + SALE) × 1,5, nemus / 1,21)` -> `discount_percent` perskaičiuojamas;
+      jei `export` tuščias – kaip nemus-only. Likutis – iš Stock.
+    - kodo Stock faile nėra: atskira `albatros` prekė, `rrp = nemus / 1,21`, savikaina `× 0,8`,
+      likutis 19 (Centrinis sandėlis), jei nemus „yra“, kitaip 0. Be kainos – praleidžiama.
+    - variantai (`apply_nemus_groups`, po gamintojo grupių, prieš FOTO ir PS): tas pats ženklas +
+      pavadinimas iki paskutinio kablelio, ≥ 2 kodai -> `product_group = "nemus:<slug>-<sha1[:8]>"`,
+      ašis `size` = dalis po kablelio ('..., L', 'dydis 10', 'geltona 60-90 kg' – skaido export'as).
+    - Retail (nuotraukos) `RETAIL_SOURCES = ("nemus", "zuklys")`: nemus pirmas, jei turi nuotraukų.
+    - Laivai / kateriai kol kas kaip įprastos prekės (Plane BZ: atskiros kategorijos ir užklausos forma).
   - **Bendra FOTO** (`apply_photo_groups`, išjungiama `photo_groups: false`): tas pats ženklas +
     skyrius + Stock FOTO → `product_group = "<ženklas>:photo:<sha1[:12]>"`, `base_name` = bendra
     pavadinimo pradžia, ašis `model` = pavadinimo skirtumas. Nejungiama, jei bendra pradžia tik ženklas

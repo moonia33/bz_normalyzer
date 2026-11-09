@@ -10,6 +10,7 @@ from apps.suppliers.adapters.albatros import (
     badges_from_mark,
     detect_brand,
     normalize_code,
+    split_variant_name,
 )
 from apps.suppliers.adapters.base import AdapterError
 
@@ -288,3 +289,70 @@ class AlbatrosRetailFallbackTests(TestCase):
         rows = [[None, "244823001-S", "Jobe 4 Buckle Life Vest S", 2, None, 1, None, None, None]]
         (item,) = AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Vests"], *rows]))
         self.assertEqual(item.images, ["https://zuklys.lt/j.jpg"])
+
+
+def _nemus(code, name, price="121.00", in_stock=True, url=None, images=None):
+    from apps.suppliers.models import ManufacturerContent
+
+    return ManufacturerContent.objects.create(
+        source="nemus", url=url or f"https://nemus.lt/{code.lower()}", language="lt", series=name,
+        codes=[code], images=images or [],
+        specs={"offer": {"price": price, "in_stock": in_stock, "brand": "Jobe"}},
+    )
+
+
+class AlbatrosNemusTests(TestCase):
+    def _items(self, rows=()):
+        return {i.external_id: i for i in AlbatrosAdapter(_DbFeed()).iter_items(_xlsx([HEADER, ["Vests"], *rows]))}
+
+    def test_nemus_only_item_price_cost_stock(self):
+        _nemus("710313-1", "DAVIKLIS HUMMINBIRD XI 14 HW", images=["https://nemus.lt/a.webp"])
+        _nemus("710282-1", "DAVIKLIS HUMMINBIRD XM 9", price="60.50", in_stock=False)
+        items = self._items()
+        a, b = items["710313-1"], items["710282-1"]
+        self.assertEqual((a.extra["rrp_price"], a.purchase_price, a.stock), ("100.00", Decimal("80.00"), 19))
+        self.assertEqual(a.brand_name, "Humminbird")
+        self.assertEqual(a.extra["main_image_url"], "https://nemus.lt/a.webp")
+        self.assertEqual((b.extra["rrp_price"], b.stock, b.is_available), ("50.00", 0, False))
+
+    def test_nemus_without_price_is_skipped(self):
+        _nemus("X-1", "Jobe X", price="")
+        self.assertEqual(self._items(), {})
+
+    def test_stock_code_cost_from_albatros_price_lower(self):
+        _nemus("A-1", "Jobe A", price="12.10")  # 10,00 be PVM < 15,00
+        _nemus("A-2", "Jobe B", price="15.73")  # 13,00 be PVM
+        _nemus("A-3", "Jobe C", price="242.00")  # 200 – brangiau, Albatros lieka
+        rows = [
+            [None, code, f"Jobe {code}", 10, -0.3, 4, None, None, None] for code in ("A-1", "A-2", "A-3")
+        ]
+        items = self._items(rows)
+        a1, a2, a3 = items["A-1"], items["A-2"], items["A-3"]
+        self.assertEqual((a1.purchase_price, a1.extra["rrp_price"], a1.discount_percent), (Decimal("7.00"), "10.00", None))
+        self.assertEqual((a2.extra["rrp_price"], a2.discount_percent), ("13.00", 19))
+        self.assertEqual((a3.extra["rrp_price"], a3.discount_percent, a3.stock), ("15.00", 30, 4))
+        self.assertEqual(a1.stock, 4)
+
+    def test_stock_code_without_export_uses_nemus(self):
+        _nemus("A-1", "Jobe A")
+        (item,) = self._items([[None, "A-1", "Jobe A", None, None, 2, None, None, None]]).values()
+        self.assertEqual((item.extra["rrp_price"], item.purchase_price), ("100.00", Decimal("80.00")))
+
+    def test_sizes_after_last_comma_grouped(self):
+        name = "BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims"
+        for size in ("L", "M"):
+            _nemus(f"24482-{size}", f"{name}, {size}")
+        _nemus("1-1", "JOBE Cypris neskęstantys akiniai, juoda spalva")
+        _nemus("2-2", "JOBE kitas, juoda spalva")
+        items = self._items([[None, "24482-L", "Jobe Shadow L", 10, None, 1, None, None, None]])
+        l, m = items["24482-L"], items["24482-M"]
+        self.assertEqual(l.extra["product_group"], m.extra["product_group"])
+        self.assertEqual(m.extra["base_name"], name)
+        self.assertEqual((l.attributes["axes"], m.attributes["axes"]), ({"size": "L"}, {"size": "M"}))
+        self.assertNotIn("product_group", items["1-1"].extra)
+        self.assertNotIn("product_group", items["2-2"].extra)
+
+    def test_split_variant_name(self):
+        self.assertEqual(split_variant_name("Jobe liemenė, dydis 10"), ("Jobe liemenė", "dydis 10"))
+        self.assertEqual(split_variant_name("DAVIKLIS XI 14 HW"), ("DAVIKLIS XI 14 HW", ""))
+        self.assertEqual(split_variant_name(", L"), (", L", ""))
