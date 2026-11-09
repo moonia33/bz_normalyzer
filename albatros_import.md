@@ -266,12 +266,16 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
     vienintelė Jobe / Humminbird / Minn Kota / Borika tiesioginė): sitemap.xml -> **visas katalogas**
     (~1 500 puslapių, robots.txt leidžia; paieška uždrausta). Kodas = JSON-LD `model` (= Albatros kodas).
     Saugoma: 1000×1000 nuotraukos, LT aprašymas (`description`, prekėje dar nenaudojamas – jau LT),
-    `specs.offer` = {price su PVM, in_stock, brand}, `specs.category` iš URL kelio. Pauzė ≥2,5 s,
+    `specs.offer` = {price su PVM, in_stock, brand}. Prekių URL be skyriaus (`nemus.lt/xo-explr-9`),
+    todėl `specs.category` = breadcrumb iš kategorijų puslapių (sitemap'e, su `?page=N`), giliausia,
+    jei prekė keliose. Ženklas: pavadinimas -> `offer.brand` per aliasus (Minnkota -> Minn Kota). Pauzė ≥2,5 s,
     `Connection: close`. Pilnas nuskaitymas be klaidų -> dingusių puslapių `codes=[]` (nebeparduodama).
     Adapteris (`nemus_catalog`, numatyta kaip `manufacturer_groups`), vartotojo sprendimai:
     - kodas ir Stock faile: savikaina iš Albatros; `rrp = min(export × 1,5, nemus / 1,21)`,
       galutinė `min(export × (1 + SALE) × 1,5, nemus / 1,21)` -> `discount_percent` perskaičiuojamas;
-      jei `export` tuščias – kaip nemus-only. Likutis – iš Stock.
+      jei `export` tuščias – kaip nemus-only. Likutis – iš Stock. Faktas (Stock 10.21, 649 kodai):
+      Jobe / Humminbird / Minn Kota ir kt. `export` = nemus kaina be PVM (mažmeninė), SALE -0,2 =
+      dilerio nuolaida -> `× 1,5` būtų +50 % virš rinkos; `min()` palieka nemus kainą, marža 20 %.
     - kodo Stock faile nėra: atskira `albatros` prekė, `rrp = nemus / 1,21`, savikaina `× 0,8`,
       likutis 19 (Centrinis sandėlis), jei nemus „yra“, kitaip 0. Be kainos – praleidžiama.
     - variantai (`apply_nemus_groups`, po gamintojo grupių, prieš FOTO ir PS): tas pats ženklas +
