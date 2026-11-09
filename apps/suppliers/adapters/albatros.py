@@ -283,6 +283,7 @@ def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
             # Albatros kainos nenurodė -> kaip nemus-only prekė
             item.extra["rrp_price"] = str(net)
             item.purchase_price = (net * NEMUS_COST_FACTOR).quantize(CENT, rounding=ROUND_HALF_UP)
+            item.discount_percent = None
             continue
         rrp = Decimal(rrp)
         final = rrp * (100 - (item.discount_percent or 0)) / 100

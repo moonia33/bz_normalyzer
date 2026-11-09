@@ -335,8 +335,9 @@ class AlbatrosNemusTests(TestCase):
 
     def test_stock_code_without_export_uses_nemus(self):
         _nemus("A-1", "Jobe A")
-        (item,) = self._items([[None, "A-1", "Jobe A", None, None, 2, None, None, None]]).values()
+        (item,) = self._items([[None, "A-1", "Jobe A", None, -0.3, 2, None, None, None]]).values()
         self.assertEqual((item.extra["rrp_price"], item.purchase_price), ("100.00", Decimal("80.00")))
+        self.assertIsNone(item.discount_percent)
 
     def test_sizes_after_last_comma_grouped(self):
         name = "BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims"
