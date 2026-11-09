@@ -1530,3 +1530,13 @@ class StaleMainImageTests(TestCase):
         offer = self._import("http://www.albatros.lt/public/pdf/5.pdf", sibling)
         self.assertEqual(Offer.objects.get(supplier=self.supplier, external_id="4").product_id, offer.product_id)
         self.assertEqual(offer.product.main_image_url, "http://x/4.jpg")
+
+    def test_stale_sibling_image_not_reused(self):
+        self.feed.config = {**self.feed.config, "fixed_groups": {
+            "4": {"group": "ps:1", "base_name": "TiCA"}, "5": {"group": "ps:1", "base_name": "TiCA"}}}
+        self.feed.save()
+        self._import("http://x/5.jpg", [["", 4, "TiCA P", 10, None, 3, None, "http://x/4.jpg"]])
+        Offer.objects.filter(supplier=self.supplier, external_id="4").update(main_image_url="http://x/4.pdf")
+        offer = self._import("http://www.albatros.lt/public/pdf/5.pdf")
+        self.assertEqual(offer.product.main_image_url, "")
+
