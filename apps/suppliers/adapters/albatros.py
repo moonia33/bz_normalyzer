@@ -28,7 +28,8 @@ from apps.suppliers.adapters.registry import register_adapter
 
 logger = logging.getLogger(__name__)
 
-RETAIL_SOURCE = "zuklys"
+# Mažmenininkų puslapiai kodams be gamintojo turinio, pirmumo tvarka.
+RETAIL_SOURCES = ("nemus", "zuklys")
 PRICE_FACTOR = Decimal("1.5")
 CENT = Decimal("0.01")
 
@@ -229,7 +230,7 @@ def manufacturer_lookup(items: list[NormalizedItem]) -> dict[tuple[str, str], An
 
     from apps.suppliers.models import ManufacturerContent
 
-    sources = ({slugify(item.brand_name or "") for item in items} - {""}) | {RETAIL_SOURCE}
+    sources = ({slugify(item.brand_name or "") for item in items} - {""}) | set(RETAIL_SOURCES)
     rank = {"en": 0, "de": 1}
     best: dict[tuple[str, str], Any] = {}
     for content in ManufacturerContent.objects.filter(source__in=sources).exclude(codes=[]):
@@ -251,7 +252,17 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
         source = slugify(item.brand_name or "")
         content = lookup.get((source, item.external_id.upper()))
         if content is None:
-            _apply_retail(item, lookup.get((RETAIL_SOURCE, item.external_id.upper())))
+            _apply_retail(
+                item,
+                next(
+                    (
+                        lookup[(retail, item.external_id.upper())]
+                        for retail in RETAIL_SOURCES
+                        if (retail, item.external_id.upper()) in lookup
+                    ),
+                    None,
+                ),
+            )
             continue
         slug = content.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".html")
         item.extra["product_group"] = f"{source}:{slug}"
@@ -281,7 +292,7 @@ def apply_manufacturer_content(items: list[NormalizedItem], lookup: dict) -> Non
 
 
 def _apply_retail(item: NormalizedItem, content) -> None:
-    """Mažmenininko (zuklys.lt) puslapis: tik nuotraukos ir parametrai, be grupavimo."""
+    """Mažmenininko (nemus.lt, zuklys.lt) puslapis: tik nuotraukos ir parametrai, be grupavimo."""
     if content is None:
         return
     item.extra["retail_url"] = content.url

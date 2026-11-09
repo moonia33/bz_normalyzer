@@ -420,3 +420,59 @@ class ZuklysParseTests(SimpleTestCase):
                 return _response(status=503)
 
         self.assertEqual(list(zuklys.crawl(["1"], s=S(), sleep=lambda *_: None)), [])
+
+
+_NEMUS_PAGE = """<html><head><script type="application/ld+json">{"@context": "http://schema.org/",
+"@type": "Product", "name": "DAVIKLIS HUMMINBIRD XI 14 HW", "model": "710313-1"}</script></head><body>
+<h1>DAVIKLIS HUMMINBIRD XI 14 HW</h1>
+<div class="swiper-slide"><img src="https://nemus.lt/image/cache/catalog/a-550x550.webp"
+ data-largeimg="https://nemus.lt/image/cache/catalog/a-1000x1000.webp"/></div>
+<div class="swiper-slide"><img data-largeimg="https://evil.example/x.webp"/></div>
+<ul class="nav nav-tabs"><li><a href="#tab-a" data-toggle="tab">Aprašymas</a></li>
+<li><a href="#tab-b" data-toggle="tab">Komentarai</a></li></ul>
+<div id="tab-a"><div class="block-content"><p><b>XI 14 HW</b></p><p>Keitiklis 130–250 kHz.</p></div></div>
+<div id="tab-b"><div class="block-content"><h4>Rašyti apžvalgą</h4></div></div>
+</body></html>"""
+
+
+class NemusTests(TestCase):
+    def test_parse_page_code_images_description(self):
+        from apps.suppliers.manufacturers import nemus
+
+        parsed = nemus.parse_page(_NEMUS_PAGE.encode())
+        self.assertEqual(parsed["codes"], ["710313-1"])
+        self.assertEqual(parsed["images"], ["https://nemus.lt/image/cache/catalog/a-1000x1000.webp"])
+        self.assertEqual(parsed["intro"], "XI 14 HW\nKeitiklis 130–250 kHz.")
+        self.assertEqual(parsed["series"], "DAVIKLIS HUMMINBIRD XI 14 HW")
+
+    def test_page_without_code_is_skipped(self):
+        from apps.suppliers.manufacturers import nemus
+
+        self.assertIsNone(nemus.parse_page(b"<html><body><h1>Kategorija</h1></body></html>"))
+
+    def test_crawl_sitemap_only_wanted_codes_and_hosts(self):
+        from apps.suppliers.manufacturers import nemus
+
+        xml = (
+            "<urlset><url><loc>https://nemus.lt/a-1</loc></url>"
+            "<url><loc>https://nemus.lt/index.php?route=product/product&amp;product_id=2</loc></url>"
+            "<url><loc>https://nemus.lt.evil.com/c</loc></url></urlset>"
+        )
+        other = _NEMUS_PAGE.replace("710313-1", "999")
+        pages = {"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/index.php?route=product/product&product_id=2": other}
+        urls = []
+
+        class R:
+            def __init__(self, body):
+                self.status_code, self.text, self.content, self.headers = 200, body, body.encode(), {}
+
+        class S:
+            headers = {}
+
+            def get(self, url, **_):
+                urls.append(url)
+                return R(xml if url == nemus.SITEMAP else pages[url])
+
+        out = list(nemus.crawl(["710313-1"], s=S(), sleep=lambda *_: None))
+        self.assertEqual([url for _, url, _ in out], ["https://nemus.lt/a-1"])
+        self.assertEqual(urls, [nemus.SITEMAP, *pages])

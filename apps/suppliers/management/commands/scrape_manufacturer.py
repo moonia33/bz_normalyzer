@@ -3,11 +3,11 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.ingestion.models import Offer
-from apps.suppliers.manufacturers import climax, sportex, zuklys
+from apps.suppliers.manufacturers import climax, nemus, sportex, zuklys
 from apps.suppliers.manufacturers.brands import BRANDS, BrandSource
 from apps.suppliers.models import ManufacturerContent
 
-SOURCES = {"climax": climax, "sportex": sportex, "zuklys": zuklys, **BRANDS}
+SOURCES = {"climax": climax, "nemus": nemus, "sportex": sportex, "zuklys": zuklys, **BRANDS}
 
 
 def _series_codes(brand: str, series: str) -> list[str]:
@@ -24,11 +24,26 @@ def _series_codes(brand: str, series: str) -> list[str]:
     return sorted(codes)
 
 
+def _codes_file(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as fh:
+        return [line.strip().upper() for line in fh if line.strip()]
+
+
+def _albatros_codes() -> list[str]:
+    return sorted(
+        {
+            str(code).strip().upper()
+            for code in Offer.objects.filter(supplier__code="albatros").values_list(
+                "external_id", flat=True
+            )
+        }
+    )
+
+
 def _zuklys_codes(path: str | None) -> list[str]:
     """Albatros kodai, kuriems dar nėra jokio turinio (gamintojo ar zuklys)."""
     if path:
-        with open(path, encoding="utf-8") as fh:
-            return [line.strip().upper() for line in fh if line.strip()]
+        return _codes_file(path)
     from django.utils.text import slugify
 
     covered = set()
@@ -92,7 +107,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--codes-file",
-            help="zuklys: kodų sąrašas (po vieną eilutėje); be jo – tiekėjo albatros kodai be turinio.",
+            help="zuklys/nemus: kodų sąrašas (po vieną eilutėje); be jo – tiekėjo albatros kodai be turinio.",
         )
 
     def handle(self, *args, **opts):
@@ -107,6 +122,9 @@ class Command(BaseCommand):
         codes_seen: set[str] = set()
         if module is zuklys:
             pages = zuklys.crawl(_zuklys_codes(opts.get("codes_file")), opts["delay"], opts["limit"])
+        elif module is nemus:
+            path = opts.get("codes_file")
+            pages = nemus.crawl(_codes_file(path) if path else _albatros_codes(), opts["delay"], opts["limit"])
         else:
             pages = module.crawl(languages, opts["delay"], opts["limit"])
         for lang, url, parsed in pages:
