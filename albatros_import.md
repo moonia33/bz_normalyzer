@@ -259,11 +259,14 @@ Patikrinta iš Devin VM (paieška pagal Albatros kodą):
     `ManufacturerContent(source="zuklys", language="lt")`; adapteris ima tik nuotraukas ir
     parametrų lentelę (`attributes.specs`), **negrupuoja**. Be `--codes-file` – `albatros` offer'ių
     kodai be jokio turinio. 1 sitemap + ≤3 puslapiai kodui (tik slug'o atitikmenims; ~3 000 iš 7 573).
+    Lokalus rezultatas (Stock 10.21): 2 721 zuklys puslapis, 2 241 prekė su zuklys turiniu; be nuotraukos
+    liko 2 447 prekės iš 7 246 (buvo 3 464). Daugiausia be nuotraukos: Mepps 550, Crazy Fish 367,
+    Rapala 340, Lucky Craft 210, Borika 161, Kuusamo 94, Savage Gear 86, RAM Mounts 84, Stroft 77.
   - **Bendra FOTO** (`apply_photo_groups`, išjungiama `photo_groups: false`): tas pats ženklas +
     skyrius + Stock FOTO → `product_group = "<ženklas>:photo:<sha1[:12]>"`, `base_name` = bendra
     pavadinimo pradžia, ašis `model` = pavadinimo skirtumas. Nejungiama, jei bendra pradžia tik ženklas
     (bendra kategorijos nuotrauka).
-  - rockworld.lt pagal kodą neranda; zuklesreikmenys.lt → zvejybosreikmenys.lt už Cloudflare
+  - rockworld.lt pagal kodą neranda; zuklesreikmenys.lt → zvejybosreikmenys.lt už Cloudflare (403 ir iš srv2/ES – blokuojami DC IP)
     challenge (neapeinama).
 - **Rankinis PS grupavimas svarbiausias** (vartotojo sprendimas): feed config
   `fixed_groups: {kodas: "ps:<BE product id>"}` (arba `{"group": …, "base_name": …}`) perrašo
