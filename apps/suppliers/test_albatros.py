@@ -344,6 +344,12 @@ class AlbatrosNemusTests(TestCase):
         (item,) = self._items([[None, "A-1", "Jobe A", 0, None, 2, None, None, None]]).values()
         self.assertEqual((item.extra["rrp_price"], item.purchase_price, item.stock), ("100.00", Decimal("80.00"), 2))
 
+    def test_bad_stock_row_is_not_replaced_by_nemus(self):
+        _nemus("A-1", "Jobe A")
+        adapter = AlbatrosAdapter(_DbFeed())
+        items = list(adapter.iter_items(_xlsx([HEADER, ["Vests"], [None, "A-1", "Jobe A", 10, None, "x", None, None, None]])))
+        self.assertEqual((items, adapter.fetch_errors), ([], 1))
+
     def test_sizes_after_last_comma_grouped(self):
         name = "BRABUS x JOBE „Shadow Fragment“ plūdrumo liemenė moterims"
         for size in ("L", "M"):

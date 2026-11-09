@@ -170,17 +170,19 @@ class AlbatrosAdapter(BaseAdapter):
         # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
         self.fetch_errors = 0
         items = []
+        failed = set()
         for row in self.parse(payload):
             try:
                 items.append(self.normalize(row))
             except AdapterError as exc:
                 self.fetch_errors += 1
+                failed.add(str(row.get("code") or "").strip().upper())
                 logger.warning("%s", exc)
         use_nemus = self.config.get("nemus_catalog", self.config.get("manufacturer_groups", True))
         nemus = nemus_contents() if use_nemus else {}
         if nemus:
             apply_nemus_prices(items, nemus)
-            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases")))
+            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases"), skip=failed))
         if self.config.get("manufacturer_groups", True):
             apply_manufacturer_content(items, manufacturer_lookup(items))
         if nemus:
@@ -293,9 +295,11 @@ def apply_nemus_prices(items: list[NormalizedItem], nemus: dict) -> None:
         item.discount_percent = discount or None
 
 
-def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None) -> list[NormalizedItem]:
-    """nemus prekės, kurių nėra Stock faile: kaina nemus be PVM, savikaina × 0,8."""
-    known = {item.external_id.upper() for item in items}
+def nemus_items(items: list[NormalizedItem], nemus: dict, aliases=None, skip=()) -> list[NormalizedItem]:
+    """nemus prekės, kurių nėra Stock faile: kaina nemus be PVM, savikaina × 0,8.
+
+    `skip` – klaidingų Stock eilučių kodai: jų likutis nekeičiamas nemus duomenimis."""
+    known = {item.external_id.upper() for item in items} | set(skip)
     out = []
     for code, content in nemus.items():
         if code in known:
