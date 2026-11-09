@@ -481,3 +481,14 @@ class NemusTests(TestCase):
         from apps.suppliers.manufacturers import nemus
 
         self.assertIsNone(nemus.parse_page(b""))
+
+    def test_crawl_without_codes_fetches_nothing(self):
+        from apps.suppliers.manufacturers import nemus
+
+        class S:
+            headers: dict = {}
+
+            def get(self, url, **_):
+                raise AssertionError(url)
+
+        self.assertEqual(list(nemus.crawl([], s=S(), sleep=lambda *_: None)), [])

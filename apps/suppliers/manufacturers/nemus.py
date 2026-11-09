@@ -88,7 +88,10 @@ def parse_page(content: bytes) -> dict | None:
 
 
 def crawl(codes, delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None):
-    """Visi sitemap puslapiai; grąžinami tik tie, kurių kodas yra `codes` (tuščias = visi)."""
+    """Visi sitemap puslapiai; grąžinami tik tie, kurių kodas yra `codes` (tuščias -> nieko)."""
+    wanted = {str(code).strip().upper() for code in codes} - {""}
+    if not wanted:
+        return False
     delay = max(delay, MIN_DELAY)
     s = s or http.session()
     # Svetainė nutraukia keep-alive ryšius, kai užklausos dažnos.
@@ -97,7 +100,6 @@ def crawl(codes, delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None):
     response = http.get(s, SITEMAP, delay, **kwargs)
     if response is None or response.status_code != 200:
         return False
-    wanted = {str(code).strip().upper() for code in codes}
     for n, url in enumerate(sitemap_urls(response.text)):
         if limit and n >= limit:
             return False
@@ -105,6 +107,6 @@ def crawl(codes, delay: float = MIN_DELAY, limit: int = 0, s=None, sleep=None):
         if page is None or page.status_code != 200:
             continue
         parsed = parse_page(page.content)
-        if parsed and (not wanted or parsed["codes"][0] in wanted):
+        if parsed and parsed["codes"][0] in wanted:
             yield LANGUAGE, url, parsed
     return True
