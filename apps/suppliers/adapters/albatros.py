@@ -377,7 +377,11 @@ def split_color(value: str) -> tuple[str, str]:
     color = [bool(_COLOR.match(w)) for w in words]
     for i, word in enumerate(words):
         if word.startswith("spalv"):
-            color[: i + 1] = [True] * (i + 1)
+            color[i] = True
+            j = i - 1
+            while j >= 0 and not any(ch.isdigit() for ch in tokens[j]) and not tokens[j].isupper():
+                color[j] = True
+                j -= 1
     for i, word in enumerate(words):
         if word in _COLOR_GLUE and 0 < i < len(words) - 1 and color[i - 1] and color[i + 1]:
             color[i] = True
