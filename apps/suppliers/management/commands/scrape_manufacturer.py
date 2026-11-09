@@ -3,11 +3,11 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.ingestion.models import Offer
-from apps.suppliers.manufacturers import climax, sportex, zuklys
+from apps.suppliers.manufacturers import climax, nemus, sportex, zuklys
 from apps.suppliers.manufacturers.brands import BRANDS, BrandSource
 from apps.suppliers.models import ManufacturerContent
 
-SOURCES = {"climax": climax, "sportex": sportex, "zuklys": zuklys, **BRANDS}
+SOURCES = {"climax": climax, "nemus": nemus, "sportex": sportex, "zuklys": zuklys, **BRANDS}
 
 
 def _series_codes(brand: str, series: str) -> list[str]:
@@ -24,11 +24,15 @@ def _series_codes(brand: str, series: str) -> list[str]:
     return sorted(codes)
 
 
+def _codes_file(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as fh:
+        return [line.strip().upper() for line in fh if line.strip()]
+
+
 def _zuklys_codes(path: str | None) -> list[str]:
     """Albatros kodai, kuriems dar nėra jokio turinio (gamintojo ar zuklys)."""
     if path:
-        with open(path, encoding="utf-8") as fh:
-            return [line.strip().upper() for line in fh if line.strip()]
+        return _codes_file(path)
     from django.utils.text import slugify
 
     covered = set()
@@ -107,6 +111,9 @@ class Command(BaseCommand):
         codes_seen: set[str] = set()
         if module is zuklys:
             pages = zuklys.crawl(_zuklys_codes(opts.get("codes_file")), opts["delay"], opts["limit"])
+        elif module is nemus:
+            nemus_report: dict = {}
+            pages = nemus.crawl(opts["delay"], opts["limit"], report=nemus_report)
         else:
             pages = module.crawl(languages, opts["delay"], opts["limit"])
         for lang, url, parsed in pages:
@@ -141,6 +148,7 @@ class Command(BaseCommand):
                             if parsed.get("category")
                             else {}
                         ),
+                        **({"offer": parsed["offer"]} if parsed.get("offer") else {}),
                     },
                     "codes": parsed["codes"],
                     "images": parsed["images"],
@@ -150,6 +158,16 @@ class Command(BaseCommand):
             stats["pages"] += 1
             codes_seen.update(parsed["codes"])
         stats["codes"] = len(codes_seen)
+        if module is nemus and nemus_report.get("categories"):
+            stats["categorized"] = _nemus_categories(nemus_report["categories"])
+        if module is nemus and nemus_report.get("complete"):
+            # Pilnas nuskaitymas: puslapių, kurių nebėra sitemap'e, prekės nebeparduodamos.
+            stats["stale"] = (
+                ManufacturerContent.objects.filter(source=nemus.SOURCE)
+                .exclude(url__in=nemus_report["urls"])
+                .exclude(codes=[])
+                .update(codes=[])
+            )
         if isinstance(module, BrandSource) and not opts["limit"]:
             stale = ManufacturerContent.objects.none()
             for prefix in module.complete_prefixes:
@@ -169,3 +187,15 @@ class Command(BaseCommand):
                 )
             stats["dropped"] = _keep_most_specific(opts["source"], seen)
         self.stdout.write(" ".join(f"{k}={v}" for k, v in stats.items()))
+
+
+def _nemus_categories(categories: dict) -> int:
+    """Prekių URL be skyriaus -> kategorija iš kategorijų puslapių (`specs.category`)."""
+    changed = []
+    for content in ManufacturerContent.objects.filter(source=nemus.SOURCE):
+        path = nemus.category_of(content.url, categories)
+        if path and (content.specs or {}).get("category") != path:
+            content.specs = {**(content.specs or {}), "category": path}
+            changed.append(content)
+    ManufacturerContent.objects.bulk_update(changed, ["specs"], batch_size=500)
+    return len(changed)

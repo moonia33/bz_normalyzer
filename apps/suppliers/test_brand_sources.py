@@ -1,3 +1,4 @@
+from typing import ClassVar
 from unittest import mock
 
 from django.core.management import call_command
@@ -420,3 +421,136 @@ class ZuklysParseTests(SimpleTestCase):
                 return _response(status=503)
 
         self.assertEqual(list(zuklys.crawl(["1"], s=S(), sleep=lambda *_: None)), [])
+
+
+_NEMUS_PAGE = """<html><head><script type="application/ld+json">{"@context": "http://schema.org/",
+"@type": "Product", "name": "DAVIKLIS HUMMINBIRD XI 14 HW", "model": "710313-1",
+"offers": {"@type": "Offer", "priceCurrency": "EUR", "price": "145.00",
+"availability": "http://schema.org/InStock"}, "brand": {"@type": "Brand", "name": "Humminbird"}}</script></head><body>
+<h1>DAVIKLIS HUMMINBIRD XI 14 HW</h1>
+<div class="swiper-slide"><img src="https://nemus.lt/image/cache/catalog/a-550x550.webp"
+ data-largeimg="https://nemus.lt/image/cache/catalog/a-1000x1000.webp"/></div>
+<div class="swiper-slide"><img data-largeimg="https://evil.example/x.webp"/></div>
+<ul class="nav nav-tabs"><li><a href="#tab-a" data-toggle="tab">Aprašymas</a></li>
+<li><a href="#tab-b" data-toggle="tab">Komentarai</a></li></ul>
+<div id="tab-a"><div class="block-content"><p><b>XI 14 HW</b></p><p>Keitiklis 130–250 kHz.</p></div></div>
+<div id="tab-b"><div class="block-content"><h4>Rašyti apžvalgą</h4></div></div>
+</body></html>"""
+
+
+class NemusTests(TestCase):
+    def test_parse_page_code_images_description(self):
+        from apps.suppliers.manufacturers import nemus
+
+        parsed = nemus.parse_page(_NEMUS_PAGE.encode())
+        self.assertEqual(parsed["codes"], ["710313-1"])
+        self.assertEqual(parsed["images"], ["https://nemus.lt/image/cache/catalog/a-1000x1000.webp"])
+        self.assertEqual(parsed["intro"], "XI 14 HW\nKeitiklis 130–250 kHz.")
+        self.assertEqual(parsed["series"], "DAVIKLIS HUMMINBIRD XI 14 HW")
+        self.assertEqual(parsed["offer"], {"price": "145.00", "in_stock": True, "brand": "Humminbird"})
+
+    def test_out_of_stock_and_category_from_url(self):
+        from apps.suppliers.manufacturers import nemus
+
+        page = _NEMUS_PAGE.replace("/InStock", "/OutOfStock").encode()
+        parsed = nemus.parse_page(page, "https://nemus.lt/laivai/pripuciami/x-12")
+        self.assertFalse(parsed["offer"]["in_stock"])
+        self.assertEqual(parsed["category"], "laivai > pripuciami")
+        self.assertEqual(nemus.parse_page(page, "https://nemus.lt/x-12")["category"], "")
+
+    def test_page_without_code_is_skipped(self):
+        from apps.suppliers.manufacturers import nemus
+
+        self.assertIsNone(nemus.parse_page(b"<html><body><h1>Kategorija</h1></body></html>"))
+
+    def _crawl(self, pages, xml=None):
+        from apps.suppliers.manufacturers import nemus
+
+        xml = xml or "<urlset>" + "".join(f"<url><loc>{u}</loc></url>" for u in pages) + "</urlset>"
+        urls = []
+
+        class R:
+            def __init__(self, body, status=200):
+                self.status_code, self.text, self.content, self.headers = status, body, body.encode(), {}
+
+        class S:
+            headers: ClassVar[dict] = {}
+
+            def get(self, url, **_):
+                urls.append(url)
+                if url == nemus.SITEMAP:
+                    return R(xml)
+                body = pages[url]
+                return R("", 500) if body is None else R(body)
+
+        report = {}
+        out = list(nemus.crawl(s=S(), sleep=lambda *_: None, report=report))
+        return out, urls, report
+
+    def test_crawl_whole_catalog_and_hosts(self):
+        from apps.suppliers.manufacturers import nemus
+
+        xml = (
+            "<urlset><url><loc>https://nemus.lt/a-1</loc></url>"
+            "<url><loc>https://nemus.lt/index.php?route=product/product&amp;product_id=2</loc></url>"
+            "<url><loc>https://nemus.lt.evil.com/c</loc></url></urlset>"
+        )
+        other = _NEMUS_PAGE.replace("710313-1", "999")
+        pages = {"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/index.php?route=product/product&product_id=2": other}
+        out, urls, report = self._crawl(pages, xml)
+        self.assertEqual([p["codes"] for _, _, p in out], [["710313-1"], ["999"]])
+        self.assertEqual(urls, [nemus.SITEMAP, *pages])
+        self.assertTrue(report["complete"])
+
+    def test_category_pages_map_products_with_pagination(self):
+        from apps.suppliers.manufacturers import nemus
+
+        def cat(slugs, pages=2):
+            thumbs = "".join(
+                f'<div class="product-thumb"><a href="https://nemus.lt/aksesuarai/ram/{s}">x</a></div>' for s in slugs
+            )
+            nav = "".join(f'<a href="https://nemus.lt/aksesuarai/ram?page={n}">{n}</a>' for n in range(2, pages + 1))
+            return (
+                '<html><body><ul class="breadcrumb"><li><a href="https://nemus.lt/pagrindinis"><i></i></a></li>'
+                '<li><a href="https://nemus.lt/aksesuarai">Aksesuarai</a></li>'
+                f'<li><a href="https://nemus.lt/aksesuarai/ram">Ram Laikikliai</a></li></ul>{thumbs}{nav}</body></html>'
+            )
+
+        top = cat(["a-1"], pages=1).replace(
+            '<li><a href="https://nemus.lt/aksesuarai/ram">Ram Laikikliai</a></li>', ""
+        )
+        pages = {
+            "https://nemus.lt/a-1": _NEMUS_PAGE,
+            "https://nemus.lt/aksesuarai": top,
+            "https://nemus.lt/aksesuarai/ram": cat(["a-1"]),
+            "https://nemus.lt/aksesuarai/ram?page=2": cat(["b-2"]),
+        }
+        xml = "<urlset>" + "".join(f"<url><loc>{u}</loc></url>" for u in list(pages)[:3]) + "</urlset>"
+        out, urls, report = self._crawl(pages, xml)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(report["complete"])
+        self.assertIn("https://nemus.lt/aksesuarai/ram?page=2", urls)
+        self.assertEqual(
+            report["categories"], {"a-1": "Aksesuarai > Ram Laikikliai", "b-2": "Aksesuarai > Ram Laikikliai"}
+        )
+        self.assertEqual(nemus.category_of("https://nemus.lt/b-2", report["categories"]), "Aksesuarai > Ram Laikikliai")
+
+    def test_unparsed_page_stays_in_sitemap_urls(self):
+        out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": "<html></html>"})
+        self.assertEqual((len(out), report["complete"]), (1, True))
+        self.assertEqual(report["urls"], {"https://nemus.lt/a-1", "https://nemus.lt/b-2"})
+
+    def test_failed_page_makes_crawl_incomplete(self):
+        out, _, report = self._crawl({"https://nemus.lt/a-1": _NEMUS_PAGE, "https://nemus.lt/b-2": None})
+        self.assertEqual(len(out), 1)
+        self.assertFalse(report["complete"])
+
+    def test_empty_page_is_skipped(self):
+        from apps.suppliers.manufacturers import nemus
+
+        self.assertIsNone(nemus.parse_page(b""))
+
+    def test_empty_sitemap_is_not_complete(self):
+        out, _, report = self._crawl({})
+        self.assertEqual(out, [])
+        self.assertFalse(report["complete"])
