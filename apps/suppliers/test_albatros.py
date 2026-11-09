@@ -404,6 +404,12 @@ class AlbatrosNemusTests(TestCase):
         self.assertTrue(item.extra["product_group"].startswith("nemus:"))
         self.assertEqual((item.extra["base_name"], item.attributes["axes"]), ("JOBE Base šalmas", {"size": "XL"}))
 
+    def test_same_base_other_brand_is_other_group(self):
+        _nemus("J-L", "Šalmas, L", brand="Jobe")
+        _nemus("H-L", "Šalmas, L", brand="Hertz")
+        items = self._items()
+        self.assertNotEqual(items["J-L"].extra["product_group"], items["H-L"].extra["product_group"])
+
     def test_split_color(self):
         self.assertEqual(split_color("smaragdinė spalva S"), ("smaragdinė spalva", "S"))
         self.assertEqual(split_color("juodas / pilkas"), ("juodas / pilkas", ""))

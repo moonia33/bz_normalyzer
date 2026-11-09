@@ -408,13 +408,13 @@ def apply_nemus_groups(items: list[NormalizedItem], nemus: dict) -> None:
         if value:
             key = (slugify(item.brand_name or ""), base.casefold())
             groups.setdefault(key, []).append((item, base, value))
-    for members in groups.values():
+    for (brand, key), members in groups.items():
         counts = Counter(value.casefold() for _, _, value in members)
         members = [m for m in members if counts[m[2].casefold()] == 1]
         if not members:
             continue
         base = members[0][1]
-        digest = hashlib.sha1(base.casefold().encode()).hexdigest()[:8]
+        digest = hashlib.sha1(f"{brand}|{key}".encode()).hexdigest()[:8]
         group = f"{NEMUS}:{slugify(base)[:60]}-{digest}"
         for item, _, value in members:
             item.extra["product_group"] = group
