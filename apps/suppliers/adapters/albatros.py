@@ -369,7 +369,8 @@ _COLOR = re.compile(
 _COLOR_GLUE = {"/", "-", "ir", "&"}
 _SIZES = {
     "XS", "S", "M", "L", "XL", "XXL", "XXXL", "2XS", "2XL", "3XL", "4XL", "5XL", "UNI", "UNIVERSAL",
-    "SMALL", "MEDIUM", "LARGE", "MAŽAS", "VIDUTINIS", "DIDELIS", "DYDIS",
+    "SMALL", "MEDIUM", "LARGE", "MAŽAS", "VIDUTINIS", "DIDELIS", "DYDIS", "ONE", "SIZE", "OS",
+    "UNIVERSALUS",
 }
 
 

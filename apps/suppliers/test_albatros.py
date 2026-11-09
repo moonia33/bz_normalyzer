@@ -438,6 +438,7 @@ class AlbatrosNemusTests(TestCase):
         self.assertEqual(split_color("S juodos spalvos"), ("juodos spalvos", "S"))
         self.assertEqual(split_color("žydra"), ("žydra", ""))
         self.assertEqual(split_color("TURQUOISE spalva XL"), ("TURQUOISE spalva", "XL"))
+        self.assertEqual(split_color("ONE SIZE juodos spalvos"), ("juodos spalvos", "ONE SIZE"))
 
     def test_split_variant_name(self):
         self.assertEqual(split_variant_name("Jobe liemenė, dydis 10"), ("Jobe liemenė", "dydis 10"))
