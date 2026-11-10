@@ -8,6 +8,8 @@ veikiančios nuotraukos nepublikuojama). Paleisti prieš importą:
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -27,18 +29,46 @@ USER_AGENT = "Mozilla/5.0 (compatible; bz-normalyzer/1.0; +https://baltijoszvyna
 DEAD_STATUSES = {400, 403, 404, 410}
 
 
-def probe(url: str, timeout: int = 20) -> tuple[bool, int | None, str]:
+def _public_host(url: str) -> bool:
+    """Tik http(s) ir viešas IP – tiekėjo URL negali pasiekti vidinio tinklo (SSRF)."""
     parts = urlsplit(url)
-    safe = urlunsplit((parts.scheme, parts.netloc, quote(parts.path, safe="/%:@!$&'()*+,;=-._~"), parts.query, ""))
-    req = urllib.request.Request(safe, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"})
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        return False
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or None, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return False
+    return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _public_host(newurl):
+            raise urllib.error.URLError(f"redirect to non-public host: {newurl[:200]}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirect)
+
+
+def probe(url: str, timeout: int = 20) -> tuple[bool, int | None, str]:
+    try:
+        parts = urlsplit(url)
+        safe = urlunsplit(
+            (parts.scheme, parts.netloc, quote(parts.path, safe="/%:@!$&'()*+,;=-._~"), parts.query, "")
+        )
+        if not _public_host(safe):
+            return False, None, "non-public or invalid host"
+        req = urllib.request.Request(safe, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"})
+        with _OPENER.open(req, timeout=timeout) as resp:
             ctype = resp.headers.get("Content-Type", "")
             if ctype and not ctype.startswith(("image/", "application/octet-stream", "binary/")):
                 return False, resp.status, f"content-type {ctype}"[:300]
             return True, resp.status, ""
     except urllib.error.HTTPError as exc:
         return exc.code not in DEAD_STATUSES, exc.code, str(exc)[:300]
+    except ValueError as exc:  # netaisyklingas URL ([bad] ir pan.)
+        return False, None, str(exc)[:300]
     except Exception as exc:  # noqa: BLE001 – tinklo klaida nėra įrodymas, kad nuotraukos nėra
         return True, None, str(exc)[:300]
 
