@@ -487,9 +487,16 @@ class AlbatrosSizeGroupAndDeadImageTests(TestCase):
         )
         self.assertEqual(split_size_token("Fox Collection LW Jogger - B/O - L"), ("Fox Collection LW Jogger - B/O", "L"))
         self.assertEqual(
-            split_size_token("SIE Kenai Neoprene 4mm Chest Boot Foot 40/41"),
+            split_size_token("SIE Kenai Neoprene 4mm Chest Boot Foot 40/41", numeric=True),
             ("SIE Kenai Neoprene 4mm Chest Boot Foot", "40/41"),
         )
+        self.assertEqual(split_size_token("FOX Khaki V2 Boot UK 10/EU 44", numeric=True), ("FOX Khaki V2 Boot", "44"))
+        self.assertEqual(split_size_token("FOX Explorer Trainer V2 - Sz 9 / 43", numeric=True), ("FOX Explorer Trainer V2", "43"))
+        self.assertEqual(split_size_token("JOBE H2O batai dydis 11 - 44,5", numeric=True), ("JOBE H2O batai", "44.5"))
+        self.assertEqual(split_size_token("FOX Collection Hybrid Jacket G/B 3 XL"), ("FOX Collection Hybrid Jacket G/B", "3XL"))
+        self.assertEqual(split_size_token("FOX Rage Power Grip Gloves L NTL012"), ("FOX Rage Power Grip Gloves", "L"))
+        self.assertEqual(split_size_token("FOX Womens Leggings L 16-18"), ("FOX Womens Leggings", "L 16-18"))
+        self.assertEqual(split_size_token("Rapala Cap RLEDH - 5-LED - 48 lumens - 40 hours"), ("Rapala Cap RLEDH - 5-LED - 48 lumens - 40 hours", ""))
         self.assertEqual(split_size_token("SG Simply Savage Tee"), ("SG Simply Savage Tee", ""))
 
     def test_apparel_sizes_grouped_color_stays(self):
