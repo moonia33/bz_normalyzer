@@ -11,13 +11,15 @@ from apps.suppliers.adapters.albatros import (
     detect_brand,
     normalize_code,
     split_color,
+    split_size_token,
     split_variant_name,
 )
 from apps.suppliers.adapters.base import AdapterError
+from apps.suppliers.models import ImageUrlCheck
 
 
 class _Feed:
-    config: ClassVar[dict] = {"manufacturer_groups": False}
+    config: ClassVar[dict] = {"manufacturer_groups": False, "dead_image_check": False}
 
 
 class _DbFeed:
@@ -204,7 +206,7 @@ class AlbatrosPhotoAndFixedGroupTests(SimpleTestCase):
         class Feed:
             pass
 
-        Feed.config = {"manufacturer_groups": False, **(config or {})}
+        Feed.config = {"manufacturer_groups": False, "dead_image_check": False, **(config or {})}
         return {i.external_id: i for i in AlbatrosAdapter(Feed()).iter_items(_xlsx([HEADER, ["Line"], *rows]))}
 
     ROWS = (
@@ -468,3 +470,58 @@ class AlbatrosNemusTests(TestCase):
         self.assertEqual(split_variant_name("DAVIKLIS XI 14 HW"), ("DAVIKLIS XI 14 HW", ""))
         self.assertEqual(split_variant_name(", L"), (", L", ""))
         self.assertEqual(split_variant_name("batai, mėlyni, dydis 9,5 - 43"), ("batai, mėlyni", "dydis 9,5 - 43"))
+
+
+class AlbatrosSizeGroupAndDeadImageTests(TestCase):
+    def _items(self, rows, section="Jacket - Striukė"):
+        class Feed:
+            config: ClassVar[dict] = {"manufacturer_groups": False, "nemus_catalog": False}
+
+        rows = [[None, code, name, 50, None, 1, None, None, photo] for code, name, photo in rows]
+        return {i.external_id: i for i in AlbatrosAdapter(Feed()).iter_items(_xlsx([HEADER, [section], *rows]))}
+
+    def test_split_size_token(self):
+        self.assertEqual(
+            split_size_token("SG Super Light Jacket XL Castlerock Grey"),
+            ("SG Super Light Jacket Castlerock Grey", "XL"),
+        )
+        self.assertEqual(split_size_token("Fox Collection LW Jogger - B/O - L"), ("Fox Collection LW Jogger - B/O", "L"))
+        self.assertEqual(
+            split_size_token("SIE Kenai Neoprene 4mm Chest Boot Foot 40/41"),
+            ("SIE Kenai Neoprene 4mm Chest Boot Foot", "40/41"),
+        )
+        self.assertEqual(split_size_token("SG Simply Savage Tee"), ("SG Simply Savage Tee", ""))
+
+    def test_apparel_sizes_grouped_color_stays(self):
+        items = self._items([
+            ("64518", "SG Super Light Jacket S Castlerock Grey", "https://s/j1.jpg"),
+            ("64521", "SG Super Light Jacket XL Castlerock Grey", "https://s/j2.jpg"),
+            ("64600", "SG Super Light Jacket XL Black", "https://s/b.jpg"),
+        ])
+        a, b, c = items["64518"], items["64521"], items["64600"]
+        self.assertEqual(a.extra["product_group"], b.extra["product_group"])
+        self.assertEqual(a.extra["base_name"], "SG Super Light Jacket Castlerock Grey")
+        self.assertEqual((a.attributes["axes"], b.attributes["axes"]), ({"size": "S"}, {"size": "XL"}))
+        self.assertNotEqual(c.extra["product_group"], a.extra["product_group"])
+        self.assertTrue(a.extra["strict_group"])
+
+    def test_single_size_is_one_variant_product(self):
+        item = self._items([("1", "SG All Weather Glove L Black", "https://s/g.jpg")], "Gloves - Pirštinės")["1"]
+        self.assertEqual((item.extra["base_name"], item.attributes["axes"]), ("SG All Weather Glove Black", {"size": "L"}))
+
+    def test_lure_sizes_not_grouped(self):
+        items = self._items([
+            ("1", "Savage 3D Sticklebait Pencil 7.5cm 17g S Fluo Orange", "https://s/1.jpg"),
+            ("2", "Savage 3D Sticklebait Pencil 7.5cm 17g F Fluo Orange", "https://s/2.jpg"),
+        ], "Bait / Wobbler")
+        self.assertNotIn("product_group", items["1"].extra)
+
+    def test_dead_image_dropped(self):
+        ImageUrlCheck.objects.create(url="https://s/dead.jpg", ok=False, status_code=404)
+        items = self._items([
+            ("1", "SG Tee S", "https://s/dead.jpg"),
+            ("2", "SG Cap M", "https://s/ok.jpg"),
+        ], "T-shirt - Marškinėliai")
+        self.assertEqual(items["1"].images, [])
+        self.assertNotIn("main_image_url", items["1"].extra)
+        self.assertEqual(items["2"].images, ["https://s/ok.jpg"])

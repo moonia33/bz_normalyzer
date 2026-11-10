@@ -203,10 +203,13 @@ class AlbatrosAdapter(BaseAdapter):
             apply_nemus_groups(items, nemus)
         if self.config.get("photo_groups", True):
             apply_photo_groups(items)
+        apply_size_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
         _distinguish_twins(items)
         mark_strict_groups(items)
         refine_categories(items)
+        if self.config.get("dead_image_check", True):
+            drop_dead_images(items)
         yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
@@ -667,6 +670,83 @@ def apply_photo_groups(items: list[NormalizedItem]) -> None:
         for item in members:
             item.extra["product_group"] = group
             item.extra["base_name"] = " ".join(prefix)
+
+
+# Drabužių / avalynės skyriai: Stock kodai skiriasi tik dydžiu pavadinime.
+_APPAREL_SECTION = re.compile(
+    r"jacket|striuk|t-shirt|marškin|trousers|kelnės|gloves|pirštin|fleece|outfit|underwear|apatin"
+    r"|suit\b|kostium|waders|shoes|batai|\bcap\b|kepur|\bhat\b|vests?\b|liemen|hidrokost|apranga"
+    r"|clothing|footwear",
+    re.IGNORECASE,
+)
+_SIZE_TOKEN = re.compile(
+    r"^(XXS|XS|S|M|L|XL|XXL|XXXL|[2-6]XL|[2-5]XS|\d{2}/\d{2}|\d{2}-\d{2}|\d{1,2}-\d{1,2}Y|\d{1,2}Y"
+    r"|\d{1,2}/\d{1,2}Y|\d{2}(?:[.,]5)?)$",
+    re.IGNORECASE,
+)
+
+
+def split_size_token(name: str) -> tuple[str, str]:
+    """'SG Super Light Jacket XL Castlerock Grey' -> ('SG Super Light Jacket Castlerock Grey', 'XL').
+
+    Paskutinis dydžio žodis (ne pirmas – tai ženklas); be dydžio -> (name, '')."""
+    tokens = name.split()
+    for i in range(len(tokens) - 1, 0, -1):
+        if _SIZE_TOKEN.match(tokens[i].strip(",;()")):
+            rest = tokens[:i] + tokens[i + 1 :]
+            while rest and rest[-1] in {"-", "/", ","}:
+                rest.pop()
+            base = re.sub(r"\s+-\s+-\s+", " - ", " ".join(rest)).strip()
+            return base, tokens[i].strip(",;()").upper()
+    return name, ""
+
+
+def apply_size_groups(items: list[NormalizedItem]) -> None:
+    """Drabužiai be gamintojo / nemus / FOTO grupės: tas pats ženklas, skyrius ir pavadinimas be
+    dydžio -> viena prekė, dydis = `axes.size`. Spalva lieka pavadinime (kita spalva – kita prekė).
+
+    Vienas dydis irgi gauna grupę (prekė su vienu variantu); kodai su tuo pačiu dydžiu nejungiami."""
+    from django.utils.text import slugify
+
+    groups: dict[tuple[str, str, str], list[tuple[NormalizedItem, str, str]]] = {}
+    for item in items:
+        section = item.extra.get("category_raw") or item.category_path or ""
+        if item.extra.get("product_group") or not item.brand_name or not _APPAREL_SECTION.search(section):
+            continue
+        base, size = split_size_token(item.name)
+        if size and len(base.split()) > len(item.brand_name.split()):
+            key = (slugify(item.brand_name), section, base.casefold())
+            groups.setdefault(key, []).append((item, base, size))
+    for (brand, section, key), members in groups.items():
+        counts = Counter(size for _, _, size in members)
+        members = [m for m in members if counts[m[2]] == 1]
+        if not members:
+            continue
+        base = members[0][1]
+        digest = hashlib.sha1(f"{section}|{key}".encode()).hexdigest()[:12]
+        group = f"{brand}:size:{digest}"
+        for item, _, size in members:
+            item.extra["product_group"] = group
+            item.extra["base_name"] = base
+            axes = dict((item.attributes or {}).get("axes") or {})
+            axes.setdefault("size", size)
+            item.attributes = {**(item.attributes or {}), "axes": axes}
+
+
+def drop_dead_images(items: list[NormalizedItem]) -> None:
+    """`check_image_urls` pažymėti neveikiantys URL (pvz. salsify 404) – ne nuotraukos."""
+    from apps.suppliers.models import dead_image_urls
+
+    dead = dead_image_urls(url for item in items for url in item.images)
+    if not dead:
+        return
+    for item in items:
+        item.images = [url for url in item.images if url not in dead]
+        if item.extra.get("main_image_url") in dead:
+            if item.images:
+                item.extra["main_image_url"] = item.images[0]
+            else:
+                item.extra.pop("main_image_url")
 
 
 def apply_fixed_groups(items: list[NormalizedItem], groups: dict) -> None:
