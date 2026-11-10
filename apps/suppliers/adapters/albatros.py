@@ -205,6 +205,7 @@ class AlbatrosAdapter(BaseAdapter):
             apply_photo_groups(items)
         apply_size_groups(items)
         apply_fixed_groups(items, self.config.get("fixed_groups") or {})
+        apply_article_groups(items)
         _distinguish_twins(items)
         mark_strict_groups(items)
         refine_categories(items)
@@ -785,6 +786,75 @@ def apply_fixed_groups(items: list[NormalizedItem], groups: dict) -> None:
                 item.extra["base_name"] = value["base_name"]
         else:
             item.extra["product_group"] = str(value)
+
+
+# Jobe kodas = 9 skaitmenų artikulas (modelis + spalva) + '-' + dydis: 303522001-L, 244923010-2XL+.
+_ARTICLE_CODE = re.compile(r"^(\d{9})-(.+)$")
+_ARTICLE_LETTER = r"(?:[2-6]?X{0,3}[SL]|M|XXS)\+?"
+_ARTICLE_NUMBER = r"\d{1,3}(?:\.5)?"
+_ARTICLE_SIZE = re.compile(
+    rf"^(?:{_ARTICLE_LETTER}(?:/{_ARTICLE_LETTER})?|[SML]T|XLT|{_ARTICLE_NUMBER}(?:/{_ARTICLE_NUMBER})?"
+    r"|\d{1,3}(?:/\d{1,3}|\+)KG)$",
+    re.IGNORECASE,
+)
+_ARTICLE_SECTION = re.compile(rf"{_APPAREL_SECTION.pattern}|wetsuit", re.IGNORECASE)
+
+
+def apply_article_groups(items: list[NormalizedItem]) -> None:
+    """Visi to paties artikulo dydžiai -> viena prekė (nemus / foto / dydžio grupės juos išskaidydavo).
+
+    Artikulas jau reiškia vieną spalvą, todėl spalvos nesujungiamos. PS grupė pirmesnė (BE prekė
+    jau yra); kitaip grupė `{ženklas}:article:{artikulas}`. Vienas dydis -> prekė su vienu variantu."""
+    from django.utils.text import slugify
+
+    articles: dict[str, list[tuple[NormalizedItem, str]]] = {}
+    apparel: set[str] = set()
+    for item in items:
+        m = _ARTICLE_CODE.match(item.external_id)
+        if m and _ARTICLE_SIZE.match(m.group(2)):
+            articles.setdefault(m.group(1), []).append((item, m.group(2).upper()))
+            if _ARTICLE_SECTION.search(item.extra.get("category_raw") or item.category_path or ""):
+                apparel.add(m.group(1))
+    group_articles: dict[str, set[str]] = {}
+    for item in items:
+        if group := item.extra.get("product_group"):
+            m = _ARTICLE_CODE.match(item.external_id)
+            group_articles.setdefault(group, set()).add(m.group(1) if m else item.external_id)
+    for article, members in articles.items():
+        brand = next((item.brand_name for item, _ in members if item.brand_name), "")
+        if not brand or article not in apparel or len({size for _, size in members}) != len(members):
+            continue
+        groups = Counter(g for item, _ in members if (g := item.extra.get("product_group")))
+        ps = [g for g, _ in groups.most_common() if str(g).startswith("ps:")]
+        if ps:
+            group = ps[0]
+        elif len(groups) == 1 and sum(groups.values()) == len(members) and group_articles[next(iter(groups))] == {article}:
+            group = next(iter(groups))
+        else:
+            group = f"{slugify(brand)}:article:{article}"
+        base = _article_base_name(members, group)
+        for item, size in members:
+            item.brand_name = item.brand_name or brand
+            item.extra["product_group"] = group
+            item.extra["base_name"] = base
+            item.attributes = {**(item.attributes or {}), "axes": {"size": size}}
+
+
+def _article_base_name(members: list[tuple[NormalizedItem, str]], group: str) -> str:
+    """Grupės pavadinimas be dydžio: PS / esamos grupės base_name, kitaip pavadinimas be dydžio uodegos."""
+    names: Counter = Counter()
+    for item, size in members:
+        if item.extra.get("product_group") == group and item.extra.get("base_name"):
+            names[(item.extra["base_name"], size)] += 2
+        elif item.extra.get("base_name"):
+            names[(item.extra["base_name"], size)] += 1
+    if names:
+        (name, size), _ = names.most_common(1)[0]
+    else:
+        item, size = members[0]
+        name = split_size_token(item.name)[0] or item.name
+    stripped = re.sub(rf"[\s,]*(?:dydis\s*)?{re.escape(size)}(?:\s*cm)?\s*$", "", name, flags=re.IGNORECASE)
+    return stripped or name
 
 
 def mark_strict_groups(items: list[NormalizedItem]) -> None:
