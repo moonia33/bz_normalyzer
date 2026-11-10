@@ -813,7 +813,7 @@ def apply_article_groups(items: list[NormalizedItem]) -> None:
         m = _ARTICLE_CODE.match(item.external_id)
         if m and _ARTICLE_SIZE.match(m.group(2)):
             articles.setdefault(m.group(1), []).append((item, m.group(2).upper()))
-            if _ARTICLE_SECTION.search(item.extra.get("category_raw") or item.category_path or ""):
+            if any(_ARTICLE_SECTION.search(c or "") for c in (item.extra.get("category_raw"), item.category_path)):
                 apparel.add(m.group(1))
     group_articles: dict[str, set[str]] = {}
     for item in items:

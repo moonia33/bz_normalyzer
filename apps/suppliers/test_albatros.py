@@ -549,6 +549,33 @@ class AlbatrosArticleGroupTests(SimpleTestCase):
             external_id=code, name=name, brand_name="Jobe", extra=extra, attributes={"axes": axes} if axes else {}
         )
 
+    def test_size_letter_inside_word_not_stripped(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [self._item("303999001-S", "Jobe Progress", base="Jobe Progress")]
+        apply_article_groups(items)
+        self.assertEqual(items[0].extra["base_name"], "Jobe Progress")
+
+    def test_size_inside_name_stripped(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("303999002-128", "Jobe Boston 128 Teal", base="Jobe Boston 128 Teal"),
+            self._item("303999002-140", "Jobe Boston 140 Teal", base="Jobe Boston 140 Teal"),
+        ]
+        apply_article_groups(items)
+        self.assertEqual({i.extra["base_name"] for i in items}, {"Jobe Boston Teal"})
+
+    def test_refined_category_path_counts_as_apparel(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [self._item("303999003-S", "Jobe Perth S"), self._item("303999003-M", "Jobe Perth M")]
+        for item in items:
+            item.extra["category_raw"] = "JOBE"
+            item.category_path = "Vandens pramogos > Hidrokostiumai"
+        apply_article_groups(items)
+        self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:article:303999003"})
+
     def test_sizes_of_one_article_join_ps_group(self):
         from apps.suppliers.adapters.albatros import apply_article_groups
 
