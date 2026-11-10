@@ -853,7 +853,13 @@ def _article_base_name(members: list[tuple[NormalizedItem, str]], group: str) ->
     else:
         item, size = members[0]
         name = split_size_token(item.name)[0] or item.name
-    stripped = re.sub(rf"[\s,]*(?:dydis\s*)?{re.escape(size)}(?:\s*cm)?\s*$", "", name, flags=re.IGNORECASE)
+    # tik atskiras žodis (S ne iš „Progress“); paskutinis atvejis – ir pavadinimo viduryje („Boston 128 Teal“)
+    token = rf"[\s,]+(?:dydis\s*)?{re.escape(size)}(?:\s*cm)?(?=[\s,]|$)"
+    found = list(re.finditer(token, name, flags=re.IGNORECASE))
+    if not found:
+        return name
+    m = found[-1]
+    stripped = re.sub(r"\s{2,}", " ", (name[: m.start()] + " " + name[m.end() :].lstrip(" ,"))).strip(" ,")
     return stripped or name
 
 
