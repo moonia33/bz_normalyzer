@@ -532,3 +532,121 @@ class AlbatrosSizeGroupAndDeadImageTests(TestCase):
         self.assertEqual(items["1"].images, [])
         self.assertNotIn("main_image_url", items["1"].extra)
         self.assertEqual(items["2"].images, ["https://s/ok.jpg"])
+
+
+class AlbatrosArticleGroupTests(SimpleTestCase):
+    SECTION = "Vandens pramogos > Hidrokostiumai > Moteriški hidrokostiumai"
+
+    def _item(self, code, name, group="", base="", axes=None):
+        from apps.ingestion.dto import NormalizedItem
+
+        extra = {"category_raw": self.SECTION}
+        if group:
+            extra["product_group"] = group
+        if base:
+            extra["base_name"] = base
+        return NormalizedItem(
+            external_id=code, name=name, brand_name="Jobe", extra=extra, attributes={"axes": axes} if axes else {}
+        )
+
+    def test_size_letter_inside_word_not_stripped(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [self._item("303999001-S", "Jobe Progress", base="Jobe Progress")]
+        apply_article_groups(items)
+        self.assertEqual(items[0].extra["base_name"], "Jobe Progress")
+
+    def test_size_inside_name_stripped(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("303999002-128", "Jobe Boston 128 Teal", base="Jobe Boston 128 Teal"),
+            self._item("303999002-140", "Jobe Boston 140 Teal", base="Jobe Boston 140 Teal"),
+        ]
+        apply_article_groups(items)
+        self.assertEqual({i.extra["base_name"] for i in items}, {"Jobe Boston Teal"})
+
+    def test_refined_category_path_counts_as_apparel(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [self._item("303999003-S", "Jobe Perth S"), self._item("303999003-M", "Jobe Perth M")]
+        for item in items:
+            item.extra["category_raw"] = "JOBE"
+            item.category_path = "Vandens pramogos > Hidrokostiumai"
+        apply_article_groups(items)
+        self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:article:303999003"})
+
+    def test_sizes_of_one_article_join_ps_group(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("244823001-S", "Liemenė S", group="ps:36180", base="Liemenė Jobe 4 Buckle"),
+            self._item("244823001-M", "Liemenė M", group="nemus:x", base="Jobe liemenė"),
+            self._item("244823001-3XL", "Liemenė 3XL", group="nemus:x", base="Jobe liemenė"),
+            self._item("244823002-M", "Kita spalva M", group="nemus:x", base="Jobe liemenė"),
+        ]
+        apply_article_groups(items)
+        by = {i.external_id: i for i in items}
+        for code in ("244823001-S", "244823001-M", "244823001-3XL"):
+            self.assertEqual(by[code].extra["product_group"], "ps:36180")
+            self.assertEqual(by[code].extra["base_name"], "Liemenė Jobe 4 Buckle")
+        self.assertEqual(by["244823001-3XL"].attributes["axes"], {"size": "3XL"})
+        self.assertEqual(by["244823002-M"].extra["product_group"], "jobe:article:244823002")
+
+    def test_split_groups_merge_and_model_axis_replaced(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("303522007-L", "Sofia L", group="jobe:photo:1", axes={"model": "S"}),
+            self._item("303522007-S", "Sofia S", group="jobe:photo:1", axes={"model": "L"}),
+            self._item("303522007-M", "Sofia M", group="nemus:sofia", base="Jobe hidrokostiumas Sofia"),
+            self._item("303521010-164", "Boston 164cm", base="Jobe Boston Teal 164cm"),
+            self._item("303521010-152", "Boston 152", group="ps:1", base="Vaikiškas Jobe Boston", axes=None),
+            self._item("303522004-LT", "Yukon LT"),
+            self._item("412400-1", "Ne artikulas"),
+            self._item("303999001-PCS.", "Ne dydis"),
+        ]
+        apply_article_groups(items)
+        by = {i.external_id: i for i in items}
+        self.assertEqual(
+            {by[c].extra["product_group"] for c in ("303522007-L", "303522007-S", "303522007-M")},
+            {"jobe:article:303522007"},
+        )
+        self.assertEqual(by["303522007-S"].attributes["axes"], {"size": "S"})
+        self.assertEqual(by["303522007-L"].extra["base_name"], "Jobe hidrokostiumas Sofia")
+        self.assertEqual(by["303521010-164"].extra["product_group"], "ps:1")
+        self.assertEqual(by["303521010-164"].extra["base_name"], "Vaikiškas Jobe Boston")
+        self.assertEqual(by["303522004-LT"].attributes["axes"], {"size": "LT"})
+        self.assertNotIn("product_group", by["412400-1"].extra)
+        self.assertNotIn("product_group", by["303999001-PCS."].extra)
+
+    def test_size_stripped_from_base_and_non_apparel_member_joined(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("303521011-128", "Boston 128cm", base="Jobe Boston Teal 128cm"),
+            self._item("303521011-140", "Boston 140cm"),
+        ]
+        items[0].extra["category_raw"] = items[1].extra["category_raw"] = "JOBE Wetsuits"
+        items[1].brand_name = ""
+        apply_article_groups(items)
+        self.assertEqual({i.extra["base_name"] for i in items}, {"Jobe Boston Teal"})
+        self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:article:303521011"})
+        self.assertEqual(items[1].brand_name, "Jobe")
+
+    def test_weight_class_sizes(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [self._item("244823010-10/15KG", "Vest"), self._item("244823010-90+KG", "Vest")]
+        apply_article_groups(items)
+        self.assertEqual([i.attributes["axes"]["size"] for i in items], ["10/15KG", "90+KG"])
+
+    def test_whole_article_in_own_group_kept(self):
+        from apps.suppliers.adapters.albatros import apply_article_groups
+
+        items = [
+            self._item("303522001-L", "Sofia L", group="jobe:size:abc", base="Sofia"),
+            self._item("303522001-M", "Sofia M", group="jobe:size:abc", base="Sofia"),
+        ]
+        apply_article_groups(items)
+        self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:size:abc"})
