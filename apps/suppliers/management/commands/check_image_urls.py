@@ -87,9 +87,11 @@ class Command(BaseCommand):
         urls: set[str] = set()
         for images in Offer.objects.filter(supplier__code=opts["supplier"]).values_list("images", flat=True):
             urls.update(u for u in images or [] if isinstance(u, str) and u.startswith("http"))
+        fresh = timezone.now() - timedelta(days=opts["recheck_days"])
+        # Adapteris neveikiančius URL iš Offer.images išmeta – juos perpatikrinam iš ImageUrlCheck.
+        urls.update(ImageUrlCheck.objects.filter(ok=False, checked_at__lt=fresh).values_list("url", flat=True))
         if opts["host"]:
             urls = {u for u in urls if urlsplit(u).netloc in set(opts["host"])}
-        fresh = timezone.now() - timedelta(days=opts["recheck_days"])
         recent = set(
             ImageUrlCheck.objects.filter(checked_at__gte=fresh, status_code__isnull=False).values_list("url", flat=True)
         )
