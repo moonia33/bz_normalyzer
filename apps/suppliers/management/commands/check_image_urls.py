@@ -87,7 +87,7 @@ class Command(BaseCommand):
             urls.update(u for u in images or [] if isinstance(u, str) and u.startswith("http"))
         fresh = timezone.now() - timedelta(days=opts["recheck_days"])
         # Adapteris neveikiančius URL iš Offer.images išmeta – juos perpatikrinam iš ImageUrlCheck.
-        urls.update(ImageUrlCheck.objects.filter(ok=False, checked_at__lt=fresh).values_list("url", flat=True))
+        urls.update(ImageUrlCheck.objects.filter(supplier=opts["supplier"], ok=False, checked_at__lt=fresh).values_list("url", flat=True))
         if opts["host"]:
             urls = {u for u in urls if urlsplit(u).netloc in set(opts["host"])}
         recent = set(
@@ -101,7 +101,7 @@ class Command(BaseCommand):
                 ok, status, error = probe(url)
                 ImageUrlCheck.objects.update_or_create(
                     url=url,
-                    defaults={"ok": ok, "status_code": status, "error": error, "checked_at": timezone.now()},
+                    defaults={"supplier": opts["supplier"], "ok": ok, "status_code": status, "error": error, "checked_at": timezone.now()},
                 )
                 time.sleep(opts["delay"])
                 return ok

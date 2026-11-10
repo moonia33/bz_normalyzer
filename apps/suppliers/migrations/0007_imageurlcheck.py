@@ -18,6 +18,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('url', models.URLField(max_length=1000, unique=True)),
+                ('supplier', models.CharField(blank=True, db_index=True, max_length=50)),
                 ('ok', models.BooleanField(default=True)),
                 ('status_code', models.PositiveSmallIntegerField(blank=True, null=True)),
                 ('error', models.CharField(blank=True, max_length=300)),

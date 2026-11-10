@@ -243,6 +243,7 @@ class ImageUrlCheck(TimeStampedModel):
     """Tiekėjo nuotraukos URL patikra (`check_image_urls`): neveikiantys URL neeksportuojami."""
 
     url = models.URLField(max_length=1000, unique=True)
+    supplier = models.CharField(max_length=50, blank=True, db_index=True)
     ok = models.BooleanField(default=True)
     status_code = models.PositiveSmallIntegerField(null=True, blank=True)
     error = models.CharField(max_length=300, blank=True)
