@@ -34,10 +34,8 @@ def _public_host(url: str) -> bool:
     parts = urlsplit(url)
     if parts.scheme not in {"http", "https"} or not parts.hostname:
         return False
-    try:
-        infos = socket.getaddrinfo(parts.hostname, parts.port or None, proto=socket.IPPROTO_TCP)
-    except OSError:
-        return False
+    # DNS klaida (OSError) kyla aukštyn: tai laikina tinklo klaida, ne įrodymas, kad nuotraukos nėra.
+    infos = socket.getaddrinfo(parts.hostname, parts.port or None, proto=socket.IPPROTO_TCP)
     return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
 
 
