@@ -237,3 +237,32 @@ class ManufacturerContent(TimeStampedModel):
             if code in (section.get("rows") or {}):
                 return section
         return None
+
+
+class ImageUrlCheck(TimeStampedModel):
+    """Tiekėjo nuotraukos URL patikra (`check_image_urls`): neveikiantys URL neeksportuojami."""
+
+    url = models.URLField(max_length=1000, unique=True)
+    supplier = models.CharField(max_length=64, blank=True, db_index=True)
+    ok = models.BooleanField(default=True)
+    status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    error = models.CharField(max_length=300, blank=True)
+    checked_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "nuotraukos URL patikra"
+        verbose_name_plural = "nuotraukų URL patikros"
+
+    def __str__(self) -> str:
+        return f"{'ok' if self.ok else 'dead'} {self.url}"
+
+
+def dead_image_urls(urls) -> set[str]:
+    """Iš `urls` – patikrinti ir neveikiantys (404 ir pan.)."""
+    urls = list(set(urls))
+    dead: set[str] = set()
+    for i in range(0, len(urls), 2000):
+        dead.update(
+            ImageUrlCheck.objects.filter(url__in=urls[i : i + 2000], ok=False).values_list("url", flat=True)
+        )
+    return dead
