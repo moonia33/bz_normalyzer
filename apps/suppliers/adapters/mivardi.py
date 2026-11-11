@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections import defaultdict
 from collections.abc import Iterator
 from decimal import Decimal
@@ -15,6 +16,13 @@ from apps.suppliers.adapters.base import AdapterError, BaseAdapter
 from apps.suppliers.adapters.registry import register_adapter
 
 logger = logging.getLogger(__name__)
+
+RETRY_DELAY_SECONDS = 30
+
+
+def _complete_xml(payload: bytes) -> bool:
+    """Nutrūkęs atsiuntimas baigiasi be uždarančio </SHOP>."""
+    return payload.rstrip().endswith(b"</SHOP>")
 
 DEFAULT_FEED_URL = "https://www.mivardi.com/xml/mivardivip"
 DEFAULT_IMAGE_BASE = "https://www.mivardi.com/"
@@ -124,9 +132,23 @@ class MivardiAdapter(BaseAdapter):
             except requests.RequestException as exc:
                 logger.warning("Mivardi login nepavyko (tęsiama viešai): %s", exc)
 
-        response = session.get(url, timeout=timeout)
-        response.raise_for_status()
-        return response.content
+        attempts = max(1, int(self.config.get("fetch_attempts", 3)))
+        for attempt in range(1, attempts + 1):
+            try:
+                response = session.get(url, timeout=timeout)
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                if attempt == attempts:
+                    raise
+                logger.warning("Mivardi feed'as nepasiekiamas (%s/%s): %s", attempt, attempts, exc)
+            else:
+                if _complete_xml(response.content):
+                    return response.content
+                logger.warning(
+                    "Mivardi feed'as nepilnas (%s/%s, %s B)", attempt, attempts, len(response.content)
+                )
+            time.sleep(RETRY_DELAY_SECONDS * attempt)
+        raise AdapterError(f"Mivardi feed'as nepilnas po {attempts} bandymų (nėra </SHOP>).")
 
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         root = etree.fromstring(payload)
