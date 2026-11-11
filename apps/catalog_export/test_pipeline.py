@@ -10,7 +10,7 @@ from apps.catalog_export import pipeline
 from apps.catalog_export.services import build_catalog_payload
 from apps.catalog_export.models import ExportRun, PipelineRun
 from apps.corecfg.models import Language
-from apps.ingestion.models import Offer
+from apps.ingestion.models import ImportJob, Offer
 from apps.suppliers.models import Supplier, SupplierSchedule
 
 VILNIUS = ZoneInfo("Europe/Vilnius")
@@ -474,3 +474,25 @@ class UploadFeedTests(TestCase):
         feed.config = {"pipeline_reimport": True}
         feed.save()
         self.assertEqual(pipeline._feeds(supplier, [FeedRole.CATALOG]), [feed])
+
+    def test_pipeline_uses_latest_api_upload(self):
+        from django.core.files.base import ContentFile
+
+        from apps.suppliers.models import FeedRole, SourceKind, SupplierFeed
+
+        supplier = _supplier()
+        feed = SupplierFeed(
+            supplier=supplier,
+            name="Stock",
+            role=FeedRole.CATALOG,
+            kind=SourceKind.EXCEL_UPLOAD,
+            config={"pipeline_reimport": True},
+        )
+        feed.file.save("old.xlsx", ContentFile(b"old"), save=False)
+        feed.save()
+        self.assertEqual(pipeline.latest_upload(feed), feed.file.name)
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        job.uploaded_file.save("new.xlsx", ContentFile(b"new"))
+        feed.save()  # config pakeitimas neturi grąžinti seno failo
+        self.assertEqual(pipeline.latest_upload(feed), job.uploaded_file.name)
+

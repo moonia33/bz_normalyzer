@@ -233,10 +233,32 @@ def _touch(schedule: SupplierSchedule, field: str) -> None:
 # ------------------------------------------------------------------ feeds
 
 
+def latest_upload(feed: SupplierFeed) -> str | None:
+    """Naujausias įkeltas failas: per API įkeltas (`ImportJob.uploaded_file`) arba `feed.file`."""
+    job = (
+        ImportJob.objects.filter(feed=feed)
+        .exclude(uploaded_file="")
+        .exclude(uploaded_file__isnull=True)
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+    if job and (not feed.file or job.created_at >= _file_mtime(feed.file)):
+        return job.uploaded_file.name
+    return feed.file.name or None
+
+
+def _file_mtime(field_file):
+    # updated_at keičiasi ir keičiant config, todėl lyginama su paties failo laiku.
+    try:
+        return field_file.storage.get_modified_time(field_file.name)
+    except (OSError, NotImplementedError):
+        return timezone.now()
+
+
 def reimports_upload(feed: SupplierFeed) -> bool:
     """Įkeltas failas (pvz. Albatros Stock) pipeline'e importuojamas iš naujo, jei
     `config.pipeline_reimport` – kainos/likučiai keičiasi per kitą šaltinį (nemus.lt)."""
-    return bool(feed.file) and bool((feed.config or {}).get("pipeline_reimport"))
+    return bool((feed.config or {}).get("pipeline_reimport")) and bool(latest_upload(feed))
 
 
 def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[SupplierFeed]:
@@ -267,7 +289,10 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> dict[int, int]
     """Importuoja feed'us; grąžina {feed_id: job_id}."""
     jobs = []
     for feed in feeds:
-        job = ImportJob.objects.create(supplier=feed.supplier, feed=feed)
+        job = ImportJob(supplier=feed.supplier, feed=feed)
+        if feed.kind in UPLOAD_KINDS:
+            job.uploaded_file.name = latest_upload(feed)
+        job.save()
         try:
             run_import(job)
         except Exception:  # noqa: BLE001 – job'as pažymėtas failed
