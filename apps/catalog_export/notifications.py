@@ -193,7 +193,7 @@ def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
     if schedule.price_interval_hours:
         price_hours = hours
         if schedule.price_interval_hours < 24:
-            window = SupplierSchedule.NIGHT_END_HOUR - SupplierSchedule.NIGHT_START_HOUR
+            window = SupplierSchedule.NIGHT_END_HOUR - pipeline.catalog_start_hour(schedule)
             price_hours = hours * window / 24
         expected[Stage.PRICES] = int(price_hours // schedule.price_interval_hours)
     if schedule.stock_interval_minutes:

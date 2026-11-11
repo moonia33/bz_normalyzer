@@ -405,10 +405,17 @@ class NightWindowTests(TestCase):
             supplier=_supplier("night"),
             enabled=True,
             catalog_weekday=None,
+            catalog_hour=0,
             price_interval_hours=48,
             stock_interval_minutes=2880,
         )
         self.night = datetime(2026, 11, 12, 1, 0, tzinfo=VILNIUS)
+
+    def test_night_stages_wait_for_supplier_start_hour(self):
+        self.schedule.catalog_hour = 3
+        self.assertEqual(pipeline.due_stages(self.schedule, self.night), [])
+        at3 = datetime(2026, 11, 12, 3, 0, tzinfo=VILNIUS)
+        self.assertEqual(pipeline.due_stages(self.schedule, at3), ["prices", "stock"])
 
     def test_prices_only_in_night_window(self):
         self.schedule.price_interval_hours = 24

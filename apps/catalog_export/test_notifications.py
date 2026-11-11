@@ -124,6 +124,7 @@ class NightMissedTests(TestCase):
     def test_expected_sub_daily_prices_only_night_window(self):
         from datetime import datetime
         self.schedule.price_interval_hours = 1
+        self.schedule.catalog_hour = 0
         since = datetime(2026, 11, 11, 7, 0, tzinfo=self.tz)
         expected = notifications._expected(self.schedule, since, since + timedelta(days=1))
         self.assertEqual(expected["prices"], 7)
