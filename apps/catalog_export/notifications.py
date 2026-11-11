@@ -136,6 +136,21 @@ def _overdue(last, interval: timedelta, now) -> bool:
     return interval > timedelta(0) and last is not None and now - last > interval + MISSED_GRACE
 
 
+def _missed(schedule: SupplierSchedule, stage: str, last, interval: timedelta, now) -> bool:
+    """Naktiniai etapai tikrinami po nakties lango (+1 val.), kiti – pagal intervalą."""
+    from apps.catalog_export import pipeline
+
+    if not pipeline.stage_is_nightly(stage, schedule):
+        return _overdue(last, interval, now)
+    if interval <= timedelta(0) or last is None:
+        return False
+    if timezone.localtime(now).hour < SupplierSchedule.NIGHT_END_HOUR + 1:
+        return False
+    if interval >= timedelta(days=1):
+        return pipeline.nights_between(last, now) >= interval // timedelta(days=1)
+    return pipeline.nights_between(last, now) >= 1
+
+
 def check_missed(now) -> None:
     day = timezone.localtime(now).date().isoformat()
     for schedule in SupplierSchedule.objects.filter(enabled=True, supplier__is_active=True).select_related(
@@ -147,7 +162,7 @@ def check_missed(now) -> None:
             (Stage.STOCK, schedule.last_stock_at, timedelta(minutes=schedule.stock_interval_minutes)),
         ]
         for stage, last, interval in checks:
-            if _overdue(last, interval, now):
+            if _missed(schedule, stage, last, interval, now):
                 _send_once(
                     f"missed:{code}:{stage}:{day}",
                     f"Nepasileido: {code} {STAGE_LT[stage]}",

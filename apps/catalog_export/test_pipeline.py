@@ -397,3 +397,40 @@ class PlanTests(TestCase):
         gone.refresh_from_db()
         self.assertEqual(gone.stock, 4)
         self.assertIn("skipped", run.details["absent"])
+
+
+class NightWindowTests(TestCase):
+    def setUp(self):
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=_supplier("night"),
+            enabled=True,
+            catalog_weekday=None,
+            price_interval_hours=48,
+            stock_interval_minutes=2880,
+        )
+        self.night = datetime(2026, 11, 12, 1, 0, tzinfo=VILNIUS)
+
+    def test_prices_only_in_night_window(self):
+        self.schedule.price_interval_hours = 24
+        self.assertIn("prices", pipeline.due_stages(self.schedule, self.night))
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.assertNotIn("prices", pipeline.due_stages(self.schedule, day))
+
+    def test_every_second_night(self):
+        self.schedule.last_prices_at = datetime(2026, 11, 11, 6, 50, tzinfo=VILNIUS)
+        self.schedule.last_stock_at = datetime(2026, 11, 11, 6, 50, tzinfo=VILNIUS)
+        self.assertEqual(pipeline.due_stages(self.schedule, self.night), [])
+        later = self.night + timedelta(days=1)
+        self.assertEqual(pipeline.due_stages(self.schedule, later), ["prices", "stock"])
+
+    def test_hourly_stock_not_restricted(self):
+        self.schedule.stock_interval_minutes = 60
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.schedule.last_stock_at = day - timedelta(minutes=58)
+        self.assertIn("stock", pipeline.due_stages(self.schedule, day))
+
+    def test_catalog_only_at_night(self):
+        self.schedule.catalog_phase = SupplierSchedule.Phase.TRANSLATING
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.assertNotIn("catalog", pipeline.due_stages(self.schedule, day))
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))

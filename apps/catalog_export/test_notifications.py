@@ -99,3 +99,24 @@ class NotificationTests(TestCase):
                 notifications.alert_run(run)
         notifications.retry_recent_alerts(timezone.now())
         self.assertEqual(len(mail.outbox), 1)
+
+
+class NightMissedTests(TestCase):
+    def setUp(self):
+        from zoneinfo import ZoneInfo
+        self.tz = ZoneInfo("Europe/Vilnius")
+        self.supplier = Supplier.objects.create(code="alb", name="Alb")
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=self.supplier, enabled=True, catalog_weekday=None,
+            price_interval_hours=48, stock_interval_minutes=60,
+        )
+
+    def test_every_second_night_not_missed_after_one(self):
+        from datetime import datetime
+        last = datetime(2026, 11, 11, 2, 0, tzinfo=self.tz)
+        self.assertFalse(notifications._missed(self.schedule, "prices", last, timedelta(hours=48),
+                                               datetime(2026, 11, 12, 10, 0, tzinfo=self.tz)))
+        self.assertTrue(notifications._missed(self.schedule, "prices", last, timedelta(hours=48),
+                                              datetime(2026, 11, 13, 10, 0, tzinfo=self.tz)))
+        self.assertFalse(notifications._missed(self.schedule, "prices", last, timedelta(hours=48),
+                                               datetime(2026, 11, 13, 5, 0, tzinfo=self.tz)))

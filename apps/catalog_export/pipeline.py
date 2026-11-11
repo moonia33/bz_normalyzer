@@ -60,6 +60,7 @@ RUNS_PATH = "/api/v1/ops/imports/runs"
 STATE_CHUNK = 5000
 UPLOAD_KINDS = {SourceKind.EXCEL_UPLOAD, SourceKind.CSV_UPLOAD}
 DUE_TOLERANCE = timedelta(minutes=5)
+MAX_DUE_PASSES = 4
 CENT = Decimal("0.01")
 ACTIVE_BATCH_STATUSES = {"validating", "in_progress", "finalizing", "cancelling"}
 VOLATILE_ITEM_KEYS = {"price_net", "cost_net", "stock"}
@@ -97,7 +98,18 @@ def pipeline_lock():
 # ------------------------------------------------------------------ due
 
 
+def in_night_window(now) -> bool:
+    hour = timezone.localtime(now).hour
+    return SupplierSchedule.NIGHT_START_HOUR <= hour < SupplierSchedule.NIGHT_END_HOUR
+
+
+def nights_between(last, now) -> int:
+    return (timezone.localtime(now).date() - timezone.localtime(last).date()).days
+
+
 def _catalog_due(schedule: SupplierSchedule, now) -> bool:
+    if not in_night_window(now):
+        return False
     if schedule.catalog_phase == SupplierSchedule.Phase.TRANSLATING:
         return True
     if schedule.catalog_weekday is None:
@@ -111,10 +123,23 @@ def _catalog_due(schedule: SupplierSchedule, now) -> bool:
     )
 
 
-def _interval_due(last, interval: timedelta, now) -> bool:
+def _interval_due(last, interval: timedelta, now, *, night: bool = False) -> bool:
+    """`night` – tik nakties lange; parinis ar retesnis intervalas skaičiuojamas naktimis."""
     if interval <= timedelta(0):
         return False
-    return last is None or now - last >= interval - DUE_TOLERANCE
+    if night and not in_night_window(now):
+        return False
+    if last is None:
+        return True
+    if night and interval >= timedelta(days=1):
+        return nights_between(last, now) >= interval // timedelta(days=1)
+    return now - last >= interval - DUE_TOLERANCE
+
+
+def stage_is_nightly(stage: str, schedule: SupplierSchedule) -> bool:
+    if stage == Stage.STOCK:
+        return schedule.stock_interval_minutes >= 24 * 60
+    return True
 
 
 def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
@@ -124,10 +149,15 @@ def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
     stages = []
     if _catalog_due(schedule, now):
         stages.append(Stage.CATALOG)
-    if _interval_due(schedule.last_prices_at, timedelta(hours=schedule.price_interval_hours), now):
+    if _interval_due(
+        schedule.last_prices_at, timedelta(hours=schedule.price_interval_hours), now, night=True
+    ):
         stages.append(Stage.PRICES)
     if _interval_due(
-        schedule.last_stock_at, timedelta(minutes=schedule.stock_interval_minutes), now
+        schedule.last_stock_at,
+        timedelta(minutes=schedule.stock_interval_minutes),
+        now,
+        night=stage_is_nightly(Stage.STOCK, schedule),
     ):
         stages.append(Stage.STOCK)
     return stages
@@ -141,14 +171,21 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
                 notifications.safe_tick(now, mark_stale=False)
             return None
         runs = []
-        schedules = (
-            SupplierSchedule.objects.filter(enabled=True)
-            .select_related("supplier")
-            .order_by("supplier__code")
-        )
-        for schedule in schedules:
-            for stage in due_stages(schedule, now):
-                runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+        # Kol vykdoma, cron tick'ai praleidžiami (lock), todėl per tą laiką
+        # atėję etapai paleidžiami čia pat kitame praėjime.
+        for _ in range(1 if (dry_run or now) else MAX_DUE_PASSES):
+            pass_runs = []
+            schedules = (
+                SupplierSchedule.objects.filter(enabled=True)
+                .select_related("supplier")
+                .order_by("supplier__code")
+            )
+            for schedule in schedules:
+                for stage in due_stages(schedule, now):
+                    pass_runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+            runs.extend(pass_runs)
+            if not pass_runs:
+                break
         if not dry_run:
             notifications.safe_tick(now)
         return runs
