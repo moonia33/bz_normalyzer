@@ -233,6 +233,12 @@ def _touch(schedule: SupplierSchedule, field: str) -> None:
 # ------------------------------------------------------------------ feeds
 
 
+def reimports_upload(feed: SupplierFeed) -> bool:
+    """Įkeltas failas (pvz. Albatros Stock) pipeline'e importuojamas iš naujo, jei
+    `config.pipeline_reimport` – kainos/likučiai keičiasi per kitą šaltinį (nemus.lt)."""
+    return bool(feed.file) and bool((feed.config or {}).get("pipeline_reimport"))
+
+
 def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[SupplierFeed]:
     base = get_base_language()
     feeds = [
@@ -240,7 +246,7 @@ def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[Suppli
         for feed in SupplierFeed.objects.filter(
             supplier=supplier, is_active=True, role__in=list(roles)
         ).select_related("language")
-        if feed.kind not in UPLOAD_KINDS
+        if feed.kind not in UPLOAD_KINDS or reimports_upload(feed)
     ]
     if base_only:
         feeds = [f for f in feeds if f.language_id is None or (base and f.language_id == base.id)]

@@ -445,3 +445,32 @@ class NightWindowTests(TestCase):
         self.schedule.catalog_weekday = self.night.weekday()
         self.schedule.catalog_hour = 23
         self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))
+
+
+class UploadFeedTests(TestCase):
+    def setUp(self):
+        import tempfile
+
+        from django.test import override_settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media = override_settings(MEDIA_ROOT=tmp.name)
+        media.enable()
+        self.addCleanup(media.disable)
+
+    def test_upload_feed_only_with_pipeline_reimport(self):
+        from django.core.files.base import ContentFile
+
+        from apps.suppliers.models import FeedRole, SourceKind, SupplierFeed
+
+        supplier = _supplier()
+        feed = SupplierFeed(
+            supplier=supplier, name="Stock", role=FeedRole.CATALOG, kind=SourceKind.EXCEL_UPLOAD
+        )
+        feed.file.save("stock.xlsx", ContentFile(b"x"), save=False)
+        feed.save()
+        self.assertEqual(pipeline._feeds(supplier, [FeedRole.CATALOG]), [])
+        feed.config = {"pipeline_reimport": True}
+        feed.save()
+        self.assertEqual(pipeline._feeds(supplier, [FeedRole.CATALOG]), [feed])
