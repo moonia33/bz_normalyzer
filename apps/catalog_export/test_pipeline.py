@@ -440,3 +440,8 @@ class NightWindowTests(TestCase):
         self.schedule.last_prices_at = datetime(2026, 11, 11, 2, 0, tzinfo=VILNIUS)
         self.assertNotIn("prices", pipeline.due_stages(self.schedule, self.night))
         self.assertIn("prices", pipeline.due_stages(self.schedule, self.night + timedelta(days=1)))
+
+    def test_catalog_hour_outside_window_runs_at_window_start(self):
+        self.schedule.catalog_weekday = self.night.weekday()
+        self.schedule.catalog_hour = 23
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))

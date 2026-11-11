@@ -112,6 +112,14 @@ def nights_between(last, now) -> int:
     return (timezone.localtime(now).date() - timezone.localtime(last).date()).days
 
 
+def catalog_start_hour(schedule: SupplierSchedule) -> int:
+    """catalog_hour už nakties lango ribų -> lango pradžia."""
+    hour = schedule.catalog_hour
+    if SupplierSchedule.NIGHT_START_HOUR <= hour < SupplierSchedule.NIGHT_END_HOUR:
+        return hour
+    return SupplierSchedule.NIGHT_START_HOUR
+
+
 def _catalog_due(schedule: SupplierSchedule, now) -> bool:
     if not in_night_window(now):
         return False
@@ -120,7 +128,7 @@ def _catalog_due(schedule: SupplierSchedule, now) -> bool:
     if schedule.catalog_weekday is None:
         return False
     local = timezone.localtime(now)
-    if local.weekday() != schedule.catalog_weekday or local.hour < schedule.catalog_hour:
+    if local.weekday() != schedule.catalog_weekday or local.hour < catalog_start_hour(schedule):
         return False
     return (
         schedule.last_catalog_at is None

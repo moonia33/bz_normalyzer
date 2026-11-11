@@ -176,6 +176,8 @@ def check_missed(now) -> None:
 
 
 def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
+    from apps.catalog_export import pipeline
+
     hours = (until - since).total_seconds() / 3600
     expected = {Stage.CATALOG: 0, Stage.PRICES: 0, Stage.STOCK: 0}
     if schedule.catalog_weekday is not None:
@@ -183,7 +185,7 @@ def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
         while day <= timezone.localtime(until).date():
             if day.weekday() == schedule.catalog_weekday:
                 start = timezone.make_aware(
-                    timezone.datetime(day.year, day.month, day.day, schedule.catalog_hour)
+                    timezone.datetime(day.year, day.month, day.day, pipeline.catalog_start_hour(schedule))
                 )
                 if since <= start < until:
                     expected[Stage.CATALOG] += 1
