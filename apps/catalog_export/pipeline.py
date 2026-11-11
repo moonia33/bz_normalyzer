@@ -136,11 +136,14 @@ def _catalog_due(schedule: SupplierSchedule, now) -> bool:
     )
 
 
-def _interval_due(last, interval: timedelta, now, *, night: bool = False) -> bool:
-    """`night` – tik nakties lange; parinis ar retesnis intervalas skaičiuojamas naktimis."""
+def _interval_due(
+    last, interval: timedelta, now, *, night: bool = False, start_hour: int = 0
+) -> bool:
+    """`night` – tik nakties lange nuo `start_hour`; parinis ar retesnis intervalas
+    skaičiuojamas naktimis."""
     if interval <= timedelta(0):
         return False
-    if night and not in_night_window(now):
+    if night and (not in_night_window(now) or timezone.localtime(now).hour < start_hour):
         return False
     if last is None:
         return True
@@ -162,8 +165,14 @@ def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
     stages = []
     if _catalog_due(schedule, now):
         stages.append(Stage.CATALOG)
+    # catalog_hour – tiekėjo nakties pradžia: tiekėjai išdėstomi per naktį, kad nesutaptų.
+    start = catalog_start_hour(schedule)
     if _interval_due(
-        schedule.last_prices_at, timedelta(hours=schedule.price_interval_hours), now, night=True
+        schedule.last_prices_at,
+        timedelta(hours=schedule.price_interval_hours),
+        now,
+        night=True,
+        start_hour=start,
     ):
         stages.append(Stage.PRICES)
     if _interval_due(
@@ -171,6 +180,7 @@ def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
         timedelta(minutes=schedule.stock_interval_minutes),
         now,
         night=stage_is_nightly(Stage.STOCK, schedule),
+        start_hour=start,
     ):
         stages.append(Stage.STOCK)
     return stages
