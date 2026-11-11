@@ -133,7 +133,13 @@ class SupplierSchedule(TimeStampedModel):
 
     Katalogas – kartą per savaitę naktį (kiekvienas tiekėjas savo dieną),
     kainos ir likučiai – pagal intervalą, į shop siunčiami tik pasikeitę.
+    Katalogas, kainos ir ne dažnesni nei kas parą likučiai vykdomi tik
+    nakties lange [NIGHT_START_HOUR, NIGHT_END_HOUR) (Europe/Vilnius);
+    parinis ar retesnis intervalas skaičiuojamas naktimis.
     """
+
+    NIGHT_START_HOUR = 0
+    NIGHT_END_HOUR = 7
 
     class Phase(models.TextChoices):
         IDLE = "", "—"

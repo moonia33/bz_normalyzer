@@ -136,6 +136,21 @@ def _overdue(last, interval: timedelta, now) -> bool:
     return interval > timedelta(0) and last is not None and now - last > interval + MISSED_GRACE
 
 
+def _missed(schedule: SupplierSchedule, stage: str, last, interval: timedelta, now) -> bool:
+    """Naktiniai etapai tikrinami po nakties lango (+1 val.), kiti – pagal intervalą."""
+    from apps.catalog_export import pipeline
+
+    if not pipeline.stage_is_nightly(stage, schedule):
+        return _overdue(last, interval, now)
+    if interval <= timedelta(0) or last is None:
+        return False
+    if timezone.localtime(now).hour < SupplierSchedule.NIGHT_END_HOUR + 1:
+        return False
+    if interval >= timedelta(days=1):
+        return pipeline.nights_between(last, now) >= pipeline.required_nights(interval)
+    return pipeline.nights_between(last, now) >= 1
+
+
 def check_missed(now) -> None:
     day = timezone.localtime(now).date().isoformat()
     for schedule in SupplierSchedule.objects.filter(enabled=True, supplier__is_active=True).select_related(
@@ -147,7 +162,7 @@ def check_missed(now) -> None:
             (Stage.STOCK, schedule.last_stock_at, timedelta(minutes=schedule.stock_interval_minutes)),
         ]
         for stage, last, interval in checks:
-            if _overdue(last, interval, now):
+            if _missed(schedule, stage, last, interval, now):
                 _send_once(
                     f"missed:{code}:{stage}:{day}",
                     f"Nepasileido: {code} {STAGE_LT[stage]}",
@@ -161,6 +176,8 @@ def check_missed(now) -> None:
 
 
 def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
+    from apps.catalog_export import pipeline
+
     hours = (until - since).total_seconds() / 3600
     expected = {Stage.CATALOG: 0, Stage.PRICES: 0, Stage.STOCK: 0}
     if schedule.catalog_weekday is not None:
@@ -168,13 +185,17 @@ def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
         while day <= timezone.localtime(until).date():
             if day.weekday() == schedule.catalog_weekday:
                 start = timezone.make_aware(
-                    timezone.datetime(day.year, day.month, day.day, schedule.catalog_hour)
+                    timezone.datetime(day.year, day.month, day.day, pipeline.catalog_start_hour(schedule))
                 )
                 if since <= start < until:
                     expected[Stage.CATALOG] += 1
             day += timedelta(days=1)
     if schedule.price_interval_hours:
-        expected[Stage.PRICES] = int(hours // schedule.price_interval_hours)
+        price_hours = hours
+        if schedule.price_interval_hours < 24:
+            window = SupplierSchedule.NIGHT_END_HOUR - SupplierSchedule.NIGHT_START_HOUR
+            price_hours = hours * window / 24
+        expected[Stage.PRICES] = int(price_hours // schedule.price_interval_hours)
     if schedule.stock_interval_minutes:
         expected[Stage.STOCK] = int(hours * 60 // schedule.stock_interval_minutes)
     return expected

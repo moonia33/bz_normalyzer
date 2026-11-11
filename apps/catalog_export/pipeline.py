@@ -60,6 +60,7 @@ RUNS_PATH = "/api/v1/ops/imports/runs"
 STATE_CHUNK = 5000
 UPLOAD_KINDS = {SourceKind.EXCEL_UPLOAD, SourceKind.CSV_UPLOAD}
 DUE_TOLERANCE = timedelta(minutes=5)
+MAX_DUE_PASSES = 4
 CENT = Decimal("0.01")
 ACTIVE_BATCH_STATUSES = {"validating", "in_progress", "finalizing", "cancelling"}
 VOLATILE_ITEM_KEYS = {"price_net", "cost_net", "stock"}
@@ -97,13 +98,37 @@ def pipeline_lock():
 # ------------------------------------------------------------------ due
 
 
+def in_night_window(now) -> bool:
+    hour = timezone.localtime(now).hour
+    return SupplierSchedule.NIGHT_START_HOUR <= hour < SupplierSchedule.NIGHT_END_HOUR
+
+
+def required_nights(interval: timedelta) -> int:
+    """Intervalas naktimis, apvalinant į viršų (36 h -> 2 naktys)."""
+    return -(-interval // timedelta(days=1))
+
+
+def nights_between(last, now) -> int:
+    return (timezone.localtime(now).date() - timezone.localtime(last).date()).days
+
+
+def catalog_start_hour(schedule: SupplierSchedule) -> int:
+    """catalog_hour už nakties lango ribų -> lango pradžia."""
+    hour = schedule.catalog_hour
+    if SupplierSchedule.NIGHT_START_HOUR <= hour < SupplierSchedule.NIGHT_END_HOUR:
+        return hour
+    return SupplierSchedule.NIGHT_START_HOUR
+
+
 def _catalog_due(schedule: SupplierSchedule, now) -> bool:
+    if not in_night_window(now):
+        return False
     if schedule.catalog_phase == SupplierSchedule.Phase.TRANSLATING:
         return True
     if schedule.catalog_weekday is None:
         return False
     local = timezone.localtime(now)
-    if local.weekday() != schedule.catalog_weekday or local.hour < schedule.catalog_hour:
+    if local.weekday() != schedule.catalog_weekday or local.hour < catalog_start_hour(schedule):
         return False
     return (
         schedule.last_catalog_at is None
@@ -111,10 +136,23 @@ def _catalog_due(schedule: SupplierSchedule, now) -> bool:
     )
 
 
-def _interval_due(last, interval: timedelta, now) -> bool:
+def _interval_due(last, interval: timedelta, now, *, night: bool = False) -> bool:
+    """`night` – tik nakties lange; parinis ar retesnis intervalas skaičiuojamas naktimis."""
     if interval <= timedelta(0):
         return False
-    return last is None or now - last >= interval - DUE_TOLERANCE
+    if night and not in_night_window(now):
+        return False
+    if last is None:
+        return True
+    if night and interval >= timedelta(days=1):
+        return nights_between(last, now) >= required_nights(interval)
+    return now - last >= interval - DUE_TOLERANCE
+
+
+def stage_is_nightly(stage: str, schedule: SupplierSchedule) -> bool:
+    if stage == Stage.STOCK:
+        return schedule.stock_interval_minutes >= 24 * 60
+    return True
 
 
 def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
@@ -124,10 +162,15 @@ def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
     stages = []
     if _catalog_due(schedule, now):
         stages.append(Stage.CATALOG)
-    if _interval_due(schedule.last_prices_at, timedelta(hours=schedule.price_interval_hours), now):
+    if _interval_due(
+        schedule.last_prices_at, timedelta(hours=schedule.price_interval_hours), now, night=True
+    ):
         stages.append(Stage.PRICES)
     if _interval_due(
-        schedule.last_stock_at, timedelta(minutes=schedule.stock_interval_minutes), now
+        schedule.last_stock_at,
+        timedelta(minutes=schedule.stock_interval_minutes),
+        now,
+        night=stage_is_nightly(Stage.STOCK, schedule),
     ):
         stages.append(Stage.STOCK)
     return stages
@@ -141,14 +184,21 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
                 notifications.safe_tick(now, mark_stale=False)
             return None
         runs = []
-        schedules = (
-            SupplierSchedule.objects.filter(enabled=True)
-            .select_related("supplier")
-            .order_by("supplier__code")
-        )
-        for schedule in schedules:
-            for stage in due_stages(schedule, now):
-                runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+        # Kol vykdoma, cron tick'ai praleidžiami (lock), todėl per tą laiką
+        # atėję etapai paleidžiami čia pat kitame praėjime.
+        for _ in range(1 if (dry_run or now) else MAX_DUE_PASSES):
+            pass_runs = []
+            schedules = (
+                SupplierSchedule.objects.filter(enabled=True)
+                .select_related("supplier")
+                .order_by("supplier__code")
+            )
+            for schedule in schedules:
+                for stage in due_stages(schedule, now):
+                    pass_runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+            runs.extend(pass_runs)
+            if not pass_runs:
+                break
         if not dry_run:
             notifications.safe_tick(now)
         return runs
@@ -183,6 +233,34 @@ def _touch(schedule: SupplierSchedule, field: str) -> None:
 # ------------------------------------------------------------------ feeds
 
 
+def latest_upload(feed: SupplierFeed) -> str | None:
+    """Naujausias įkeltas failas: per API įkeltas (`ImportJob.uploaded_file`) arba `feed.file`."""
+    job = (
+        ImportJob.objects.filter(feed=feed)
+        .exclude(uploaded_file="")
+        .exclude(uploaded_file__isnull=True)
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+    if job and (not feed.file or job.created_at >= _file_mtime(feed.file)):
+        return job.uploaded_file.name
+    return feed.file.name or None
+
+
+def _file_mtime(field_file):
+    # updated_at keičiasi ir keičiant config, todėl lyginama su paties failo laiku.
+    try:
+        return field_file.storage.get_modified_time(field_file.name)
+    except (OSError, NotImplementedError):
+        return timezone.now()
+
+
+def reimports_upload(feed: SupplierFeed) -> bool:
+    """Įkeltas failas (pvz. Albatros Stock) pipeline'e importuojamas iš naujo, jei
+    `config.pipeline_reimport` – kainos/likučiai keičiasi per kitą šaltinį (nemus.lt)."""
+    return bool((feed.config or {}).get("pipeline_reimport")) and bool(latest_upload(feed))
+
+
 def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[SupplierFeed]:
     base = get_base_language()
     feeds = [
@@ -190,7 +268,7 @@ def _feeds(supplier: Supplier, roles, *, base_only: bool = False) -> list[Suppli
         for feed in SupplierFeed.objects.filter(
             supplier=supplier, is_active=True, role__in=list(roles)
         ).select_related("language")
-        if feed.kind not in UPLOAD_KINDS
+        if feed.kind not in UPLOAD_KINDS or reimports_upload(feed)
     ]
     if base_only:
         feeds = [f for f in feeds if f.language_id is None or (base and f.language_id == base.id)]
@@ -211,7 +289,10 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> dict[int, int]
     """Importuoja feed'us; grąžina {feed_id: job_id}."""
     jobs = []
     for feed in feeds:
-        job = ImportJob.objects.create(supplier=feed.supplier, feed=feed)
+        job = ImportJob(supplier=feed.supplier, feed=feed)
+        if feed.kind in UPLOAD_KINDS:
+            job.uploaded_file.name = latest_upload(feed)
+        job.save()
         try:
             run_import(job)
         except Exception:  # noqa: BLE001 – job'as pažymėtas failed

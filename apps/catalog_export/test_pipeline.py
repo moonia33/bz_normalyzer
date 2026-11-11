@@ -10,7 +10,7 @@ from apps.catalog_export import pipeline
 from apps.catalog_export.services import build_catalog_payload
 from apps.catalog_export.models import ExportRun, PipelineRun
 from apps.corecfg.models import Language
-from apps.ingestion.models import Offer
+from apps.ingestion.models import ImportJob, Offer
 from apps.suppliers.models import Supplier, SupplierSchedule
 
 VILNIUS = ZoneInfo("Europe/Vilnius")
@@ -397,3 +397,102 @@ class PlanTests(TestCase):
         gone.refresh_from_db()
         self.assertEqual(gone.stock, 4)
         self.assertIn("skipped", run.details["absent"])
+
+
+class NightWindowTests(TestCase):
+    def setUp(self):
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=_supplier("night"),
+            enabled=True,
+            catalog_weekday=None,
+            price_interval_hours=48,
+            stock_interval_minutes=2880,
+        )
+        self.night = datetime(2026, 11, 12, 1, 0, tzinfo=VILNIUS)
+
+    def test_prices_only_in_night_window(self):
+        self.schedule.price_interval_hours = 24
+        self.assertIn("prices", pipeline.due_stages(self.schedule, self.night))
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.assertNotIn("prices", pipeline.due_stages(self.schedule, day))
+
+    def test_every_second_night(self):
+        self.schedule.last_prices_at = datetime(2026, 11, 11, 6, 50, tzinfo=VILNIUS)
+        self.schedule.last_stock_at = datetime(2026, 11, 11, 6, 50, tzinfo=VILNIUS)
+        self.assertEqual(pipeline.due_stages(self.schedule, self.night), [])
+        later = self.night + timedelta(days=1)
+        self.assertEqual(pipeline.due_stages(self.schedule, later), ["prices", "stock"])
+
+    def test_hourly_stock_not_restricted(self):
+        self.schedule.stock_interval_minutes = 60
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.schedule.last_stock_at = day - timedelta(minutes=58)
+        self.assertIn("stock", pipeline.due_stages(self.schedule, day))
+
+    def test_catalog_only_at_night(self):
+        self.schedule.catalog_phase = SupplierSchedule.Phase.TRANSLATING
+        day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
+        self.assertNotIn("catalog", pipeline.due_stages(self.schedule, day))
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))
+
+    def test_36h_interval_rounds_up_to_two_nights(self):
+        self.schedule.price_interval_hours = 36
+        self.schedule.last_prices_at = datetime(2026, 11, 11, 2, 0, tzinfo=VILNIUS)
+        self.assertNotIn("prices", pipeline.due_stages(self.schedule, self.night))
+        self.assertIn("prices", pipeline.due_stages(self.schedule, self.night + timedelta(days=1)))
+
+    def test_catalog_hour_outside_window_runs_at_window_start(self):
+        self.schedule.catalog_weekday = self.night.weekday()
+        self.schedule.catalog_hour = 23
+        self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))
+
+
+class UploadFeedTests(TestCase):
+    def setUp(self):
+        import tempfile
+
+        from django.test import override_settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        media = override_settings(MEDIA_ROOT=tmp.name)
+        media.enable()
+        self.addCleanup(media.disable)
+
+    def test_upload_feed_only_with_pipeline_reimport(self):
+        from django.core.files.base import ContentFile
+
+        from apps.suppliers.models import FeedRole, SourceKind, SupplierFeed
+
+        supplier = _supplier()
+        feed = SupplierFeed(
+            supplier=supplier, name="Stock", role=FeedRole.CATALOG, kind=SourceKind.EXCEL_UPLOAD
+        )
+        feed.file.save("stock.xlsx", ContentFile(b"x"), save=False)
+        feed.save()
+        self.assertEqual(pipeline._feeds(supplier, [FeedRole.CATALOG]), [])
+        feed.config = {"pipeline_reimport": True}
+        feed.save()
+        self.assertEqual(pipeline._feeds(supplier, [FeedRole.CATALOG]), [feed])
+
+    def test_pipeline_uses_latest_api_upload(self):
+        from django.core.files.base import ContentFile
+
+        from apps.suppliers.models import FeedRole, SourceKind, SupplierFeed
+
+        supplier = _supplier()
+        feed = SupplierFeed(
+            supplier=supplier,
+            name="Stock",
+            role=FeedRole.CATALOG,
+            kind=SourceKind.EXCEL_UPLOAD,
+            config={"pipeline_reimport": True},
+        )
+        feed.file.save("old.xlsx", ContentFile(b"old"), save=False)
+        feed.save()
+        self.assertEqual(pipeline.latest_upload(feed), feed.file.name)
+        job = ImportJob.objects.create(supplier=supplier, feed=feed)
+        job.uploaded_file.save("new.xlsx", ContentFile(b"new"))
+        feed.save()  # config pakeitimas neturi grąžinti seno failo
+        self.assertEqual(pipeline.latest_upload(feed), job.uploaded_file.name)
+
