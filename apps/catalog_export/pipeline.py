@@ -103,6 +103,11 @@ def in_night_window(now) -> bool:
     return SupplierSchedule.NIGHT_START_HOUR <= hour < SupplierSchedule.NIGHT_END_HOUR
 
 
+def required_nights(interval: timedelta) -> int:
+    """Intervalas naktimis, apvalinant į viršų (36 h -> 2 naktys)."""
+    return -(-interval // timedelta(days=1))
+
+
 def nights_between(last, now) -> int:
     return (timezone.localtime(now).date() - timezone.localtime(last).date()).days
 
@@ -132,7 +137,7 @@ def _interval_due(last, interval: timedelta, now, *, night: bool = False) -> boo
     if last is None:
         return True
     if night and interval >= timedelta(days=1):
-        return nights_between(last, now) >= interval // timedelta(days=1)
+        return nights_between(last, now) >= required_nights(interval)
     return now - last >= interval - DUE_TOLERANCE
 
 

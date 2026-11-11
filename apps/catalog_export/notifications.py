@@ -147,7 +147,7 @@ def _missed(schedule: SupplierSchedule, stage: str, last, interval: timedelta, n
     if timezone.localtime(now).hour < SupplierSchedule.NIGHT_END_HOUR + 1:
         return False
     if interval >= timedelta(days=1):
-        return pipeline.nights_between(last, now) >= interval // timedelta(days=1)
+        return pipeline.nights_between(last, now) >= pipeline.required_nights(interval)
     return pipeline.nights_between(last, now) >= 1
 
 

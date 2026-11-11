@@ -434,3 +434,9 @@ class NightWindowTests(TestCase):
         day = datetime(2026, 11, 12, 10, 0, tzinfo=VILNIUS)
         self.assertNotIn("catalog", pipeline.due_stages(self.schedule, day))
         self.assertIn("catalog", pipeline.due_stages(self.schedule, self.night))
+
+    def test_36h_interval_rounds_up_to_two_nights(self):
+        self.schedule.price_interval_hours = 36
+        self.schedule.last_prices_at = datetime(2026, 11, 11, 2, 0, tzinfo=VILNIUS)
+        self.assertNotIn("prices", pipeline.due_stages(self.schedule, self.night))
+        self.assertIn("prices", pipeline.due_stages(self.schedule, self.night + timedelta(days=1)))
