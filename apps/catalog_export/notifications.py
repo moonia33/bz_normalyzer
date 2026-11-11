@@ -9,6 +9,7 @@ Pakartotiniai pranešimai neišsiunčiami – raktas įrašomas į PipelineAlert
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
 from datetime import timedelta
 from html import escape
@@ -191,11 +192,13 @@ def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
                     expected[Stage.CATALOG] += 1
             day += timedelta(days=1)
     if schedule.price_interval_hours:
-        price_hours = hours
         if schedule.price_interval_hours < 24:
+            # paleidimai nakties lange: start, start+interval, … < NIGHT_END_HOUR
             window = SupplierSchedule.NIGHT_END_HOUR - pipeline.catalog_start_hour(schedule)
-            price_hours = hours * window / 24
-        expected[Stage.PRICES] = int(price_hours // schedule.price_interval_hours)
+            per_night = math.ceil(window / schedule.price_interval_hours)
+            expected[Stage.PRICES] = int(hours // 24) * per_night
+        else:
+            expected[Stage.PRICES] = int(hours // schedule.price_interval_hours)
     if schedule.stock_interval_minutes:
         expected[Stage.STOCK] = int(hours * 60 // schedule.stock_interval_minutes)
     return expected

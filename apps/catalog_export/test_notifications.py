@@ -128,3 +128,11 @@ class NightMissedTests(TestCase):
         since = datetime(2026, 11, 11, 7, 0, tzinfo=self.tz)
         expected = notifications._expected(self.schedule, since, since + timedelta(days=1))
         self.assertEqual(expected["prices"], 7)
+
+    def test_expected_prices_interval_longer_than_supplier_window(self):
+        from datetime import datetime
+        self.schedule.price_interval_hours = 6
+        self.schedule.catalog_hour = 2
+        since = datetime(2026, 11, 11, 7, 0, tzinfo=self.tz)
+        expected = notifications._expected(self.schedule, since, since + timedelta(days=1))
+        self.assertEqual(expected["prices"], 1)
