@@ -191,7 +191,11 @@ def _expected(schedule: SupplierSchedule, since, until) -> dict[str, int]:
                     expected[Stage.CATALOG] += 1
             day += timedelta(days=1)
     if schedule.price_interval_hours:
-        expected[Stage.PRICES] = int(hours // schedule.price_interval_hours)
+        price_hours = hours
+        if schedule.price_interval_hours < 24:
+            window = SupplierSchedule.NIGHT_END_HOUR - SupplierSchedule.NIGHT_START_HOUR
+            price_hours = hours * window / 24
+        expected[Stage.PRICES] = int(price_hours // schedule.price_interval_hours)
     if schedule.stock_interval_minutes:
         expected[Stage.STOCK] = int(hours * 60 // schedule.stock_interval_minutes)
     return expected
