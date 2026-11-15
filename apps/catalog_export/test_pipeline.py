@@ -289,6 +289,41 @@ class PlanTests(TestCase):
         self.assertEqual(run.status, PipelineRun.Status.FAILED)
         self.assertIn("shop down", run.error_message)
 
+    def test_finished_catalog_closes_earlier_waiting_runs(self):
+        old = PipelineRun.objects.create(
+            supplier=self.supplier, stage="catalog", status=PipelineRun.Status.WAITING
+        )
+        other = PipelineRun.objects.create(
+            supplier=self.supplier, stage="stock", status=PipelineRun.Status.WAITING
+        )
+        with patch.object(pipeline, "_stage_catalog", return_value=None):
+            run = pipeline.run_stage(self.supplier, "catalog")
+        old.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(run.status, PipelineRun.Status.DONE)
+        self.assertEqual(old.status, PipelineRun.Status.DONE)
+        self.assertIsNotNone(old.finished_at)
+        self.assertEqual(other.status, PipelineRun.Status.WAITING)
+
+    def test_failed_catalog_keeps_earlier_waiting_runs(self):
+        old = PipelineRun.objects.create(
+            supplier=self.supplier, stage="catalog", status=PipelineRun.Status.WAITING
+        )
+        with patch.object(pipeline, "_stage_catalog", side_effect=RuntimeError("openai down")):
+            run = pipeline.run_stage(self.supplier, "catalog")
+        old.refresh_from_db()
+        self.assertEqual(run.status, PipelineRun.Status.FAILED)
+        self.assertEqual(old.status, PipelineRun.Status.WAITING)
+
+    def test_waiting_run_keeps_earlier_waiting_runs(self):
+        old = PipelineRun.objects.create(
+            supplier=self.supplier, stage="catalog", status=PipelineRun.Status.WAITING
+        )
+        with patch.object(pipeline, "_stage_catalog", return_value=PipelineRun.Status.WAITING):
+            pipeline.run_stage(self.supplier, "catalog")
+        old.refresh_from_db()
+        self.assertEqual(old.status, PipelineRun.Status.WAITING)
+
     def test_translation_waits_then_applies(self):
         self.schedule.translation_batch_id = "batch_1"
         self.schedule.catalog_phase = SupplierSchedule.Phase.TRANSLATING

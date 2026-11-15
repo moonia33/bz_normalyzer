@@ -18,6 +18,11 @@ from apps.suppliers.adapters.registry import register_adapter
 
 logger = logging.getLogger(__name__)
 
+# Tiekėjų svetainės atmeta UA su „Scraper“ (Bounty nginx: 403/405), todėl – įprastas naršyklės UA.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+)
 DEFAULT_BASE_URL = "https://shop.ockert.net"
 DEFAULT_LOGIN_PATH = "/user/login"
 DEFAULT_LOGIN_API = "/User/doLogin"
@@ -266,7 +271,7 @@ class OckertAdapter(BaseAdapter):
 
         session = requests.Session()
         session.headers.update(
-            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Devin-OckertScraper/1.0"}
+            {"User-Agent": str(self.config.get("user_agent") or BROWSER_USER_AGENT)}
         )
         self._login(session, base_url, username, password, timeout)
 
