@@ -220,7 +220,7 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
         run.error_message = str(exc)[:2000]
     run.finished_at = timezone.now()
     run.save()
-    if not dry_run and run.status != PipelineRun.Status.WAITING:
+    if not dry_run and run.status == PipelineRun.Status.DONE:
         _close_waiting_runs(run)
     if not dry_run:
         notifications.safe_alert_run(run)

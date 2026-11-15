@@ -305,6 +305,16 @@ class PlanTests(TestCase):
         self.assertIsNotNone(old.finished_at)
         self.assertEqual(other.status, PipelineRun.Status.WAITING)
 
+    def test_failed_catalog_keeps_earlier_waiting_runs(self):
+        old = PipelineRun.objects.create(
+            supplier=self.supplier, stage="catalog", status=PipelineRun.Status.WAITING
+        )
+        with patch.object(pipeline, "_stage_catalog", side_effect=RuntimeError("openai down")):
+            run = pipeline.run_stage(self.supplier, "catalog")
+        old.refresh_from_db()
+        self.assertEqual(run.status, PipelineRun.Status.FAILED)
+        self.assertEqual(old.status, PipelineRun.Status.WAITING)
+
     def test_waiting_run_keeps_earlier_waiting_runs(self):
         old = PipelineRun.objects.create(
             supplier=self.supplier, stage="catalog", status=PipelineRun.Status.WAITING
