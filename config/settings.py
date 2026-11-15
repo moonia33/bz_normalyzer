@@ -173,3 +173,19 @@ OPENAI_API_KEY = _env("OPENAI_API_KEY", "")
 
 # Numatytasis PVM tarifas, naudojamas kai tiekėjas neturi savo.
 DEFAULT_VAT_RATE = _env("DEFAULT_VAT_RATE", "0.21")
+
+# Sentry klaidų stebėjimas. Tuščias SENTRY_DSN = išjungta. Asmens duomenys nesiunčiami.
+SENTRY_DSN = (_env("SENTRY_DSN", "") or "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.logging import ignore_logger
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=_env("SENTRY_ENVIRONMENT", "production"),
+        release=_env("SENTRY_RELEASE") or _env("SOURCE_COMMIT") or None,
+        send_default_pii=False,
+        max_request_body_size="never",
+        traces_sample_rate=float(_env("SENTRY_TRACES_SAMPLE_RATE", "0") or 0),
+    )
+    ignore_logger("django.security.DisallowedHost")

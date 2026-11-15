@@ -1,6 +1,7 @@
 import json
 
 from django.core.management.base import BaseCommand, CommandError
+from sentry_sdk.crons import monitor
 
 from apps.catalog_export.models import PipelineRun
 from apps.catalog_export.pipeline import (
@@ -10,6 +11,18 @@ from apps.catalog_export.pipeline import (
     run_stage,
 )
 from apps.suppliers.models import Supplier
+
+# Sentry cron monitorius: pranešimas, jei --due nepasileido laiku arba baigėsi klaida.
+# Grafikas turi sutapti su Coolify scheduled task.
+DUE_MONITOR_SLUG = "normalyzer-pipeline-due"
+DUE_MONITOR_CONFIG = {
+    "schedule": {"type": "crontab", "value": "*/15 * * * *"},
+    "timezone": "Europe/Vilnius",
+    "checkin_margin": 10,
+    "max_runtime": 360,
+    "failure_issue_threshold": 2,
+    "recovery_threshold": 1,
+}
 
 
 class Command(BaseCommand):
@@ -33,13 +46,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["due"]:
-            runs = run_due(dry_run=options["dry_run"])
-            if runs is None:
-                self.stdout.write("Kitas pipeline dar vykdomas – praleidžiama.")
-                return
-            if not runs:
-                self.stdout.write("Nėra etapų, kuriems atėjo laikas.")
-            self._report(runs)
+            if options["dry_run"]:
+                self._due(dry_run=True)
+            else:
+                with monitor(monitor_slug=DUE_MONITOR_SLUG, monitor_config=DUE_MONITOR_CONFIG):
+                    self._due(dry_run=False)
             return
 
         code = options.get("supplier")
@@ -58,6 +69,15 @@ class Command(BaseCommand):
                 raise CommandError("Kitas pipeline dar vykdomas.")
             run = run_stage(supplier, options["stage"], dry_run=options["dry_run"])
         self._report([run])
+
+    def _due(self, *, dry_run):
+        runs = run_due(dry_run=dry_run)
+        if runs is None:
+            self.stdout.write("Kitas pipeline dar vykdomas – praleidžiama.")
+            return
+        if not runs:
+            self.stdout.write("Nėra etapų, kuriems atėjo laikas.")
+        self._report(runs)
 
     def _report(self, runs):
         failed = []
