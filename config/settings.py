@@ -179,6 +179,12 @@ DEFAULT_VAT_RATE = _env("DEFAULT_VAT_RATE", "0.21")
 SENTRY_DSN = (_env("SENTRY_DSN", "") or "").strip()
 if SENTRY_DSN:
     import sentry_sdk
+
+    def _sentry_strip_headers(event, _hint):
+        # Proxy headeriai (CF-Connecting-IP, X-Forwarded-For) turi lankytojo IP.
+        (event.get("request") or {}).pop("headers", None)
+        return event
+
     from sentry_sdk.integrations.logging import ignore_logger
 
     sentry_sdk.init(
@@ -188,6 +194,8 @@ if SENTRY_DSN:
         send_default_pii=False,
         max_request_body_size="never",
         include_local_variables=False,
+        before_send=_sentry_strip_headers,
+        before_send_transaction=_sentry_strip_headers,
         traces_sample_rate=float(_env("SENTRY_TRACES_SAMPLE_RATE", "0") or 0),
     )
     ignore_logger("django.security.DisallowedHost")
