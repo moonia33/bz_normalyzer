@@ -19,6 +19,11 @@ from apps.suppliers.adapters.registry import register_adapter
 
 logger = logging.getLogger(__name__)
 
+# Bounty (nginx) nuo 2026-11-12 atmeta UA su „Scraper“ (403/405), todėl – įprastas naršyklės UA.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+)
 DEFAULT_BASE_URL = "https://bounty.fishing"
 DEFAULT_LOGIN_URL = f"{DEFAULT_BASE_URL}/login/"
 DEFAULT_CATALOG_PATH = "/catall/"
@@ -222,7 +227,7 @@ class BountyFishingAdapter(BaseAdapter):
 
         session = requests.Session()
         session.headers.update(
-            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Devin-BountyScraper/1.0"}
+            {"User-Agent": str(self.config.get("user_agent") or BROWSER_USER_AGENT)}
         )
 
         username = str(self.config.get("username") or "")

@@ -220,9 +220,22 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
         run.error_message = str(exc)[:2000]
     run.finished_at = timezone.now()
     run.save()
+    if not dry_run and run.status != PipelineRun.Status.WAITING:
+        _close_waiting_runs(run)
     if not dry_run:
         notifications.safe_alert_run(run)
     return run
+
+
+def _close_waiting_runs(run: PipelineRun) -> None:
+    """Ankstesni „laukia vertimo“ tick'ai baigiasi kartu su šiuo paleidimu."""
+    PipelineRun.objects.filter(
+        supplier=run.supplier,
+        stage=run.stage,
+        status=PipelineRun.Status.WAITING,
+        dry_run=False,
+        id__lt=run.id,
+    ).update(status=PipelineRun.Status.DONE, finished_at=run.finished_at, updated_at=run.finished_at)
 
 
 def _touch(schedule: SupplierSchedule, field: str) -> None:
