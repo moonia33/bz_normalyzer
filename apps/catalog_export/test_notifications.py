@@ -88,6 +88,7 @@ class NotificationTests(TestCase):
         self.assertIn("VĖLIAU PAVYKO", text)
         self.assertNotIn("PROBLEMA", text)
         self.assertIn("(vėliau pavyko): timeout", text)
+        self.assertNotIn("vykdoma 0", text)
 
     def test_summary_failure_after_success_still_problem(self):
         now = timezone.now()

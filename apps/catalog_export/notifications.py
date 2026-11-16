@@ -260,7 +260,7 @@ def build_summary(now) -> tuple[str, str, str]:
             last_done = max((r.created_at for r in stage_runs if r.status == Status.DONE), default=None)
             # klaida, po kurios tas pats etapas vėliau pavyko, nebėra problema
             recovered = {r.pk for r in failed if last_done and r.created_at < last_done}
-            bad = len(failed) - len(recovered) + counts[Status.RUNNING]
+            bad = len(failed) - len(recovered) + counts.get(Status.RUNNING, 0)
             missing = max(exp - len(stage_runs), 0) if stage != Stage.CATALOG else max(exp - (1 if stage_runs else 0), 0)
             ok = not bad and not missing
             problems += 0 if ok else 1
