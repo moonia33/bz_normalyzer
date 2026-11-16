@@ -76,6 +76,31 @@ class NotificationTests(TestCase):
         self.assertIn("nepasileido 3", text)
         self.assertIn("timeout", html)
 
+    def test_summary_failure_followed_by_success_not_problem(self):
+        now = timezone.now()
+        SupplierSchedule.objects.filter(supplier=self.supplier).update(stock_interval_minutes=0, price_interval_hours=0)
+        failed = self._run("stock", Status.FAILED, error_message="timeout")
+        done = self._run("stock", Status.DONE)
+        PipelineRun.objects.filter(pk=failed.pk).update(created_at=now - timedelta(hours=2))
+        PipelineRun.objects.filter(pk=done.pk).update(created_at=now - timedelta(hours=1))
+        subject, text, _ = notifications.build_summary(now)
+        self.assertIn("viskas gerai", subject)
+        self.assertIn("VĖLIAU PAVYKO", text)
+        self.assertNotIn("PROBLEMA", text)
+        self.assertIn("(vėliau pavyko): timeout", text)
+
+    def test_summary_failure_after_success_still_problem(self):
+        now = timezone.now()
+        SupplierSchedule.objects.filter(supplier=self.supplier).update(stock_interval_minutes=0, price_interval_hours=0)
+        done = self._run("stock", Status.DONE)
+        failed = self._run("stock", Status.FAILED, error_message="timeout")
+        PipelineRun.objects.filter(pk=done.pk).update(created_at=now - timedelta(hours=2))
+        PipelineRun.objects.filter(pk=failed.pk).update(created_at=now - timedelta(hours=1))
+        subject, text, _ = notifications.build_summary(now)
+        self.assertIn("1 problemos", subject)
+        self.assertIn("PROBLEMA", text)
+        self.assertNotIn("vėliau pavyko", text)
+
     def test_summary_sent_once_per_day_after_hour(self):
         local = timezone.localtime().replace(hour=8, minute=0)
         self.assertTrue(notifications.send_daily_summary(local))
