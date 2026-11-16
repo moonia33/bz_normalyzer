@@ -30,6 +30,7 @@ STUCK_ALERT_AFTER = timedelta(minutes=90)
 STALE_AFTER = timedelta(hours=6)
 MISSED_GRACE = timedelta(hours=1)
 STAGE_LT = {Stage.CATALOG: "katalogas", Stage.PRICES: "kainos", Stage.STOCK: "likučiai"}
+RECOVERED_NOTE = " (vėliau pavyko)"
 STATUS_LT = {
     Status.DONE: "pavyko",
     Status.FAILED: "klaida",
@@ -255,19 +256,23 @@ def build_summary(now) -> tuple[str, str, str]:
             exp = expected[stage]
             if not exp and not stage_runs:
                 continue
-            bad = counts[Status.FAILED] + counts[Status.RUNNING]
+            failed = [r for r in stage_runs if r.status == Status.FAILED]
+            last_done = max((r.created_at for r in stage_runs if r.status == Status.DONE), default=None)
+            # klaida, po kurios tas pats etapas vėliau pavyko, nebėra problema
+            recovered = {r.pk for r in failed if last_done and r.created_at < last_done}
+            bad = len(failed) - len(recovered) + counts[Status.RUNNING]
             missing = max(exp - len(stage_runs), 0) if stage != Stage.CATALOG else max(exp - (1 if stage_runs else 0), 0)
             ok = not bad and not missing
             problems += 0 if ok else 1
-            state = "OK" if ok else "PROBLEMA"
+            state = ("VĖLIAU PAVYKO" if recovered else "OK") if ok else "PROBLEMA"
             metrics = _metrics(stage_runs)
             mtxt = ", ".join(f"{k}: {v}" for k, v in metrics.items()) or "-"
             actual = ", ".join(f"{STATUS_LT.get(s, s)} {n}" for s, n in counts.items()) or "nebuvo"
             if missing:
                 actual += f", nepasileido {missing}"
             rows.append((code, STAGE_LT[stage], str(exp), actual, mtxt, state))
-            text_lines.append(f"{state:8} {code:15} {STAGE_LT[stage]:9} turėjo {exp:>3} | įvyko: {actual} | {mtxt}")
-            failures += [r for r in stage_runs if r.status == Status.FAILED]
+            text_lines.append(f"{state:13} {code:15} {STAGE_LT[stage]:9} turėjo {exp:>3} | įvyko: {actual} | {mtxt}")
+            failures += [(r, r.pk in recovered) for r in failed]
     day = timezone.localtime(now)
     subject = (
         f"Suvestinė {day:%Y-%m-%d}: " + (f"{problems} problemos" if problems else "viskas gerai")
@@ -275,11 +280,13 @@ def build_summary(now) -> tuple[str, str, str]:
     text = f"Pipeline suvestinė už {timezone.localtime(since):%m-%d %H:%M} – {day:%m-%d %H:%M}\n\n"
     text += "\n".join(text_lines) or "Paleidimų nebuvo."
     if failures:
-        text += "\n\nKlaidos:\n" + "\n".join(f"- {_label(r)}: {r.error_message[:300]}" for r in failures)
+        text += "\n\nKlaidos:\n" + "\n".join(
+            f"- {_label(r)}{RECOVERED_NOTE if rec else ''}: {r.error_message[:300]}" for r, rec in failures
+        )
     th = "".join(f"<th align=left>{h}</th>" for h in ("Tiekėjas", "Etapas", "Turėjo", "Įvyko", "Rezultatai", ""))
     tr = "".join(
         "<tr>" + "".join(
-            f"<td style='padding:2px 8px;{'color:#b00;font-weight:bold' if i == 5 and c != 'OK' else ''}'>{escape(c)}</td>"
+            f"<td style='padding:2px 8px;{'color:#b00;font-weight:bold' if i == 5 and c == 'PROBLEMA' else ''}'>{escape(c)}</td>"
             for i, c in enumerate(row)
         ) + "</tr>"
         for row in rows
@@ -287,7 +294,8 @@ def build_summary(now) -> tuple[str, str, str]:
     html = f"<p>{escape(text.splitlines()[0])}</p><table border=1 cellspacing=0>{th}{tr}</table>"
     if failures:
         html += "<h4>Klaidos</h4><ul>" + "".join(
-            f"<li>{escape(_label(r))}: {escape(r.error_message[:300])}</li>" for r in failures
+            f"<li>{escape(_label(r) + (RECOVERED_NOTE if rec else ''))}: {escape(r.error_message[:300])}</li>"
+            for r, rec in failures
         ) + "</ul>"
     return subject, text, html
 
