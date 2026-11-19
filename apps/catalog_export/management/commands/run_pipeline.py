@@ -18,7 +18,9 @@ DUE_MONITOR_SLUG = "normalyzer-pipeline-due"
 DUE_MONITOR_CONFIG = {
     "schedule": {"type": "crontab", "value": "*/15 * * * *"},
     "timezone": "Europe/Vilnius",
-    "checkin_margin": 10,
+    # --due paleidimas naktį trunka iki ~30 min. (keli tiekėjai iš eilės), per tą laiką
+    # kiti 15 min. tick'ai nepasileidžia; 40 min. riba neduoda klaidingų „missed“.
+    "checkin_margin": 40,
     "max_runtime": 360,
     "failure_issue_threshold": 2,
     "recovery_threshold": 1,
