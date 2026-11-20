@@ -184,6 +184,39 @@ class PlanTests(TestCase):
             items, stats = pipeline.plan_prices(self.schedule)
         self.assertEqual(items[0]["price_net"], "280.17")
 
+    def test_plan_prices_unit_change_waits_for_catalog(self):
+        self._offer("U1", trade_pack_qty=25, sold_as_pack=False)  # 10.00 / vnt.
+        self._offer("U2", trade_pack_qty=25, sold_as_pack=False)
+        state = {
+            "SP.U1": {"code": "SP.U1", "price_net": "250.00", "cost_net": "125.00",
+                      "sold_as_pack": True},
+            "SP.U2": {"code": "SP.U2", "price_net": "9.00", "cost_net": "5.00",
+                      "sold_as_pack": False},
+        }
+        with self._state(state):
+            items, stats = pipeline.plan_prices(self.schedule)
+        self.assertEqual([i["code"] for i in items], ["SP.U2"])
+        self.assertEqual(stats["held"], 0)
+        self.assertEqual(stats["unit_changed"], 1)
+        self.assertEqual(stats["unit_changed_sample"], ["SP.U1"])
+
+    def test_catalog_delta_unit_change_sends_new_price(self):
+        self._offer("U1", product=self._product("PU"), trade_pack_qty=25, sold_as_pack=False)
+        self._offer("K1", product=self._product("PK"))
+        state = {
+            "SP.U1": {"code": "SP.U1", "price_net": "250.00", "cost_net": "125.00",
+                      "sold_as_pack": True},
+            "SP.K1": {"code": "SP.K1", "price_net": "9.00", "cost_net": "4.00",
+                      "sold_as_pack": False},
+        }
+        with self._state(state):
+            payload, _hashes, _stats = pipeline.plan_catalog_delta(self.supplier)
+        variants = {v["code"]: v for i in payload["items"] for v in i["variants"]}
+        self.assertEqual(variants["SP.U1"]["price_net"], "10.00")
+        self.assertEqual(variants["SP.U1"]["cost_net"], "5.00")
+        self.assertFalse(variants["SP.U1"]["sold_as_pack"])
+        self.assertEqual(variants["SP.K1"]["price_net"], "9.00")
+
     def test_catalog_delta_gates_and_keeps_shop_prices(self):
         self._offer("A1", product=self._product("P1"))
         self._offer("B1", product=self._product("P2", lt=False))
