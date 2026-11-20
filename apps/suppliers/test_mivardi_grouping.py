@@ -71,3 +71,13 @@ class MivardiGroupingTests(SimpleTestCase):
         self.assertEqual(rows["W12"]["product_group"], rows["W9"]["product_group"])
         self.assertEqual(rows["W12"]["axes"]["weight"], rows["W9"]["axes"]["weight"])
         self.assertEqual((rows["W12"]["axes"]["model"], rows["W9"]["axes"]["model"]), ("12 kg", "9 kg"))
+
+    def test_name_tail_skipped_when_axis_and_model_taken(self):
+        cat = "Dravec | Lanka"
+        params = [("Hmotnost", "0,13 kg"), ("Protihrot", "Barbed")]
+        rows = _parse(
+            _item("W12", "Wire leaders (swivel + treble hook) 12 kg", cat, params),
+            _item("W9", "Wire leaders (swivel + treble hook) 9 kg", cat, params),
+        )
+        self.assertEqual(rows["W12"]["axes"]["model"], "Barbed")
+        self.assertEqual(rows["W12"]["axes"]["weight"], rows["W9"]["axes"]["weight"])
