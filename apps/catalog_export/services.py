@@ -357,6 +357,7 @@ def _composite_gate(value: str, produced: dict) -> bool:
 _SIZE_WORDS = {
     "2xs", "xxs", "xs", "xsmall", "s", "small", "m", "medium", "l",
     "large", "xl", "xlarge", "2xl", "xxl", "xxlarge", "3xl", "xxxl",
+    "4xl", "xxxxl", "5xl", "xxxxxl",
     "onesize", "standart", "standard", "std", "maxi", "mini", "free",
     "uni",
 }

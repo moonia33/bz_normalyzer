@@ -1254,6 +1254,24 @@ class LineNameAxesTests(TestCase):
         self.assertEqual(options["X-1"], {"line-diameter": "0-3-mm"})
         self.assertEqual(options["X-2"], {"line-diameter": "0-35-mm"})
 
+    def test_clothing_4xl_keeps_apparel_size(self):
+        category = Category.objects.create(name="Hoodies", slug="hoodies")
+        product = Product.objects.create(
+            sku="mv-tee", name="T-shirt", is_active=True, category=category,
+        )
+        for eid, size in (("T-1", "S"), ("T-2", "4XL"), ("T-3", "5XL")):
+            Offer.objects.create(
+                supplier=self.supplier, external_id=eid, sku=eid,
+                name="T-shirt", product=product, is_published=True,
+                is_available=True, selling_price=Decimal("10.00"),
+                attributes={"axes": {"size": size}},
+            )
+        payload = build_catalog_payload()
+        item = next(i for i in payload["items"] if i["code"] == "mv-tee")
+        options = {v["code"]: v["options"] for v in item["variants"]}
+        self.assertEqual(options["T-2"], {"apparel-size": "4xl"})
+        self.assertEqual(options["T-3"], {"apparel-size": "5xl"})
+
     def test_clothing_size_m_not_dropped(self):
         # 'M' (uppercase) yra dydis – tik plikas 'm' vienetas tuščias.
         category = Category.objects.create(name="Hoodies", slug="hoodies")
