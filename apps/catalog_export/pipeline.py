@@ -465,10 +465,18 @@ def item_hash(item: dict) -> str:
     return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def _keep_shop_prices(item: dict, state: dict[str, dict]) -> None:
+def _unit_changed(row: dict, sold_as_pack: bool) -> bool:
+    """Shop'e variantas parduodamas kitu vienetu (dėžė ↔ vienetas) nei tiekėjo feed'e."""
+    return "sold_as_pack" in row and bool(row["sold_as_pack"]) != bool(sold_as_pack)
+
+
+def _keep_shop_prices(item: dict, state: dict[str, dict], locked: set[str]) -> None:
     for variant in item.get("variants") or []:
         row = state.get(variant["code"])
         if row is None:
+            continue
+        if variant["code"] not in locked and _unit_changed(row, variant.get("sold_as_pack")):
+            # pasikeitus vienetui sena kaina nebetinka – siunčiama nauja
             continue
         variant["price_net"] = str(_dec(row["price_net"]))
         if row.get("cost_net") is not None:
@@ -550,6 +558,10 @@ def plan_catalog_delta(supplier: Supplier) -> tuple[dict, dict[str, str], dict]:
         .values_list("product_id", flat=True)
     )
     state = fetch_variant_state(v["code"] for i in items for v in i.get("variants") or [])
+    locked = {
+        _offer_variant_code(o)
+        for o in Offer.objects.filter(supplier=supplier, price_locked=True).select_related("supplier")
+    }
     send, hashes = [], {}
     counts: Counter = Counter()
     unmapped, untranslated = [], []
@@ -567,7 +579,7 @@ def plan_catalog_delta(supplier: Supplier) -> tuple[dict, dict[str, str], dict]:
             unmapped.append(item["code"])
             continue
         counts["changed" if in_shop else "new"] += 1
-        _keep_shop_prices(item, state)
+        _keep_shop_prices(item, state, locked)
         send.append(item)
         hashes[item["code"]] = digest
     payload["items"] = send
@@ -647,15 +659,19 @@ def plan_prices(schedule: SupplierSchedule) -> tuple[list[dict], dict]:
         if offer.shop_variant_code:
             # papildomas sandėlis: kaina keliauja tik kaip sandėlio sąlygos
             continue
-        desired[_offer_variant_code(offer)] = (_dec(price), _dec(cost))
+        desired[_offer_variant_code(offer)] = (_dec(price), _dec(cost), offer.sold_as_pack)
     state = fetch_variant_state(desired)
     guard = Decimal(schedule.price_change_guard_pct or 0)
-    items, held = [], []
+    items, held, unit_changed = [], [], []
     not_in_shop = 0
-    for code, (price, cost) in sorted(desired.items()):
+    for code, (price, cost, sold_as_pack) in sorted(desired.items()):
         row = state.get(code)
         if row is None:
             not_in_shop += 1
+            continue
+        if _unit_changed(row, sold_as_pack):
+            # kaina keičiasi kartu su vienetu ir EAN – siunčia katalogo etapas
+            unit_changed.append(code)
             continue
         shop_price, shop_cost = _dec(row["price_net"]), _dec(row.get("cost_net"))
         if price == shop_price and (cost is None or cost == shop_cost):
@@ -682,6 +698,8 @@ def plan_prices(schedule: SupplierSchedule) -> tuple[list[dict], dict]:
         "held_sample": held[:LIST_LIMIT],
         "locked": locked,
         "not_in_shop": not_in_shop,
+        "unit_changed": len(unit_changed),
+        "unit_changed_sample": unit_changed[:LIST_LIMIT],
     }
     return items, stats
 
