@@ -74,6 +74,81 @@ _NAME_MEAS = re.compile(
 )
 _WORD_RE = re.compile(r"[^A-Za-z0-9]+")
 
+# Pavadinimo uodegos varianto žymės – grupavimo bazei nupjauti pagal kategoriją/ašį:
+# drabužių dydis („T-shirt MC Team - XL“), kabliuko numeris („Hooks M-Point AS - No. 4“,
+# „Yamatsu Chinu 1/0 - flatted“), valo skersmuo/ilgis/stiprumas („Royal Carp 0,225 mm 300 m“).
+_NAME_SIZE = re.compile(r"\s*[-–]?\s*\b(?:[2-5]?X{1,3}[SL]|[SML]|XXS|M\s*/\s*L)\s*$")
+_NAME_HOOK = re.compile(
+    r"\s*[-–]?\s*(?:No\.?\s*)?\b\d{1,2}(?:/0)?\b"
+    r"(?=(?:\s*[-–]?\s*(?:flatted|barbless|sale))*\s*$)",
+    re.I,
+)
+_NAME_LINE = re.compile(
+    r"\s*\b\d+[,.]\d+(?:\s*-\s*\d+[,.]\d+)?\s*(?:mm)?(?=\s|$)"
+    r"|\s*\(\d+\s*lb\)|\s*\b\d+\s*x\s*\d+\s*m\b|\s*\b\d+\s*m\b",
+    re.I,
+)
+_APPAREL_CAT = re.compile(r"Oblečení|Trička|Mikiny", re.I)
+_HOOK_CAT = re.compile(r"Háčk", re.I)
+_LINE_CAT = re.compile(r"Vlasce|šňůr", re.I)
+
+
+def _name_axis(name: str, category_text: str, axes: dict[str, str]) -> tuple[str, str] | None:
+    """Varianto ašis iš pavadinimo uodegos, kai feed'o PARAM jos neturi."""
+    if _APPAREL_CAT.search(category_text) or axes.get("size"):
+        m = _NAME_SIZE.search(name)
+        if m:
+            return "size", m.group(0).strip(" -–")
+    if "hook_size" in axes or _HOOK_CAT.search(category_text):
+        m = _NAME_HOOK.search(name)
+        if m:
+            return "hook_size", re.sub(r"(?i)^No\.?\s*", "", m.group(0).strip(" -–"))
+    m = _NAME_MEAS.search(name)
+    if m:
+        value = m.group(0).strip(" -–x")
+        unit = re.sub(r"[\d.,\s']", "", value.split()[-1] if value.split() else "").lower()
+        if unit in {"g", "kg", "oz", "lb", "lbs"}:
+            return "weight", value
+        if unit == "mm" and _LINE_CAT.search(category_text):
+            return "line_diameter", value
+        return "model", value
+    return None
+
+
+def _distinguish_by_name(members: list[dict[str, Any]]) -> None:
+    """Jei grupės nariai PARAM ašimis nesiskiria – ašis paimama iš pavadinimo uodegos."""
+    def key(row: dict[str, Any]) -> tuple:
+        return tuple(sorted((k, v) for k, v in row["axes"].items() if k != "pack"))
+
+    if len({key(m) for m in members}) == len(members):
+        return
+    found = [_name_axis(m["name"], m["category_text"], m["axes"]) for m in members]
+    if any(f is None for f in found):
+        return
+    axis_names = {f[0] for f in found}
+    if len(axis_names) != 1 or len({f[1].lower() for f in found}) != len(members):
+        return
+    # tiekėjo PARAM reikšmės neperrašomos (pvz. pavadėlio „12 kg“ – stiprumas, ne svoris)
+    free = [a for a in (axis_names.pop(), "model") if not any(a in m["axes"] for m in members)]
+    if not free:
+        return
+    axis = free[0]
+    for member, (_axis, value) in zip(members, found):
+        member["axes"][axis] = value
+
+
+def _group_base(name: str, category_text: str, axes: dict[str, str]) -> str:
+    """Pavadinimas be varianto žymių – tos pačios prekės skirtingi dydžiai sutampa."""
+    base = name
+    if _APPAREL_CAT.search(category_text) or axes.get("size"):
+        base = _NAME_SIZE.sub("", base)
+    if "hook_size" in axes or _HOOK_CAT.search(category_text):
+        base = _NAME_HOOK.sub("", base)
+    if _LINE_CAT.search(category_text):
+        base = _NAME_LINE.sub("", base)
+    base = _NAME_MEAS.sub("", base).strip(" -–—,")
+    return re.sub(r"\s+", " ", base)
+
 
 def _slug(text: str) -> str:
     text = _WORD_RE.sub("-", text.strip().lower()).strip("-")
@@ -195,13 +270,15 @@ class MivardiAdapter(BaseAdapter):
 
         groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
-            base = _NAME_MEAS.sub("", row["name"]).strip(" -–—,")
+            base = _group_base(row["name"], row["category_text"], row["axes"])
             row["base"] = base or row["name"]
             leaf = row["category_text"].split("|")[-1].strip().lower()
             groups[(leaf, row["base"].lower())].append(row)
 
         for (_leaf, base_key), members in groups.items():
             group_code = _slug(members[0]["base"])[:64] if len(members) > 1 else ""
+            if group_code:
+                _distinguish_by_name(members)
             for member in members:
                 member["product_group"] = group_code
                 yield member
