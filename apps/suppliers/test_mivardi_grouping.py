@@ -61,3 +61,13 @@ class MivardiGroupingTests(SimpleTestCase):
         )
         self.assertEqual(rows["A"]["product_group"], "")
         self.assertEqual(rows["B"]["base"], "Shelter Quick Set XL")
+
+    def test_name_tail_does_not_overwrite_param_axis(self):
+        cat = "Dravec | Lanka"
+        rows = _parse(
+            _item("W12", "Wire leaders (swivel + treble hook) 12 kg", cat, [("Hmotnost", "0,13 kg")]),
+            _item("W9", "Wire leaders (swivel + treble hook) 9 kg", cat, [("Hmotnost", "0,13 kg")]),
+        )
+        self.assertEqual(rows["W12"]["product_group"], rows["W9"]["product_group"])
+        self.assertEqual(rows["W12"]["axes"]["weight"], rows["W9"]["axes"]["weight"])
+        self.assertEqual((rows["W12"]["axes"]["model"], rows["W9"]["axes"]["model"]), ("12 kg", "9 kg"))

@@ -128,7 +128,11 @@ def _distinguish_by_name(members: list[dict[str, Any]]) -> None:
     axis_names = {f[0] for f in found}
     if len(axis_names) != 1 or len({f[1].lower() for f in found}) != len(members):
         return
-    for member, (axis, value) in zip(members, found):
+    axis = axis_names.pop()
+    if any(axis in m["axes"] for m in members):
+        # tiekėjo PARAM reikšmės neperrašomos (pvz. pavadėlio „12 kg“ – stiprumas, ne svoris)
+        axis = "model"
+    for member, (_axis, value) in zip(members, found):
         member["axes"][axis] = value
 
 
