@@ -470,10 +470,12 @@ def _unit_changed(row: dict, sold_as_pack: bool) -> bool:
     return "sold_as_pack" in row and bool(row["sold_as_pack"]) != bool(sold_as_pack)
 
 
-def _keep_shop_prices(item: dict, state: dict[str, dict]) -> None:
+def _keep_shop_prices(item: dict, state: dict[str, dict], locked: set[str]) -> None:
     for variant in item.get("variants") or []:
         row = state.get(variant["code"])
-        if row is None or _unit_changed(row, variant.get("sold_as_pack")):
+        if row is None:
+            continue
+        if variant["code"] not in locked and _unit_changed(row, variant.get("sold_as_pack")):
             # pasikeitus vienetui sena kaina nebetinka – siunčiama nauja
             continue
         variant["price_net"] = str(_dec(row["price_net"]))
@@ -556,6 +558,10 @@ def plan_catalog_delta(supplier: Supplier) -> tuple[dict, dict[str, str], dict]:
         .values_list("product_id", flat=True)
     )
     state = fetch_variant_state(v["code"] for i in items for v in i.get("variants") or [])
+    locked = {
+        _offer_variant_code(o)
+        for o in Offer.objects.filter(supplier=supplier, price_locked=True).select_related("supplier")
+    }
     send, hashes = [], {}
     counts: Counter = Counter()
     unmapped, untranslated = [], []
@@ -573,7 +579,7 @@ def plan_catalog_delta(supplier: Supplier) -> tuple[dict, dict[str, str], dict]:
             unmapped.append(item["code"])
             continue
         counts["changed" if in_shop else "new"] += 1
-        _keep_shop_prices(item, state)
+        _keep_shop_prices(item, state, locked)
         send.append(item)
         hashes[item["code"]] = digest
     payload["items"] = send

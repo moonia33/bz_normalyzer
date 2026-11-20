@@ -203,7 +203,11 @@ class PlanTests(TestCase):
     def test_catalog_delta_unit_change_sends_new_price(self):
         self._offer("U1", product=self._product("PU"), trade_pack_qty=25, sold_as_pack=False)
         self._offer("K1", product=self._product("PK"))
+        self._offer("L1", product=self._product("PL"), trade_pack_qty=25, sold_as_pack=False,
+                    price_locked=True)
         state = {
+            "SP.L1": {"code": "SP.L1", "price_net": "240.00", "cost_net": "120.00",
+                      "sold_as_pack": True},
             "SP.U1": {"code": "SP.U1", "price_net": "250.00", "cost_net": "125.00",
                       "sold_as_pack": True},
             "SP.K1": {"code": "SP.K1", "price_net": "9.00", "cost_net": "4.00",
@@ -216,6 +220,7 @@ class PlanTests(TestCase):
         self.assertEqual(variants["SP.U1"]["cost_net"], "5.00")
         self.assertFalse(variants["SP.U1"]["sold_as_pack"])
         self.assertEqual(variants["SP.K1"]["price_net"], "9.00")
+        self.assertEqual(variants["SP.L1"]["price_net"], "240.00")
 
     def test_catalog_delta_gates_and_keeps_shop_prices(self):
         self._offer("A1", product=self._product("P1"))
