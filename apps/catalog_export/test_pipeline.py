@@ -608,3 +608,17 @@ class FetchRetryTests(TestCase):
         self._fail()
         self.schedule.refresh_from_db()
         self.assertGreater(self.schedule.last_prices_at, self.previous)
+
+    def test_failed_stage_not_repeated_within_same_due_call(self):
+        with patch.object(pipeline, "due_stages", return_value=["prices"]), \
+                patch.object(pipeline.notifications, "safe_tick"), \
+                patch.object(
+                    pipeline, "_import_feeds",
+                    side_effect=pipeline.FeedImportError("feed import failed: [1]"),
+                ):
+            pipeline.run_due()
+        self.assertEqual(
+            PipelineRun.objects.filter(supplier=self.schedule.supplier, stage="prices").count(), 1
+        )
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.last_prices_at, self.previous)

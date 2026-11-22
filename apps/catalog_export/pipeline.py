@@ -209,6 +209,8 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
                 notifications.safe_tick(now, mark_stale=False)
             return None
         runs = []
+        # Nepavykęs etapas šiame paleidime nekartojamas – pakartojimas kitame tick'e.
+        failed_now: set[tuple[int, str]] = set()
         # Kol vykdoma, cron tick'ai praleidžiami (lock), todėl per tą laiką
         # atėję etapai paleidžiami čia pat kitame praėjime.
         for _ in range(1 if (dry_run or now) else MAX_DUE_PASSES):
@@ -220,7 +222,12 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
             )
             for schedule in schedules:
                 for stage in due_stages(schedule, now):
-                    pass_runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+                    if (schedule.pk, stage) in failed_now:
+                        continue
+                    stage_run = run_stage(schedule.supplier, stage, dry_run=dry_run)
+                    if stage_run.status == PipelineRun.Status.FAILED:
+                        failed_now.add((schedule.pk, stage))
+                    pass_runs.append(stage_run)
             runs.extend(pass_runs)
             if not pass_runs:
                 break
