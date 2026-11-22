@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.catalog.models import Category, Product, ProductText
 from apps.catalog_export import pipeline
@@ -576,3 +577,48 @@ class UploadFeedTests(TestCase):
         feed.save()  # config pakeitimas neturi grąžinti seno failo
         self.assertEqual(pipeline.latest_upload(feed), job.uploaded_file.name)
 
+
+
+class FetchRetryTests(TestCase):
+    def setUp(self):
+        self.previous = timezone.now() - timedelta(days=1)
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=_supplier("retry"), enabled=True, catalog_hour=2,
+            price_interval_hours=24, stock_interval_minutes=1440,
+            last_prices_at=self.previous,
+        )
+
+    def _fail(self):
+        with patch.object(
+            pipeline, "_import_feeds", side_effect=pipeline.FeedImportError("feed import failed: [1]")
+        ):
+            return pipeline.run_stage(self.schedule.supplier, "prices")
+
+    def test_feed_outage_keeps_stage_due_for_retry(self):
+        run = self._fail()
+        self.assertEqual(run.status, PipelineRun.Status.FAILED)
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.last_prices_at, self.previous)
+
+    def test_retries_stop_after_limit(self):
+        for _ in range(pipeline.MAX_FETCH_RETRIES):
+            self._fail()
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.last_prices_at, self.previous)
+        self._fail()
+        self.schedule.refresh_from_db()
+        self.assertGreater(self.schedule.last_prices_at, self.previous)
+
+    def test_failed_stage_not_repeated_within_same_due_call(self):
+        with patch.object(pipeline, "due_stages", return_value=["prices"]), \
+                patch.object(pipeline.notifications, "safe_tick"), \
+                patch.object(
+                    pipeline, "_import_feeds",
+                    side_effect=pipeline.FeedImportError("feed import failed: [1]"),
+                ):
+            pipeline.run_due()
+        self.assertEqual(
+            PipelineRun.objects.filter(supplier=self.schedule.supplier, stage="prices").count(), 1
+        )
+        self.schedule.refresh_from_db()
+        self.assertEqual(self.schedule.last_prices_at, self.previous)

@@ -81,6 +81,21 @@ class PipelineError(Exception):
     pass
 
 
+class FeedImportError(PipelineError):
+    """Tiekėjo feed'as nepasiekiamas (timeout, HTTP 500) – etapas kartojamas kitame tick'e."""
+
+
+# Laikinas tiekėjo sutrikimas naktį: etapas kartojamas kas cron tick'ą (15 min.),
+# kol per FETCH_RETRY_WINDOW nesukaupta tiek nepavykusių bandymų.
+MAX_FETCH_RETRIES = 3
+FETCH_RETRY_WINDOW = timedelta(hours=12)
+_STAGE_STAMP = {
+    "catalog": "last_catalog_at",
+    "prices": "last_prices_at",
+    "stock": "last_stock_at",
+}
+
+
 @contextmanager
 def pipeline_lock():
     """Vienu metu vykdomas tik vienas pipeline (pg advisory lock)."""
@@ -194,6 +209,8 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
                 notifications.safe_tick(now, mark_stale=False)
             return None
         runs = []
+        # Nepavykęs etapas šiame paleidime nekartojamas – pakartojimas kitame tick'e.
+        failed_now: set[tuple[int, str]] = set()
         # Kol vykdoma, cron tick'ai praleidžiami (lock), todėl per tą laiką
         # atėję etapai paleidžiami čia pat kitame praėjime.
         for _ in range(1 if (dry_run or now) else MAX_DUE_PASSES):
@@ -205,7 +222,12 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
             )
             for schedule in schedules:
                 for stage in due_stages(schedule, now):
-                    pass_runs.append(run_stage(schedule.supplier, stage, dry_run=dry_run))
+                    if (schedule.pk, stage) in failed_now:
+                        continue
+                    stage_run = run_stage(schedule.supplier, stage, dry_run=dry_run)
+                    if stage_run.status == PipelineRun.Status.FAILED:
+                        failed_now.add((schedule.pk, stage))
+                    pass_runs.append(stage_run)
             runs.extend(pass_runs)
             if not pass_runs:
                 break
@@ -217,6 +239,8 @@ def run_due(now=None, *, dry_run: bool = False) -> list[PipelineRun] | None:
 def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> PipelineRun:
     schedule, _ = SupplierSchedule.objects.get_or_create(supplier=supplier)
     run = PipelineRun.objects.create(supplier=supplier, stage=stage, dry_run=dry_run)
+    stamp = _STAGE_STAMP[stage]
+    previous_stamp = getattr(schedule, stamp)
     handler = {
         Stage.CATALOG: _stage_catalog,
         Stage.PRICES: _stage_prices,
@@ -228,6 +252,9 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
         logger.exception("Pipeline %s/%s nepavyko", supplier.code, stage)
         run.status = PipelineRun.Status.FAILED
         run.error_message = str(exc)[:2000]
+        if isinstance(exc, FeedImportError) and not dry_run and _fetch_retries_left(run):
+            setattr(schedule, stamp, previous_stamp)
+            schedule.save(update_fields=[stamp, "updated_at"])
     run.finished_at = timezone.now()
     run.save()
     if not dry_run and run.status == PipelineRun.Status.DONE:
@@ -235,6 +262,18 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
     if not dry_run:
         notifications.safe_alert_run(run)
     return run
+
+
+def _fetch_retries_left(run: PipelineRun) -> bool:
+    failed = PipelineRun.objects.filter(
+        supplier=run.supplier,
+        stage=run.stage,
+        status=PipelineRun.Status.FAILED,
+        dry_run=False,
+        error_message__startswith="feed import failed",
+        created_at__gte=timezone.now() - FETCH_RETRY_WINDOW,
+    ).exclude(pk=run.pk)
+    return failed.count() < MAX_FETCH_RETRIES
 
 
 def _close_waiting_runs(run: PipelineRun) -> None:
@@ -331,7 +370,7 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> dict[int, int]
     run.details["imports"] = jobs
     failed = [j["feed"] for j in jobs if j["status"] != ImportJob.Status.SUCCESS]
     if failed:
-        raise PipelineError(f"feed import failed: {failed}")
+        raise FeedImportError(f"feed import failed: {failed}")
     return {j["feed"]: j["job"] for j in jobs}
 
 
