@@ -764,3 +764,25 @@ class AlbatrosRawStockDbTests(TestCase):
         adapter = AlbatrosAdapter(self.feed)
         items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([["", "OLD-1", "Sena", 5.0, 3]]))}
         self.assertEqual(items["OLD-1"].stock, 3)
+
+    def _raw_new(self, adapter, code, images):
+        item = adapter.normalize({"code": code, "name": "N", "section": "S", "mark": "", "export": "5", "qty": "2"})
+        item.images = list(images)
+        adapter.raw_new_codes = {code.upper()}
+        return item
+
+    def test_raw_new_with_only_dead_images_dropped(self):
+        ImageUrlCheck.objects.create(url="https://s/dead.jpg", ok=False, status_code=404)
+        adapter = AlbatrosAdapter(self.feed)
+        adapter.config = {**adapter.config, "dead_image_check": True}
+        item = self._raw_new(adapter, "D-1", ["https://s/dead.jpg"])
+        self.assertEqual(adapter._drop_raw_new_without_images([item], {}), [])
+
+    def test_raw_new_existing_offer_keeps_offer_images(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="E-1", name="E", images=["https://s/e.jpg"])
+        adapter = AlbatrosAdapter(self.feed)
+        item = self._raw_new(adapter, "E-1", [])
+        (kept,) = adapter._drop_raw_new_without_images([item], {})
+        self.assertEqual((kept.images, kept.extra["main_image_url"]), (["https://s/e.jpg"], "https://s/e.jpg"))
