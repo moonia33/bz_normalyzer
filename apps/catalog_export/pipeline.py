@@ -173,10 +173,34 @@ def stage_is_nightly(stage: str, schedule: SupplierSchedule) -> bool:
     return True
 
 
+def _upload_due(schedule: SupplierSchedule) -> list[str]:
+    """Įkeltas naujas failas: etapai, dar nevykdyti po įkėlimo (be nakties lango)."""
+    pending = schedule.upload_pending_at
+    stages = []
+    if schedule.catalog_phase == SupplierSchedule.Phase.TRANSLATING or (
+        schedule.last_catalog_at is None or schedule.last_catalog_at < pending
+    ):
+        stages.append(Stage.CATALOG)
+    if schedule.price_interval_hours and (schedule.last_prices_at is None or schedule.last_prices_at < pending):
+        stages.append(Stage.PRICES)
+    if schedule.stock_interval_minutes and (schedule.last_stock_at is None or schedule.last_stock_at < pending):
+        stages.append(Stage.STOCK)
+    return stages
+
+
+def _clear_upload_pending(schedule: SupplierSchedule) -> None:
+    schedule.refresh_from_db()
+    if schedule.upload_pending_at and not _upload_due(schedule):
+        schedule.upload_pending_at = None
+        schedule.save(update_fields=["upload_pending_at", "updated_at"])
+
+
 def due_stages(schedule: SupplierSchedule, now=None) -> list[str]:
     now = now or timezone.now()
     if not schedule.enabled or not schedule.supplier.is_active:
         return []
+    if schedule.upload_pending_at:
+        return _upload_due(schedule)
     stages = []
     if _catalog_due(schedule, now):
         stages.append(Stage.CATALOG)
@@ -259,6 +283,8 @@ def run_stage(supplier: Supplier, stage: str, *, dry_run: bool = False) -> Pipel
     run.save()
     if not dry_run and run.status == PipelineRun.Status.DONE:
         _close_waiting_runs(run)
+        if schedule.upload_pending_at:
+            _clear_upload_pending(schedule)
     if not dry_run:
         notifications.safe_alert_run(run)
     return run

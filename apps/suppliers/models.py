@@ -116,6 +116,16 @@ class SupplierFeed(TimeStampedModel):
         verbose_name = "tiekėjo šaltinis"
         verbose_name_plural = "tiekėjų šaltiniai"
 
+    def save(self, *args, **kwargs):
+        previous = (
+            SupplierFeed.objects.filter(pk=self.pk).values_list("file", flat=True).first()
+            if self.pk
+            else None
+        )
+        super().save(*args, **kwargs)
+        if self.file and self.file.name != (previous or ""):
+            mark_upload_pending(self.supplier_id)
+
     def is_due(self, now=None) -> bool:
         if not self.is_active or not self.sync_interval_minutes:
             return False
@@ -174,6 +184,11 @@ class SupplierSchedule(TimeStampedModel):
         max_length=16, choices=Phase.choices, default=Phase.IDLE, blank=True
     )
     translation_batch_id = models.CharField(max_length=100, blank=True)
+    upload_pending_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Įkeltas naujas failas: katalogas, kainos ir likučiai paleidžiami iš karto (ne pagal grafiką).",
+    )
 
     class Meta:
         verbose_name = "pipeline tvarkaraštis"
@@ -272,3 +287,10 @@ def dead_image_urls(urls) -> set[str]:
             ImageUrlCheck.objects.filter(url__in=urls[i : i + 2000], ok=False).values_list("url", flat=True)
         )
     return dead
+
+
+def mark_upload_pending(supplier_id: int) -> None:
+    """Naujas tiekėjo failas -> pipeline etapai paleidžiami kitame cron tick'e."""
+    SupplierSchedule.objects.filter(supplier_id=supplier_id, enabled=True).update(
+        upload_pending_at=timezone.now()
+    )

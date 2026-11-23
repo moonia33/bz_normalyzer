@@ -650,3 +650,37 @@ class AlbatrosArticleGroupTests(SimpleTestCase):
         ]
         apply_article_groups(items)
         self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:size:abc"})
+
+
+class AlbatrosRawStockTests(SimpleTestCase):
+    def setUp(self):
+        self.adapter = AlbatrosAdapter(_Feed())
+
+    def _raw(self, product_rows, previous=None):
+        rows = [[None] * 7, ["Reel - Ritė", None, None, None, None, None, None]]
+        rows += [["", i, f"Filler {i}", 1.0, 0, None, None] for i in range(900000, 900025)]
+        rows += product_rows
+        self.adapter._previous_rows = lambda: previous or {}
+        return {r["code"]: r for r in self.adapter.parse(_xlsx(rows))}
+
+    def test_raw_stock_updates_known_and_creates_only_in_stock_new(self):
+        previous = {
+            "143792": {"code": "143792", "name": "TiCA Lustre", "section": "Reel - Ritė", "mark": "New 2027",
+                       "export": "10", "sale": "-0.3", "qty": "3", "photo": "http://x/1.jpg"},
+        }
+        rows = self._raw([
+            ["", 143792, "TICA LUSTRE RAW", 11.5, 0, None, None],
+            ["", "10005-100", "Daiwa Ninja", 36.2, 4, None, None],
+        ], previous)
+        known = self.adapter.normalize(rows["143792"])
+        self.assertEqual((known.name, known.stock, known.badges), ("TiCA Lustre", 0, ["new-2027"]))
+        self.assertEqual(known.discount_percent, 30)
+        self.assertEqual(known.extra["rrp_price"], "17.25")
+        self.assertEqual(known.images, ["http://x/1.jpg"])
+        new = self.adapter.normalize(rows["10005-100"])
+        self.assertEqual((new.stock, new.discount_percent, new.category_path), (4, None, "Reel - Ritė"))
+        self.assertNotIn("900001", rows)  # naujas kodas su 0 nekuriamas
+
+    def test_unrecognised_headerless_file_still_raises(self):
+        with self.assertRaises(AdapterError):
+            list(self.adapter.parse(_xlsx([["x"], ["", "a", 1]])))

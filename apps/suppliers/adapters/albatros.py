@@ -49,6 +49,10 @@ _MAX_VARIANT_LEN = 40
 # Antraštės (lower), pagal kurias atpažįstamas pilnas Stock failas
 _REQUIRED = {"code": "code", "item": "item", "export": "be pvm, export", "sale": "sale", "qty": "q-ty"}
 
+# Raw Stock (be antraščių): A skyrius | Code | Item | be PVM, export | Q-ty – visi kodai, ir su 0.
+_RAW_COLS = {"code": 1, "item": 2, "export": 3, "qty": 4}
+_RAW_MIN_ROWS = 20
+
 # Stock „foto“ stulpelyje būna ir PDF, nukirpti adresai ar gamintojo puslapiai – ne nuotraukos.
 _IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|webp|gif)$", re.IGNORECASE)
 _IMAGE_HOSTS = ("asset.productmarketingcloud.com", "media.purefishing.com")
@@ -95,6 +99,23 @@ BRAND_ALIASES: list[tuple[str, str]] = [
 _BRAND_SCAN = 4
 
 
+def _is_raw_stock(rows: list[tuple]) -> bool:
+    """Raw Stock atpažinimas: be antraščių, eilutės `| kodas | pavadinimas | kaina | kiekis`."""
+    matches = 0
+    for row in rows[:300]:
+        if len(row) < 5:
+            continue
+        code, name, price, qty = (row[i] for i in (1, 2, 3, 4))
+        if (
+            normalize_code(code)
+            and isinstance(name, str)
+            and isinstance(price, (int, float))
+            and isinstance(qty, (int, float))
+        ):
+            matches += 1
+    return matches >= _RAW_MIN_ROWS
+
+
 def normalize_code(value: Any) -> str:
     """143792 / 143792.0 / ' 10005-100 ' -> '143792' / '10005-100'."""
     if value is None:
@@ -132,17 +153,23 @@ class AlbatrosAdapter(BaseAdapter):
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
         sheet = workbook.worksheets[0]
-        rows = sheet.iter_rows(values_only=True)
+        all_rows = list(sheet.iter_rows(values_only=True))
         col: dict[str, int] = {}
-        for row in rows:
+        start = 0
+        for index, row in enumerate(all_rows):
             header = [str(c or "").strip().lower() for c in row]
             if "code" in header:
                 col = {k: header.index(h) for k, h in _REQUIRED.items() if h in header}
+                start = index + 1
                 break
+        if not col and _is_raw_stock(all_rows):
+            yield from self._parse_raw(all_rows)
+            return
         missing = sorted(set(_REQUIRED) - set(col))
         if missing:
             # neatpažintas failas -> klaida, likučiai neliečiami
             raise AdapterError(f"Albatros: ne Stock failas, trūksta stulpelių {missing}")
+        rows = iter(all_rows[start:])
 
         def cell(row: tuple, key: str) -> Any:
             i = col[key]
@@ -176,6 +203,59 @@ class AlbatrosAdapter(BaseAdapter):
                 "sale": cell(row, "sale"),
                 "qty": cell(row, "qty"),
                 "photo": photo,
+            }
+        yield from items.values()
+
+    def _previous_rows(self) -> dict[str, dict[str, Any]]:
+        """Paskutinio sėkmingo importo eilutės (kodas -> žalia eilutė): Raw Stock jų neturi."""
+        feed_id = getattr(self.feed, "pk", None)
+        if not feed_id:
+            return {}
+        from apps.ingestion.models import ImportJob, RawItem
+
+        job = (
+            ImportJob.objects.filter(feed_id=feed_id, status=ImportJob.Status.SUCCESS)
+            .order_by("-id")
+            .first()
+        )
+        if job is None:
+            return {}
+        return {
+            str(payload.get("code") or "").upper(): payload
+            for payload in RawItem.objects.filter(job=job).values_list("payload", flat=True)
+            if isinstance(payload, dict) and payload.get("code") and "export" in payload
+        }
+
+    def _parse_raw(self, rows: list[tuple]) -> Iterator[dict[str, Any]]:
+        """Raw Stock: kiekiai ir export kaina. Žinomam kodui pavadinimas, skyrius, žymė, SALE ir
+        nuotrauka lieka iš ankstesnio importo; naujas kodas kuriamas tik su likučiu > 0."""
+        previous = self._previous_rows()
+        section = ""
+        items: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            code = normalize_code(row[_RAW_COLS["code"]]) if len(row) > _RAW_COLS["code"] else ""
+            if not code:
+                if row and row[0] and str(row[0]).strip() and not any(row[1:]):
+                    section = str(row[0]).strip()
+                continue
+            export = row[_RAW_COLS["export"]] if len(row) > _RAW_COLS["export"] else None
+            qty = row[_RAW_COLS["qty"]] if len(row) > _RAW_COLS["qty"] else None
+            known = previous.get(code.upper())
+            if known:
+                items[code] = {**known, "code": code, "export": export, "qty": qty}
+                continue
+            if not isinstance(qty, (int, float)) or qty <= 0:
+                continue
+            item = str(row[_RAW_COLS["item"]] or "").strip()
+            items[code] = {
+                "code": code,
+                "name": re.sub(r"\s+", " ", item),
+                "section": section,
+                "mark": "",
+                "export": export,
+                "sale": None,
+                "qty": qty,
+                "photo": "",
             }
         yield from items.values()
 
