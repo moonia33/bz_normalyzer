@@ -736,3 +736,12 @@ class AlbatrosRawStockDbTests(TestCase):
         adapter = AlbatrosAdapter(self.feed)
         list(adapter.iter_items(_raw_xlsx([["", "Q-1", "Prekė", 5.0, None]])))
         self.assertEqual(adapter.fetch_errors, 1)
+
+    def test_raw_text_qty_parsed_as_number(self):
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([
+            ["", "T-1", "Prekė", 5.0, "3"], ["", "T-0", "Prekė 0", 5.0, "0"],
+        ]))}
+        self.assertEqual((items["T-1"].stock, Decimal(items["T-1"].extra["export_price"])), (3, Decimal(5)))
+        self.assertNotIn("T-0", items)
+        self.assertEqual(adapter.fetch_errors, 0)
