@@ -622,3 +622,31 @@ class FetchRetryTests(TestCase):
         )
         self.schedule.refresh_from_db()
         self.assertEqual(self.schedule.last_prices_at, self.previous)
+
+
+class UploadTriggerTests(TestCase):
+    def setUp(self):
+        from django.core.files.base import ContentFile
+        from apps.suppliers.models import SupplierFeed
+
+        self.supplier = _supplier("upl")
+        self.schedule = SupplierSchedule.objects.create(
+            supplier=self.supplier, enabled=True, catalog_weekday=6, catalog_hour=2,
+            price_interval_hours=168, stock_interval_minutes=2880,
+            last_catalog_at=timezone.now(), last_prices_at=timezone.now(), last_stock_at=timezone.now(),
+        )
+        self.feed = SupplierFeed.objects.create(supplier=self.supplier, name="Stock", kind="excel_upload")
+        self.ContentFile = ContentFile
+
+    def test_new_file_makes_all_stages_due_outside_night(self):
+        noon = timezone.now().replace(hour=10)
+        self.assertEqual(pipeline.due_stages(self.schedule, noon), [])
+        self.feed.file.save("Raw.xlsx", self.ContentFile(b"x"))
+        self.schedule.refresh_from_db()
+        self.assertIsNotNone(self.schedule.upload_pending_at)
+        self.assertEqual(pipeline.due_stages(self.schedule, noon), ["catalog", "prices", "stock"])
+        for field in ("last_catalog_at", "last_prices_at", "last_stock_at"):
+            setattr(self.schedule, field, timezone.now())
+        self.schedule.save()
+        pipeline._clear_upload_pending(self.schedule)
+        self.assertIsNone(self.schedule.upload_pending_at)

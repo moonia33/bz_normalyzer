@@ -49,6 +49,10 @@ _MAX_VARIANT_LEN = 40
 # Antraštės (lower), pagal kurias atpažįstamas pilnas Stock failas
 _REQUIRED = {"code": "code", "item": "item", "export": "be pvm, export", "sale": "sale", "qty": "q-ty"}
 
+# Raw Stock (be antraščių): A skyrius | Code | Item | be PVM, export | Q-ty – visi kodai, ir su 0.
+_RAW_COLS = {"code": 1, "item": 2, "export": 3, "qty": 4}
+_RAW_MIN_ROWS = 20
+
 # Stock „foto“ stulpelyje būna ir PDF, nukirpti adresai ar gamintojo puslapiai – ne nuotraukos.
 _IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|webp|gif)$", re.IGNORECASE)
 _IMAGE_HOSTS = ("asset.productmarketingcloud.com", "media.purefishing.com")
@@ -95,6 +99,23 @@ BRAND_ALIASES: list[tuple[str, str]] = [
 _BRAND_SCAN = 4
 
 
+def _is_raw_stock(rows: list[tuple]) -> bool:
+    """Raw Stock atpažinimas: be antraščių, eilutės `| kodas | pavadinimas | kaina | kiekis`."""
+    matches = 0
+    for row in rows[:300]:
+        if len(row) < 5:
+            continue
+        code, name, price, qty = (row[i] for i in (1, 2, 3, 4))
+        if (
+            normalize_code(code)
+            and isinstance(name, str)
+            and isinstance(price, (int, float))
+            and isinstance(qty, (int, float))
+        ):
+            matches += 1
+    return matches >= _RAW_MIN_ROWS
+
+
 def normalize_code(value: Any) -> str:
     """143792 / 143792.0 / ' 10005-100 ' -> '143792' / '10005-100'."""
     if value is None:
@@ -132,17 +153,23 @@ class AlbatrosAdapter(BaseAdapter):
     def parse(self, payload: bytes) -> Iterator[dict[str, Any]]:
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
         sheet = workbook.worksheets[0]
-        rows = sheet.iter_rows(values_only=True)
+        all_rows = list(sheet.iter_rows(values_only=True))
         col: dict[str, int] = {}
-        for row in rows:
+        start = 0
+        for index, row in enumerate(all_rows):
             header = [str(c or "").strip().lower() for c in row]
             if "code" in header:
                 col = {k: header.index(h) for k, h in _REQUIRED.items() if h in header}
+                start = index + 1
                 break
+        if not col and _is_raw_stock(all_rows):
+            yield from self._parse_raw(all_rows)
+            return
         missing = sorted(set(_REQUIRED) - set(col))
         if missing:
             # neatpažintas failas -> klaida, likučiai neliečiami
             raise AdapterError(f"Albatros: ne Stock failas, trūksta stulpelių {missing}")
+        rows = iter(all_rows[start:])
 
         def cell(row: tuple, key: str) -> Any:
             i = col[key]
@@ -179,10 +206,89 @@ class AlbatrosAdapter(BaseAdapter):
             }
         yield from items.values()
 
+    def _previous_rows(self) -> dict[str, dict[str, Any]]:
+        """Naujausia kiekvieno kodo eilutė iš sėkmingų importų (kodas -> žalia eilutė): Raw Stock
+        neturi pavadinimo, žymės, SALE ir nuotraukos. Imama per visus importus, ne tik paskutinį,
+        kad grįžęs kodas neprarastų turinio."""
+        feed_id = getattr(self.feed, "pk", None)
+        if not feed_id:
+            return {}
+        from apps.ingestion.models import ImportJob, RawItem
+
+        rows = (
+            RawItem.objects.filter(
+                job__feed_id=feed_id, job__status=ImportJob.Status.SUCCESS, payload__has_key="export"
+            )
+            .order_by("external_id", "-job_id")
+            .distinct("external_id")
+            .values_list("payload", flat=True)
+        )
+        return {
+            str(payload.get("code") or "").upper(): payload
+            for payload in rows
+            if isinstance(payload, dict) and payload.get("code") and "export" in payload
+        }
+
+    def _parse_raw(self, rows: list[tuple]) -> Iterator[dict[str, Any]]:
+        """Raw Stock: tik kiekiai. Žinomam kodui kaina, pavadinimas, skyrius, žymė, SALE ir
+        nuotrauka lieka iš ankstesnio importo; naujas kodas (export kaina, be SALE) – tik su
+        likučiu > 0, o be nuotraukos atmetamas `iter_items`."""
+        previous = self._previous_rows()
+        if not hasattr(self, "raw_zero_codes"):
+            self.raw_zero_codes = set()
+        if not hasattr(self, "raw_new_codes"):
+            self.raw_new_codes = set()
+        if not hasattr(self, "raw_codes"):
+            self.raw_codes = set()
+        section = ""
+        items: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            code = normalize_code(row[_RAW_COLS["code"]]) if len(row) > _RAW_COLS["code"] else ""
+            if not code:
+                if any(row[1:]):
+                    # prekė be kodo -> normalize klaida (importas su klaidomis likučių nenulina)
+                    yield {"code": "", "name": str(row[_RAW_COLS["item"]] or ""), "section": section}
+                elif row and row[0] and str(row[0]).strip():
+                    section = str(row[0]).strip()
+                continue
+            export = row[_RAW_COLS["export"]] if len(row) > _RAW_COLS["export"] else None
+            qty = row[_RAW_COLS["qty"]] if len(row) > _RAW_COLS["qty"] else None
+            known = previous.get(code.upper())
+            if known:
+                self.raw_codes.add(code.upper())
+                items[code] = {**known, "code": code, "qty": qty}
+                continue
+            amount = self._to_decimal(qty)
+            if amount is None:
+                # tuščias / netaisyklingas kiekis -> normalize klaida (likučiai nenulinami)
+                yield {"code": code, "name": str(row[_RAW_COLS["item"]] or ""), "section": section, "qty": qty}
+                continue
+            if amount <= 0:
+                # Albatros sako 0: nemus duomenys šio kodo likučio neperrašo
+                self.raw_zero_codes.add(code.upper())
+                continue
+            item = str(row[_RAW_COLS["item"]] or "").strip()
+            self.raw_new_codes.add(code.upper())
+            self.raw_codes.add(code.upper())
+            items[code] = {
+                "code": code,
+                "name": re.sub(r"\s+", " ", item),
+                "section": section,
+                "mark": "",
+                "export": export,
+                "sale": None,
+                "qty": qty,
+                "photo": "",
+            }
+        yield from items.values()
+
     def iter_items(self, payload: bytes) -> Iterator[NormalizedItem]:
         # Bloga eilutė neturi nutraukti viso importo: praleidžiama ir skaičiuojama
         # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
         self.fetch_errors = 0
+        self.raw_zero_codes: set[str] = set()
+        self.raw_new_codes: set[str] = set()
+        self.raw_codes: set[str] = set()
         items = []
         failed = set()
         for row in self.parse(payload):
@@ -196,11 +302,14 @@ class AlbatrosAdapter(BaseAdapter):
         nemus = nemus_contents() if use_nemus else {}
         if nemus:
             apply_nemus_prices(items, nemus)
-            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases"), skip=failed))
+            skip = failed | self.raw_zero_codes
+            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases"), skip=skip))
         if self.config.get("manufacturer_groups", True):
             apply_manufacturer_content(items, manufacturer_lookup(items))
         if nemus:
             apply_nemus_groups(items, nemus)
+        if self.raw_codes:
+            items = self._drop_raw_new_without_images(items, nemus)
         if self.config.get("photo_groups", True):
             apply_photo_groups(items)
         apply_size_groups(items)
@@ -212,6 +321,31 @@ class AlbatrosAdapter(BaseAdapter):
         if self.config.get("dead_image_check", True):
             drop_dead_images(items)
         yield from items
+
+    def _drop_raw_new_without_images(self, items: list[NormalizedItem], nemus: dict) -> list[NormalizedItem]:
+        """Vartotojo sprendimas: nauja Raw prekė be (veikiančios) nuotraukos nekuriama. Raw eilutė
+        be nuotraukos, kurios pasiūlymas jau yra (pvz. buvusi nemus prekė, ir vėlesniuose Raw
+        importuose), išlaiko pasiūlymo nuotraukas – likučio failas jų neištrina. Prieš
+        grupavimą, kad atmesta eilutė nekeistų esamų grupių."""
+        raw = [i for i in items if i.external_id.upper() in self.raw_codes]
+        dead: set[str] = set()
+        if self.config.get("dead_image_check", True):
+            from apps.suppliers.models import dead_image_urls
+
+            dead = dead_image_urls(url for i in raw for url in i.images)
+        without = {i.external_id.upper(): i for i in raw if not [u for u in i.images if u not in dead]}
+        supplier_id = getattr(self.feed, "supplier_id", None)
+        if without and supplier_id:
+            from apps.ingestion.models import Offer
+
+            offers = Offer.objects.filter(supplier_id=supplier_id)
+            for code, images in offers.values_list("external_id", "images"):
+                item = without.pop(code.upper(), None)
+                if item is not None and images:
+                    item.images = list(images)
+                    item.extra["main_image_url"] = item.images[0]
+        drop = {code for code in without if code in self.raw_new_codes and code not in nemus}
+        return [i for i in items if i.external_id.upper() not in drop]
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = row.get("code") or ""

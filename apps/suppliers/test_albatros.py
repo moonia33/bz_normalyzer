@@ -650,3 +650,149 @@ class AlbatrosArticleGroupTests(SimpleTestCase):
         ]
         apply_article_groups(items)
         self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:size:abc"})
+
+
+def _raw_xlsx(product_rows) -> bytes:
+    rows = [[None] * 7, ["Reel - Ritė", None, None, None, None, None, None]]
+    rows += [["", i, f"Filler {i}", 1.0, 0, None, None] for i in range(900000, 900025)]
+    return _xlsx(rows + list(product_rows))
+
+
+class AlbatrosRawStockTests(SimpleTestCase):
+    def setUp(self):
+        self.adapter = AlbatrosAdapter(_Feed())
+
+    def _raw(self, product_rows, previous=None):
+        self.adapter._previous_rows = lambda: previous or {}
+        return {r["code"]: r for r in self.adapter.parse(_raw_xlsx(product_rows))}
+
+    def test_raw_stock_updates_known_and_creates_only_in_stock_new(self):
+        previous = {
+            "143792": {"code": "143792", "name": "TiCA Lustre", "section": "Reel - Ritė", "mark": "New 2027",
+                       "export": "10", "sale": "-0.3", "qty": "3", "photo": "http://x/1.jpg"},
+        }
+        rows = self._raw([
+            ["", 143792, "TICA LUSTRE RAW", 11.5, 0, None, None],
+            ["", "10005-100", "Daiwa Ninja", 36.2, 4, None, None],
+        ], previous)
+        known = self.adapter.normalize(rows["143792"])
+        self.assertEqual((known.name, known.stock, known.badges), ("TiCA Lustre", 0, ["new-2027"]))
+        self.assertEqual(known.discount_percent, 30)
+        self.assertEqual(known.extra["rrp_price"], "15.00")  # kaina iš ankstesnio Stock
+        self.assertEqual(known.images, ["http://x/1.jpg"])
+        new = self.adapter.normalize(rows["10005-100"])
+        self.assertEqual((new.stock, new.discount_percent, new.category_path), (4, None, "Reel - Ritė"))
+        self.assertNotIn("900001", rows)  # naujas kodas su 0 nekuriamas
+
+    def test_unrecognised_headerless_file_still_raises(self):
+        with self.assertRaises(AdapterError):
+            list(self.adapter.parse(_xlsx([["x"], ["", "a", 1]])))
+
+
+class AlbatrosRawStockDbTests(TestCase):
+    def setUp(self):
+        from apps.suppliers.models import Supplier, SupplierFeed
+
+        self.supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        self.feed = SupplierFeed.objects.create(
+            supplier=self.supplier, name="Stock", kind="excel_upload",
+            config={"manufacturer_groups": False, "nemus_catalog": True, "dead_image_check": False, "photo_groups": False},
+        )
+
+    def _job(self, *payloads, status="success"):
+        from apps.ingestion.models import ImportJob, RawItem
+
+        job = ImportJob.objects.create(supplier=self.supplier, feed=self.feed, status=status)
+        for payload in payloads:
+            RawItem.objects.create(job=job, supplier=self.supplier, external_id=payload["code"], payload=payload)
+
+    def test_previous_rows_latest_per_code_across_jobs(self):
+        row = {"name": "X", "section": "S", "mark": "", "export": "1", "sale": "-0.2", "qty": "1", "photo": ""}
+        self._job({**row, "code": "A-1", "name": "Old A"}, {**row, "code": "B-1"})
+        self._job({**row, "code": "A-1", "name": "New A"})
+        self._job({**row, "code": "A-1", "name": "Failed A"}, status="failed")
+        self._job({"code": "N-1", "source": "nemus"})
+        self._job({"code": "B-1", "source": "nemus"})
+        previous = AlbatrosAdapter(self.feed)._previous_rows()
+        self.assertEqual(set(previous), {"A-1", "B-1"})
+        self.assertEqual(previous["A-1"]["name"], "New A")
+        self.assertEqual(previous["B-1"]["sale"], "-0.2")
+
+    def test_raw_zero_code_not_filled_from_nemus(self):
+        _nemus("710313-1", "DAVIKLIS HUMMINBIRD XI 14 HW")
+        _nemus("710282-1", "DAVIKLIS HUMMINBIRD XM 9")
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([["", "710313-1", "Daviklis", 100.0, 0]]))}
+        self.assertNotIn("710313-1", items)
+        self.assertEqual(items["710282-1"].stock, 19)
+        self.assertEqual(adapter.fetch_errors, 0)
+
+    def test_raw_row_without_code_is_error(self):
+        adapter = AlbatrosAdapter(self.feed)
+        list(adapter.iter_items(_raw_xlsx([["", None, "Prekė be kodo", 5.0, 3]])))
+        self.assertEqual(adapter.fetch_errors, 1)
+
+    def test_raw_unknown_code_without_qty_is_error(self):
+        adapter = AlbatrosAdapter(self.feed)
+        list(adapter.iter_items(_raw_xlsx([["", "Q-1", "Prekė", 5.0, None]])))
+        self.assertEqual(adapter.fetch_errors, 1)
+
+    def test_raw_text_qty_parsed_as_number(self):
+        _nemus("T-1", "Prekė")
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([
+            ["", "T-1", "Prekė", 5.0, "3"], ["", "T-0", "Prekė 0", 5.0, "0"],
+        ]))}
+        self.assertEqual((items["T-1"].stock, Decimal(items["T-1"].extra["export_price"])), (3, Decimal(5)))
+        self.assertNotIn("T-0", items)
+        self.assertEqual(adapter.fetch_errors, 0)
+
+    def test_raw_new_code_without_image_dropped_unless_nemus(self):
+        _nemus("710313-1", "DAVIKLIS HUMMINBIRD XI 14 HW")
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([
+            ["", "710313-1", "Daviklis", 100.0, 2], ["", "NOIMG-1", "Be foto", 5.0, 3],
+        ]))}
+        self.assertNotIn("NOIMG-1", items)
+        self.assertEqual(items["710313-1"].stock, 2)
+        self.assertEqual(Decimal(items["710313-1"].extra["export_price"]), Decimal(100))
+
+    def test_raw_new_code_existing_offer_kept_without_image(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="OLD-1", name="Sena", stock=5)
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([["", "OLD-1", "Sena", 5.0, 3]]))}
+        self.assertEqual(items["OLD-1"].stock, 3)
+
+    def _raw_new(self, adapter, code, images):
+        item = adapter.normalize({"code": code, "name": "N", "section": "S", "mark": "", "export": "5", "qty": "2"})
+        item.images = list(images)
+        adapter.raw_new_codes = adapter.raw_codes = {code.upper()}
+        return item
+
+    def test_raw_new_with_only_dead_images_dropped(self):
+        ImageUrlCheck.objects.create(url="https://s/dead.jpg", ok=False, status_code=404)
+        adapter = AlbatrosAdapter(self.feed)
+        adapter.config = {**adapter.config, "dead_image_check": True}
+        item = self._raw_new(adapter, "D-1", ["https://s/dead.jpg"])
+        self.assertEqual(adapter._drop_raw_new_without_images([item], {}), [])
+
+    def test_raw_new_existing_offer_keeps_offer_images(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="E-1", name="E", images=["https://s/e.jpg"])
+        adapter = AlbatrosAdapter(self.feed)
+        item = self._raw_new(adapter, "E-1", [])
+        (kept,) = adapter._drop_raw_new_without_images([item], {})
+        self.assertEqual((kept.images, kept.extra["main_image_url"]), (["https://s/e.jpg"], "https://s/e.jpg"))
+
+    def test_raw_known_without_images_keeps_offer_images(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="K-1", name="K", images=["https://s/k.jpg"])
+        adapter = AlbatrosAdapter(self.feed)
+        item = adapter.normalize({"code": "K-1", "name": "K", "section": "S", "mark": "", "export": "5", "qty": "2"})
+        adapter.raw_codes, adapter.raw_new_codes = {"K-1"}, set()
+        (kept,) = adapter._drop_raw_new_without_images([item], {})
+        self.assertEqual(kept.images, ["https://s/k.jpg"])

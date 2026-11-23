@@ -49,5 +49,8 @@ def upload_and_import(request, supplier_code: str, file: UploadedFile = File(...
     job = ImportJob.objects.create(supplier=supplier, feed=feed)
     job.uploaded_file.save(file.name, file)
     run_import(job)
+    from apps.suppliers.models import mark_upload_pending
+
+    mark_upload_pending(supplier.pk)
     job.refresh_from_db()
     return job
