@@ -712,6 +712,7 @@ class AlbatrosRawStockDbTests(TestCase):
         self._job({**row, "code": "A-1", "name": "New A"})
         self._job({**row, "code": "A-1", "name": "Failed A"}, status="failed")
         self._job({"code": "N-1", "source": "nemus"})
+        self._job({"code": "B-1", "source": "nemus"})
         previous = AlbatrosAdapter(self.feed)._previous_rows()
         self.assertEqual(set(previous), {"A-1", "B-1"})
         self.assertEqual(previous["A-1"]["name"], "New A")

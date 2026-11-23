@@ -216,7 +216,9 @@ class AlbatrosAdapter(BaseAdapter):
         from apps.ingestion.models import ImportJob, RawItem
 
         rows = (
-            RawItem.objects.filter(job__feed_id=feed_id, job__status=ImportJob.Status.SUCCESS)
+            RawItem.objects.filter(
+                job__feed_id=feed_id, job__status=ImportJob.Status.SUCCESS, payload__has_key="export"
+            )
             .order_by("external_id", "-job_id")
             .distinct("external_id")
             .values_list("payload", flat=True)
