@@ -652,16 +652,19 @@ class AlbatrosArticleGroupTests(SimpleTestCase):
         self.assertEqual({i.extra["product_group"] for i in items}, {"jobe:size:abc"})
 
 
+def _raw_xlsx(product_rows) -> bytes:
+    rows = [[None] * 7, ["Reel - Ritė", None, None, None, None, None, None]]
+    rows += [["", i, f"Filler {i}", 1.0, 0, None, None] for i in range(900000, 900025)]
+    return _xlsx(rows + list(product_rows))
+
+
 class AlbatrosRawStockTests(SimpleTestCase):
     def setUp(self):
         self.adapter = AlbatrosAdapter(_Feed())
 
     def _raw(self, product_rows, previous=None):
-        rows = [[None] * 7, ["Reel - Ritė", None, None, None, None, None, None]]
-        rows += [["", i, f"Filler {i}", 1.0, 0, None, None] for i in range(900000, 900025)]
-        rows += product_rows
         self.adapter._previous_rows = lambda: previous or {}
-        return {r["code"]: r for r in self.adapter.parse(_xlsx(rows))}
+        return {r["code"]: r for r in self.adapter.parse(_raw_xlsx(product_rows))}
 
     def test_raw_stock_updates_known_and_creates_only_in_stock_new(self):
         previous = {
@@ -684,3 +687,46 @@ class AlbatrosRawStockTests(SimpleTestCase):
     def test_unrecognised_headerless_file_still_raises(self):
         with self.assertRaises(AdapterError):
             list(self.adapter.parse(_xlsx([["x"], ["", "a", 1]])))
+
+
+class AlbatrosRawStockDbTests(TestCase):
+    def setUp(self):
+        from apps.suppliers.models import Supplier, SupplierFeed
+
+        self.supplier = Supplier.objects.create(code="albatros", name="Albatros")
+        self.feed = SupplierFeed.objects.create(
+            supplier=self.supplier, name="Stock", kind="excel_upload",
+            config={"manufacturer_groups": False, "nemus_catalog": True, "dead_image_check": False, "photo_groups": False},
+        )
+
+    def _job(self, *payloads, status="success"):
+        from apps.ingestion.models import ImportJob, RawItem
+
+        job = ImportJob.objects.create(supplier=self.supplier, feed=self.feed, status=status)
+        for payload in payloads:
+            RawItem.objects.create(job=job, supplier=self.supplier, external_id=payload["code"], payload=payload)
+
+    def test_previous_rows_latest_per_code_across_jobs(self):
+        row = {"name": "X", "section": "S", "mark": "", "export": "1", "sale": "-0.2", "qty": "1", "photo": ""}
+        self._job({**row, "code": "A-1", "name": "Old A"}, {**row, "code": "B-1"})
+        self._job({**row, "code": "A-1", "name": "New A"})
+        self._job({**row, "code": "A-1", "name": "Failed A"}, status="failed")
+        self._job({"code": "N-1", "source": "nemus"})
+        previous = AlbatrosAdapter(self.feed)._previous_rows()
+        self.assertEqual(set(previous), {"A-1", "B-1"})
+        self.assertEqual(previous["A-1"]["name"], "New A")
+        self.assertEqual(previous["B-1"]["sale"], "-0.2")
+
+    def test_raw_zero_code_not_filled_from_nemus(self):
+        _nemus("710313-1", "DAVIKLIS HUMMINBIRD XI 14 HW")
+        _nemus("710282-1", "DAVIKLIS HUMMINBIRD XM 9")
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([["", "710313-1", "Daviklis", 100.0, 0]]))}
+        self.assertNotIn("710313-1", items)
+        self.assertEqual(items["710282-1"].stock, 19)
+        self.assertEqual(adapter.fetch_errors, 0)
+
+    def test_raw_row_without_code_is_error(self):
+        adapter = AlbatrosAdapter(self.feed)
+        list(adapter.iter_items(_raw_xlsx([["", None, "Prekė be kodo", 5.0, 3]])))
+        self.assertEqual(adapter.fetch_errors, 1)

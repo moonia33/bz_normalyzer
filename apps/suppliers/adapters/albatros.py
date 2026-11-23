@@ -207,22 +207,23 @@ class AlbatrosAdapter(BaseAdapter):
         yield from items.values()
 
     def _previous_rows(self) -> dict[str, dict[str, Any]]:
-        """Paskutinio sėkmingo importo eilutės (kodas -> žalia eilutė): Raw Stock jų neturi."""
+        """Naujausia kiekvieno kodo eilutė iš sėkmingų importų (kodas -> žalia eilutė): Raw Stock
+        neturi pavadinimo, žymės, SALE ir nuotraukos. Imama per visus importus, ne tik paskutinį,
+        kad grįžęs kodas neprarastų turinio."""
         feed_id = getattr(self.feed, "pk", None)
         if not feed_id:
             return {}
         from apps.ingestion.models import ImportJob, RawItem
 
-        job = (
-            ImportJob.objects.filter(feed_id=feed_id, status=ImportJob.Status.SUCCESS)
-            .order_by("-id")
-            .first()
+        rows = (
+            RawItem.objects.filter(job__feed_id=feed_id, job__status=ImportJob.Status.SUCCESS)
+            .order_by("external_id", "-job_id")
+            .distinct("external_id")
+            .values_list("payload", flat=True)
         )
-        if job is None:
-            return {}
         return {
             str(payload.get("code") or "").upper(): payload
-            for payload in RawItem.objects.filter(job=job).values_list("payload", flat=True)
+            for payload in rows
             if isinstance(payload, dict) and payload.get("code") and "export" in payload
         }
 
@@ -230,12 +231,17 @@ class AlbatrosAdapter(BaseAdapter):
         """Raw Stock: kiekiai ir export kaina. Žinomam kodui pavadinimas, skyrius, žymė, SALE ir
         nuotrauka lieka iš ankstesnio importo; naujas kodas kuriamas tik su likučiu > 0."""
         previous = self._previous_rows()
+        if not hasattr(self, "raw_zero_codes"):
+            self.raw_zero_codes = set()
         section = ""
         items: dict[str, dict[str, Any]] = {}
         for row in rows:
             code = normalize_code(row[_RAW_COLS["code"]]) if len(row) > _RAW_COLS["code"] else ""
             if not code:
-                if row and row[0] and str(row[0]).strip() and not any(row[1:]):
+                if any(row[1:]):
+                    # prekė be kodo -> normalize klaida (importas su klaidomis likučių nenulina)
+                    yield {"code": "", "name": str(row[_RAW_COLS["item"]] or ""), "section": section}
+                elif row and row[0] and str(row[0]).strip():
                     section = str(row[0]).strip()
                 continue
             export = row[_RAW_COLS["export"]] if len(row) > _RAW_COLS["export"] else None
@@ -245,6 +251,8 @@ class AlbatrosAdapter(BaseAdapter):
                 items[code] = {**known, "code": code, "export": export, "qty": qty}
                 continue
             if not isinstance(qty, (int, float)) or qty <= 0:
+                # Albatros sako 0: nemus duomenys šio kodo likučio neperrašo
+                self.raw_zero_codes.add(code.upper())
                 continue
             item = str(row[_RAW_COLS["item"]] or "").strip()
             items[code] = {
@@ -263,6 +271,7 @@ class AlbatrosAdapter(BaseAdapter):
         # Bloga eilutė neturi nutraukti viso importo: praleidžiama ir skaičiuojama
         # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
         self.fetch_errors = 0
+        self.raw_zero_codes: set[str] = set()
         items = []
         failed = set()
         for row in self.parse(payload):
@@ -276,7 +285,8 @@ class AlbatrosAdapter(BaseAdapter):
         nemus = nemus_contents() if use_nemus else {}
         if nemus:
             apply_nemus_prices(items, nemus)
-            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases"), skip=failed))
+            skip = failed | self.raw_zero_codes
+            items.extend(nemus_items(items, nemus, self.config.get("brand_aliases"), skip=skip))
         if self.config.get("manufacturer_groups", True):
             apply_manufacturer_content(items, manufacturer_lookup(items))
         if nemus:
