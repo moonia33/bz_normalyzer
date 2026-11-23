@@ -756,3 +756,11 @@ class AlbatrosRawStockDbTests(TestCase):
         self.assertNotIn("NOIMG-1", items)
         self.assertEqual(items["710313-1"].stock, 2)
         self.assertEqual(Decimal(items["710313-1"].extra["export_price"]), Decimal(100))
+
+    def test_raw_new_code_existing_offer_kept_without_image(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="OLD-1", name="Sena", stock=5)
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([["", "OLD-1", "Sena", 5.0, 3]]))}
+        self.assertEqual(items["OLD-1"].stock, 3)

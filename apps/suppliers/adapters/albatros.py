@@ -303,6 +303,8 @@ class AlbatrosAdapter(BaseAdapter):
             apply_manufacturer_content(items, manufacturer_lookup(items))
         if nemus:
             apply_nemus_groups(items, nemus)
+        if self.raw_new_codes:
+            items = self._drop_raw_new_without_images(items, nemus)
         if self.config.get("photo_groups", True):
             apply_photo_groups(items)
         apply_size_groups(items)
@@ -313,16 +315,24 @@ class AlbatrosAdapter(BaseAdapter):
         refine_categories(items)
         if self.config.get("dead_image_check", True):
             drop_dead_images(items)
-        if self.raw_new_codes:
-            # vartotojo sprendimas: nauja Raw prekė be nuotraukos nekuriama (nemus prekė lieka)
-            items = [
-                i
-                for i in items
-                if i.images
-                or i.external_id.upper() not in self.raw_new_codes
-                or i.external_id.upper() in nemus
-            ]
         yield from items
+
+    def _drop_raw_new_without_images(self, items: list[NormalizedItem], nemus: dict) -> list[NormalizedItem]:
+        """Vartotojo sprendimas: nauja Raw prekė be nuotraukos nekuriama. Esamas pasiūlymas
+        (pvz. buvusi nemus prekė) lieka, kad jo likutis nebūtų nulinamas. Prieš grupavimą,
+        kad atmesta eilutė nekeistų esamų grupių."""
+        candidates = {
+            i.external_id.upper()
+            for i in items
+            if not i.images and i.external_id.upper() in self.raw_new_codes and i.external_id.upper() not in nemus
+        }
+        supplier_id = getattr(self.feed, "supplier_id", None)
+        if candidates and supplier_id:
+            from apps.ingestion.models import Offer
+
+            existing = Offer.objects.filter(supplier_id=supplier_id).values_list("external_id", flat=True)
+            candidates -= {code.upper() for code in existing}
+        return [i for i in items if i.external_id.upper() not in candidates]
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = row.get("code") or ""
