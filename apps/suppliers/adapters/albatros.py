@@ -238,6 +238,8 @@ class AlbatrosAdapter(BaseAdapter):
             self.raw_zero_codes = set()
         if not hasattr(self, "raw_new_codes"):
             self.raw_new_codes = set()
+        if not hasattr(self, "raw_codes"):
+            self.raw_codes = set()
         section = ""
         items: dict[str, dict[str, Any]] = {}
         for row in rows:
@@ -253,6 +255,7 @@ class AlbatrosAdapter(BaseAdapter):
             qty = row[_RAW_COLS["qty"]] if len(row) > _RAW_COLS["qty"] else None
             known = previous.get(code.upper())
             if known:
+                self.raw_codes.add(code.upper())
                 items[code] = {**known, "code": code, "qty": qty}
                 continue
             amount = self._to_decimal(qty)
@@ -266,6 +269,7 @@ class AlbatrosAdapter(BaseAdapter):
                 continue
             item = str(row[_RAW_COLS["item"]] or "").strip()
             self.raw_new_codes.add(code.upper())
+            self.raw_codes.add(code.upper())
             items[code] = {
                 "code": code,
                 "name": re.sub(r"\s+", " ", item),
@@ -284,6 +288,7 @@ class AlbatrosAdapter(BaseAdapter):
         self.fetch_errors = 0
         self.raw_zero_codes: set[str] = set()
         self.raw_new_codes: set[str] = set()
+        self.raw_codes: set[str] = set()
         items = []
         failed = set()
         for row in self.parse(payload):
@@ -303,7 +308,7 @@ class AlbatrosAdapter(BaseAdapter):
             apply_manufacturer_content(items, manufacturer_lookup(items))
         if nemus:
             apply_nemus_groups(items, nemus)
-        if self.raw_new_codes:
+        if self.raw_codes:
             items = self._drop_raw_new_without_images(items, nemus)
         if self.config.get("photo_groups", True):
             apply_photo_groups(items)
@@ -318,28 +323,29 @@ class AlbatrosAdapter(BaseAdapter):
         yield from items
 
     def _drop_raw_new_without_images(self, items: list[NormalizedItem], nemus: dict) -> list[NormalizedItem]:
-        """Vartotojo sprendimas: nauja Raw prekė be (veikiančios) nuotraukos nekuriama. Esamas
-        pasiūlymas (pvz. buvusi nemus prekė) lieka, kad jo likutis nebūtų nulinamas, ir išlaiko
-        savo nuotraukas. Prieš grupavimą, kad atmesta eilutė nekeistų esamų grupių."""
-        raw_new = [
-            i for i in items if i.external_id.upper() in self.raw_new_codes and i.external_id.upper() not in nemus
-        ]
+        """Vartotojo sprendimas: nauja Raw prekė be (veikiančios) nuotraukos nekuriama. Raw eilutė
+        be nuotraukos, kurios pasiūlymas jau yra (pvz. buvusi nemus prekė, ir vėlesniuose Raw
+        importuose), išlaiko pasiūlymo nuotraukas – likučio failas jų neištrina. Prieš
+        grupavimą, kad atmesta eilutė nekeistų esamų grupių."""
+        raw = [i for i in items if i.external_id.upper() in self.raw_codes]
         dead: set[str] = set()
         if self.config.get("dead_image_check", True):
             from apps.suppliers.models import dead_image_urls
 
-            dead = dead_image_urls(url for i in raw_new for url in i.images)
-        without = {i.external_id.upper(): i for i in raw_new if not [u for u in i.images if u not in dead]}
+            dead = dead_image_urls(url for i in raw for url in i.images)
+        without = {i.external_id.upper(): i for i in raw if not [u for u in i.images if u not in dead]}
         supplier_id = getattr(self.feed, "supplier_id", None)
         if without and supplier_id:
             from apps.ingestion.models import Offer
 
-            for code, images in Offer.objects.filter(supplier_id=supplier_id).values_list("external_id", "images"):
+            offers = Offer.objects.filter(supplier_id=supplier_id)
+            for code, images in offers.values_list("external_id", "images"):
                 item = without.pop(code.upper(), None)
                 if item is not None and images:
                     item.images = list(images)
                     item.extra["main_image_url"] = item.images[0]
-        return [i for i in items if i.external_id.upper() not in without]
+        drop = {code for code in without if code in self.raw_new_codes and code not in nemus}
+        return [i for i in items if i.external_id.upper() not in drop]
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:
         code = row.get("code") or ""

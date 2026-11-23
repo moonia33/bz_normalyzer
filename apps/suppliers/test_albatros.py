@@ -768,7 +768,7 @@ class AlbatrosRawStockDbTests(TestCase):
     def _raw_new(self, adapter, code, images):
         item = adapter.normalize({"code": code, "name": "N", "section": "S", "mark": "", "export": "5", "qty": "2"})
         item.images = list(images)
-        adapter.raw_new_codes = {code.upper()}
+        adapter.raw_new_codes = adapter.raw_codes = {code.upper()}
         return item
 
     def test_raw_new_with_only_dead_images_dropped(self):
@@ -786,3 +786,13 @@ class AlbatrosRawStockDbTests(TestCase):
         item = self._raw_new(adapter, "E-1", [])
         (kept,) = adapter._drop_raw_new_without_images([item], {})
         self.assertEqual((kept.images, kept.extra["main_image_url"]), (["https://s/e.jpg"], "https://s/e.jpg"))
+
+    def test_raw_known_without_images_keeps_offer_images(self):
+        from apps.ingestion.models import Offer
+
+        Offer.objects.create(supplier=self.supplier, external_id="K-1", name="K", images=["https://s/k.jpg"])
+        adapter = AlbatrosAdapter(self.feed)
+        item = adapter.normalize({"code": "K-1", "name": "K", "section": "S", "mark": "", "export": "5", "qty": "2"})
+        adapter.raw_codes, adapter.raw_new_codes = {"K-1"}, set()
+        (kept,) = adapter._drop_raw_new_without_images([item], {})
+        self.assertEqual(kept.images, ["https://s/k.jpg"])
