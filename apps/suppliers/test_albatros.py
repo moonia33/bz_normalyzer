@@ -730,3 +730,8 @@ class AlbatrosRawStockDbTests(TestCase):
         adapter = AlbatrosAdapter(self.feed)
         list(adapter.iter_items(_raw_xlsx([["", None, "Prekė be kodo", 5.0, 3]])))
         self.assertEqual(adapter.fetch_errors, 1)
+
+    def test_raw_unknown_code_without_qty_is_error(self):
+        adapter = AlbatrosAdapter(self.feed)
+        list(adapter.iter_items(_raw_xlsx([["", "Q-1", "Prekė", 5.0, None]])))
+        self.assertEqual(adapter.fetch_errors, 1)

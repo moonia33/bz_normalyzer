@@ -250,7 +250,11 @@ class AlbatrosAdapter(BaseAdapter):
             if known:
                 items[code] = {**known, "code": code, "export": export, "qty": qty}
                 continue
-            if not isinstance(qty, (int, float)) or qty <= 0:
+            if not isinstance(qty, (int, float)):
+                # tuščias / netaisyklingas kiekis -> normalize klaida (likučiai nenulinami)
+                yield {"code": code, "name": str(row[_RAW_COLS["item"]] or ""), "section": section, "qty": qty}
+                continue
+            if qty <= 0:
                 # Albatros sako 0: nemus duomenys šio kodo likučio neperrašo
                 self.raw_zero_codes.add(code.upper())
                 continue
