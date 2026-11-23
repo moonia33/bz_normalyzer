@@ -35,7 +35,7 @@
 | Tipas | Pavyzdys | Stulpeliai | Rolė |
 |---|---|---|---|
 | **Stock (pagrindinis, pilnas)** | `Stock 10.21.xlsx`: 10 398 kodų (visi su likučiu ≥ 1; 6 588 be SALE), 110 skyrių | A žymė (`""` / `New 2027`), Code, Item, `be PVM, export`, `SALE`, `Q-ty`, Order, Catalogue, `FOTO` | **Katalogas + savikaina + likučiai.** Importuojama **viskas**, įskaitant 0. Kito Stock importo metu nerastas kodas → likutis 0 |
-| Raw Stock | `Raw Stock 11.19.xlsx` (~31 000 kodų, ir su 0) | A skyrius, kodas, pavadinimas, kaina be PVM (export), likutis; antraščių ir SALE nėra | **Likučiai + export kaina** (vartotojo sprendimas 2026-11-23): žinomam kodui pavadinimas, skyrius, žymė, SALE ir nuotrauka lieka iš paskutinio importo; naujas kodas kuriamas tik su likučiu > 0, be SALE; kodas be likučio ir be ankstesnio importo praleidžiamas |
+| Raw Stock | `Raw Stock 11.19.xlsx` (~31 000 kodų, ir su 0) | A skyrius, kodas, pavadinimas, kaina be PVM (export), likutis; antraščių ir SALE nėra | **Tik likučiai** (vartotojo sprendimas 2026-11-23): žinomam kodui kaina, pavadinimas, skyrius, žymė, SALE ir nuotrauka lieka iš ankstesnio Stock importo; naujas kodas kuriamas tik su likučiu > 0 ir nuotrauka (gamintojo/nemus), export kaina be SALE; kiti nauji kodai praleidžiami |
 | Naujienos | `2027 NEW.xlsx` (382) | Code, Item, su PVM, export, nuolaida, FOTO (salsify) | Naujienų žymė + nuotraukos; **nenulina** |
 | Gamintojo kainoraščiai | `TiCA 2024`, `Crazy Fish Softlures 2024`, `Outdoors Adventures 2024` (Humminbird/Jobe/RAM: EAN, RRP, foto) | skiriasi | Papildomi duomenys (EAN, RRP, foto); **nenulina** |
 

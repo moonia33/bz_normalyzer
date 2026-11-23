@@ -230,11 +230,14 @@ class AlbatrosAdapter(BaseAdapter):
         }
 
     def _parse_raw(self, rows: list[tuple]) -> Iterator[dict[str, Any]]:
-        """Raw Stock: kiekiai ir export kaina. Žinomam kodui pavadinimas, skyrius, žymė, SALE ir
-        nuotrauka lieka iš ankstesnio importo; naujas kodas kuriamas tik su likučiu > 0."""
+        """Raw Stock: tik kiekiai. Žinomam kodui kaina, pavadinimas, skyrius, žymė, SALE ir
+        nuotrauka lieka iš ankstesnio importo; naujas kodas (export kaina, be SALE) – tik su
+        likučiu > 0, o be nuotraukos atmetamas `iter_items`."""
         previous = self._previous_rows()
         if not hasattr(self, "raw_zero_codes"):
             self.raw_zero_codes = set()
+        if not hasattr(self, "raw_new_codes"):
+            self.raw_new_codes = set()
         section = ""
         items: dict[str, dict[str, Any]] = {}
         for row in rows:
@@ -250,7 +253,7 @@ class AlbatrosAdapter(BaseAdapter):
             qty = row[_RAW_COLS["qty"]] if len(row) > _RAW_COLS["qty"] else None
             known = previous.get(code.upper())
             if known:
-                items[code] = {**known, "code": code, "export": export, "qty": qty}
+                items[code] = {**known, "code": code, "qty": qty}
                 continue
             amount = self._to_decimal(qty)
             if amount is None:
@@ -262,6 +265,7 @@ class AlbatrosAdapter(BaseAdapter):
                 self.raw_zero_codes.add(code.upper())
                 continue
             item = str(row[_RAW_COLS["item"]] or "").strip()
+            self.raw_new_codes.add(code.upper())
             items[code] = {
                 "code": code,
                 "name": re.sub(r"\s+", " ", item),
@@ -279,6 +283,7 @@ class AlbatrosAdapter(BaseAdapter):
         # fetch_errors (pipeline -> stats.errors -> mark_absent_offers likučių nenulina).
         self.fetch_errors = 0
         self.raw_zero_codes: set[str] = set()
+        self.raw_new_codes: set[str] = set()
         items = []
         failed = set()
         for row in self.parse(payload):
@@ -308,6 +313,15 @@ class AlbatrosAdapter(BaseAdapter):
         refine_categories(items)
         if self.config.get("dead_image_check", True):
             drop_dead_images(items)
+        if self.raw_new_codes:
+            # vartotojo sprendimas: nauja Raw prekė be nuotraukos nekuriama (nemus prekė lieka)
+            items = [
+                i
+                for i in items
+                if i.images
+                or i.external_id.upper() not in self.raw_new_codes
+                or i.external_id.upper() in nemus
+            ]
         yield from items
 
     def normalize(self, row: dict[str, Any]) -> NormalizedItem:

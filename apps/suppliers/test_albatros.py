@@ -678,7 +678,7 @@ class AlbatrosRawStockTests(SimpleTestCase):
         known = self.adapter.normalize(rows["143792"])
         self.assertEqual((known.name, known.stock, known.badges), ("TiCA Lustre", 0, ["new-2027"]))
         self.assertEqual(known.discount_percent, 30)
-        self.assertEqual(known.extra["rrp_price"], "17.25")
+        self.assertEqual(known.extra["rrp_price"], "15.00")  # kaina iš ankstesnio Stock
         self.assertEqual(known.images, ["http://x/1.jpg"])
         new = self.adapter.normalize(rows["10005-100"])
         self.assertEqual((new.stock, new.discount_percent, new.category_path), (4, None, "Reel - Ritė"))
@@ -738,6 +738,7 @@ class AlbatrosRawStockDbTests(TestCase):
         self.assertEqual(adapter.fetch_errors, 1)
 
     def test_raw_text_qty_parsed_as_number(self):
+        _nemus("T-1", "Prekė")
         adapter = AlbatrosAdapter(self.feed)
         items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([
             ["", "T-1", "Prekė", 5.0, "3"], ["", "T-0", "Prekė 0", 5.0, "0"],
@@ -745,3 +746,13 @@ class AlbatrosRawStockDbTests(TestCase):
         self.assertEqual((items["T-1"].stock, Decimal(items["T-1"].extra["export_price"])), (3, Decimal(5)))
         self.assertNotIn("T-0", items)
         self.assertEqual(adapter.fetch_errors, 0)
+
+    def test_raw_new_code_without_image_dropped_unless_nemus(self):
+        _nemus("710313-1", "DAVIKLIS HUMMINBIRD XI 14 HW")
+        adapter = AlbatrosAdapter(self.feed)
+        items = {i.external_id: i for i in adapter.iter_items(_raw_xlsx([
+            ["", "710313-1", "Daviklis", 100.0, 2], ["", "NOIMG-1", "Be foto", 5.0, 3],
+        ]))}
+        self.assertNotIn("NOIMG-1", items)
+        self.assertEqual(items["710313-1"].stock, 2)
+        self.assertEqual(Decimal(items["710313-1"].extra["export_price"]), Decimal(100))
