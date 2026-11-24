@@ -5,6 +5,7 @@ from apps.suppliers.models import (
     ManufacturerContent,
     Supplier,
     SupplierFeed,
+    SupplierPromotion,
     SupplierReferenceItem,
     SupplierSchedule,
 )
@@ -109,3 +110,14 @@ class ManufacturerContentAdmin(admin.ModelAdmin):
     list_display = ["source", "language", "series", "url", "updated_at"]
     list_filter = ["source", "language"]
     search_fields = ["series", "url", "description"]
+
+
+@admin.register(SupplierPromotion)
+class SupplierPromotionAdmin(admin.ModelAdmin):
+    list_display = [
+        "supplier", "code", "name", "reference", "discount_percent", "in_stock",
+        "is_active", "first_seen_at", "last_seen_at", "ended_at",
+    ]
+    list_filter = ["supplier", "is_active", "in_stock", "reference"]
+    search_fields = ["code", "name"]
+    readonly_fields = [f.name for f in SupplierPromotion._meta.fields]

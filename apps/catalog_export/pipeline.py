@@ -43,6 +43,7 @@ from apps.corecfg.models import Language, get_config
 from apps.ingestion.models import ImportJob, Offer, RawItem
 from apps.ingestion.pipeline import get_base_language, run_import
 from apps.pricing.engine import apply_pricing
+from apps.suppliers import promotions
 from apps.suppliers.models import (
     FeedRole,
     SourceKind,
@@ -394,6 +395,9 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> dict[int, int]
             }
         )
     run.details["imports"] = jobs
+    if feeds:
+        # pilnas importas nunulina nuolaidą – akcijų nuolaidos grąžinamos iškart
+        promotions.apply_discounts(feeds[0].supplier)
     failed = [j["feed"] for j in jobs if j["status"] != ImportJob.Status.SUCCESS]
     if failed:
         raise FeedImportError(f"feed import failed: {failed}")
@@ -852,6 +856,9 @@ def _stage_stock(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
         if not stock_feeds and feeds:
             base_ids = _base_catalog_feed_ids(feeds)
             mark_absent_offers(supplier, [jobs[i] for i in base_ids], run, dry_run)
+        promo = promotions.sync_promotions(supplier)
+        if promo is not None:
+            run.details["promotions"] = promo
     warehouse, items, stats = plan_stock(supplier)
     run.details["stock"] = stats
     if items and not dry_run:

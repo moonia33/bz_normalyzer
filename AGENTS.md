@@ -41,6 +41,12 @@ Kuriamas: **Albatros `AL.`** – žr. `albatros_import.md` (būsenos lentelė vi
 - Variantų ašys/feature'ai eksportuojami deterministiškai → antras dry-run iš eilės turi rodyti 0 pakeitimų.
 - Tiekėjo pasikartojantis EAN skirtingiems kodams nejungia variantų ir į BE nesiunčiamas.
 
+- **Fox išpardavimai** (`apps/suppliers/promotions.py`, `SupplierPromotion`): CLEAR20–80 sąrašai
+  iš B2B order.foxtackle.biz (feed'uose jų nėra) nuskaitomi Fox likučių etape. Akcijos % →
+  `Offer.discount_percent` (marža % išlieka), po kiekvieno importo grąžinama `apply_discounts`.
+  FC/CC (bendros sąskaitos nuolaidos) netaikomos. Laiškas (`PROMOTION_ALERT_EMAILS`) tik apie
+  naujas / pasibaigusias. Nuskaitymo klaida – akcijos nekeičiamos. Env: `FOX_B2B_USERNAME/PASSWORD`.
+
 ## Nekeisti (saugikliai)
 
 - `fetch_errors` ir `skipped_partial_missing` (`apps/ingestion/pipeline.py`): klaida ≠ likutis 0.
