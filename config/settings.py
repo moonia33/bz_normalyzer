@@ -165,6 +165,11 @@ EMAIL_TIMEOUT = 30
 DEFAULT_FROM_EMAIL = _env("DEFAULT_FROM_EMAIL", "normalyzer@localhost")
 # Kam siųsti pipeline klaidas ir kasdienę suvestinę (kableliais). Tuščia = nesiunčiama.
 PIPELINE_ALERT_EMAILS = [e.strip() for e in _env("PIPELINE_ALERT_EMAILS", "").split(",") if e.strip()]
+# Tiekėjų išpardavimų (naujos / pasibaigusios) pranešimai. Tuščia = PIPELINE_ALERT_EMAILS.
+PROMOTION_ALERT_EMAILS = [e.strip() for e in _env("PROMOTION_ALERT_EMAILS", "").split(",") if e.strip()]
+# Fox / CC Moore B2B (order.foxtackle.biz) – išpardavimų sąrašas (apps.suppliers.promotions).
+FOX_B2B_USERNAME = _env("FOX_B2B_USERNAME", "")
+FOX_B2B_PASSWORD = _env("FOX_B2B_PASSWORD", "")
 PIPELINE_SUMMARY_HOUR = int(_env("PIPELINE_SUMMARY_HOUR", "7"))
 PUBLIC_BASE_URL = _env("PUBLIC_BASE_URL", "https://normalyzer.baltijoszvynas.lt")
 

@@ -294,3 +294,33 @@ def mark_upload_pending(supplier_id: int) -> None:
     SupplierSchedule.objects.filter(supplier_id=supplier_id, enabled=True).update(
         upload_pending_at=timezone.now()
     )
+
+
+class SupplierPromotion(TimeStampedModel):
+    """Tiekėjo akcija (išpardavimas), kurios nėra feed failuose – nuskaityta iš B2B.
+
+    Aktyvi akcija nustato offer'io `discount_percent` (žr. `apps.suppliers.promotions`).
+    Įrašomos tik prekės, kurios yra mūsų kataloge (tiekėjo feed'e).
+    """
+
+    supplier = models.ForeignKey(Supplier, related_name="promotions", on_delete=models.CASCADE)
+    code = models.CharField(max_length=128, help_text="Tiekėjo prekės kodas (be prefikso).")
+    name = models.CharField(max_length=500, blank=True)
+    reference = models.CharField(max_length=64, help_text="Tiekėjo akcijos kodas, pvz. CLEAR50.")
+    discount_percent = models.PositiveSmallIntegerField()
+    in_stock = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["supplier__code", "code"]
+        constraints = [
+            models.UniqueConstraint(fields=["supplier", "code"], name="uniq_supplier_promotion_code"),
+        ]
+        verbose_name = "tiekėjo akcija"
+        verbose_name_plural = "tiekėjų akcijos"
+
+    def __str__(self) -> str:
+        return f"{self.supplier.code}:{self.code} {self.reference}"

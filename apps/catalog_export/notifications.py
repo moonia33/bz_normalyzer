@@ -43,8 +43,10 @@ def _recipients() -> list[str]:
     return list(getattr(settings, "PIPELINE_ALERT_EMAILS", []) or [])
 
 
-def _send_once(key: str, subject: str, text: str, html: str | None = None) -> bool:
-    recipients = _recipients()
+def _send_once(
+    key: str, subject: str, text: str, html: str | None = None, *, recipients: list[str] | None = None
+) -> bool:
+    recipients = recipients if recipients is not None else _recipients()
     if not recipients:
         return False
     try:
