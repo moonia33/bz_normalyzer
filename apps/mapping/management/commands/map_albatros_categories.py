@@ -189,6 +189,8 @@ FISHING: dict[str, str] = {
     "Trousers - Kelnės": "ilgos-kelnes",
     "Jacket - Striukė": "striukes",
     "Vest - Liemenė": "apranga-ir-avalyne",
+    "Rubber boots": "auliniai-batai",
+    "Socks - Kojinės": "apranga-ir-avalyne",
     "Underwear - Apatiniai": "termo-apatiniai",
     "Gloves - Pirštinės": "pirstines",
     "Cap - Kepuraitė": "akiniai-ir-kepureles",
