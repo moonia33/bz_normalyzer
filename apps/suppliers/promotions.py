@@ -1,8 +1,8 @@
 """Tiekėjų akcijos (išpardavimai), kurių nėra feed failuose – nuskaitomos iš B2B.
 
 Fox / CC Moore: order.foxtackle.biz „Discount & Special Offers“ (CLEAR20…CLEAR80).
-Akcijos % – papildoma nuolaida nuo pirkimo kainos; tą patį % taikome nuo pardavimo
-kainos (`Offer.discount_percent`), todėl marža % nesikeičia. FC/CC (bendros sąskaitos
+Akcijos % – papildoma nuolaida nuo pirkimo kainos: `Offer.cost_discount_percent` mažina
+BE savikainą, tas pats % nuo pardavimo kainos (`Offer.discount_percent`) – marža % nesikeičia. FC/CC (bendros sąskaitos
 nuolaidos) netaikomos.
 
 Sinchronizuojama likučių etape (`_stage_stock`), po likučių feed'o importo. Pranešimas
@@ -150,13 +150,16 @@ def apply_discounts(supplier: Supplier) -> int:
     )
     changed = []
     for offer in Offer.objects.filter(supplier=supplier).only(
-        "id", "sku", "external_id", "discount_percent"
+        "id", "sku", "external_id", "discount_percent", "cost_discount_percent"
     ):
         wanted = active.get(_code(offer))
-        if offer.discount_percent != wanted:
+        if offer.discount_percent != wanted or offer.cost_discount_percent != wanted:
             offer.discount_percent = wanted
+            offer.cost_discount_percent = wanted
             changed.append(offer)
-    Offer.objects.bulk_update(changed, ["discount_percent"], batch_size=500)
+    Offer.objects.bulk_update(
+        changed, ["discount_percent", "cost_discount_percent"], batch_size=500
+    )
     return len(changed)
 
 

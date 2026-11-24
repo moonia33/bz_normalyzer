@@ -950,6 +950,14 @@ def _shared_eans(offers: list[Offer]) -> frozenset[str]:
     return frozenset(ean for (_sid, ean), c in codes.items() if len(c) > 1)
 
 
+def promo_cost(offer: Offer | None, cost: Decimal | None) -> Decimal | None:
+    """Savikaina po tiekėjo akcijos (Fox CLEAR): cost × (100 − %) / 100."""
+    pct = getattr(offer, "cost_discount_percent", None) if offer is not None else None
+    if cost is None or not pct:
+        return cost
+    return Decimal(cost) * Decimal(100 - pct) / Decimal(100)
+
+
 def offer_prices(offer: Offer) -> tuple:
     """(price_net, cost_net, pack_price, pack_purchase_price) shop'ui."""
     price_net = _net(
@@ -957,11 +965,8 @@ def offer_prices(offer: Offer) -> tuple:
         offer.supplier.selling_price_includes_vat,
         offer.supplier.vat_rate,
     )
-    cost_net = (
-        offer.purchase_price.quantize(Decimal("0.01"))
-        if offer.purchase_price is not None
-        else None
-    )
+    purchase_price = promo_cost(offer, offer.purchase_price)
+    cost_net = purchase_price.quantize(Decimal("0.01")) if purchase_price is not None else None
     # Dėžė kaip prekė: variantas = visa trade-pack pakuotė, kaina
     # = vieneto kaina × trade_pack_qty. Pack kainos skaičiuojamos iš
     # gross (selling) prieš net'iškinimą – tiksliau negu net×qty.
@@ -976,8 +981,8 @@ def offer_prices(offer: Offer) -> tuple:
                 offer.supplier.selling_price_includes_vat,
                 offer.supplier.vat_rate,
             )
-        if offer.purchase_price is not None:
-            pack_purchase_price = (offer.purchase_price * pack_factor).quantize(
+        if purchase_price is not None:
+            pack_purchase_price = (purchase_price * pack_factor).quantize(
                 Decimal("0.01")
             )
     if offer.sold_as_pack:
@@ -1193,6 +1198,8 @@ def _item_cost_net(product: Product, offers: list[Offer]) -> str | None:
     cost = product.purchase_price
     if cost is None and primary is not None:
         cost = primary.purchase_price
+    if primary is not None and cost == primary.purchase_price:
+        cost = promo_cost(primary, cost)
     return str(cost.quantize(Decimal("0.01"))) if cost is not None else None
 
 

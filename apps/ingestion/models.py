@@ -100,6 +100,11 @@ class Offer(TimeStampedModel):
         blank=True,
         help_text="Nuolaida % nuo pardavimo kainos (shop InventoryItem.offer_discount_percent).",
     )
+    cost_discount_percent = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tiekėjo akcijos nuolaida % nuo pirkimo kainos (SupplierPromotion) – mažina cost_net.",
+    )
     badges = models.JSONField(
         null=True,
         blank=True,

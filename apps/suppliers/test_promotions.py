@@ -162,3 +162,28 @@ class DryRunAndImportTests(TestCase):
         with patch("apps.ingestion.pipeline.resolve_adapter", return_value=adapter):
             run_import(ImportJob.objects.create(supplier=self.supplier, feed=feed))
         self.assertEqual(Offer.objects.get(pk=self.offer.pk).discount_percent, 40)
+
+
+class CostTests(TestCase):
+    def setUp(self):
+        self.supplier = Supplier.objects.create(code="fox", name="FOX", sku_prefix="FX.")
+        self.offer = Offer.objects.create(
+            supplier=self.supplier, external_id="A1", sku="A1", name="A1", stock=5,
+            is_available=True, purchase_price=Decimal("10.00"), selling_price=Decimal("20.00"),
+        )
+
+    def test_promotion_reduces_cost_net(self):
+        from apps.catalog_export.services import offer_prices, offer_terms
+
+        listed = {"A1": {"reference": "CLEAR40", "discount_percent": 40, "name": "A1"}}
+        with patch.dict(promotions.SOURCES, {"fox": lambda: listed}):
+            promotions.sync_promotions(self.supplier, notify=False)
+        offer = Offer.objects.select_related("supplier").get(pk=self.offer.pk)
+        self.assertEqual(offer.cost_discount_percent, 40)
+        self.assertEqual(offer_prices(offer)[1], Decimal("6.00"))
+        self.assertEqual(offer_terms(offer, primary=True)["cost_net"], "6.00")
+        with patch.dict(promotions.SOURCES, {"fox": lambda: {}}):
+            promotions.sync_promotions(self.supplier, notify=False)
+        offer = Offer.objects.select_related("supplier").get(pk=self.offer.pk)
+        self.assertIsNone(offer.cost_discount_percent)
+        self.assertEqual(offer_prices(offer)[1], Decimal("10.00"))
