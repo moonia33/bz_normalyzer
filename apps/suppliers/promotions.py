@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import contextmanager
 from html import escape, unescape
 
 from django.conf import settings
@@ -37,7 +38,8 @@ _REF_RE = re.compile(
     r'class="getDiscLink"\s+id="([^"]+)".*?<b>Offer</b>\s*=\s*(\d+)\s*%', re.S
 )
 _TOKEN_RE = re.compile(r'id="basket_token"[^>]*>\s*([^<\s]+)\s*<')
-_ITEM_RE = re.compile(r'data-link="([^"]+)"[^>]*>.*?</a></b>\s*-\s*([^<]*)<br', re.S)
+_ITEM_RE = re.compile(r'class="addDiscoProd"[^>]*\bdata-link="([^"]+)"')
+_TAG_RE = re.compile(r"<[^>]+>")
 _REF_LIST_MARK = "Products available for discount code"
 
 
@@ -54,8 +56,20 @@ def parse_fox_offer_refs(html: str) -> dict[str, int]:
 
 
 def parse_fox_ref_items(html: str) -> list[tuple[str, str]]:
-    """[(prekės kodas, pavadinimas)] iš akcijos prekių sąrašo (ajax-discounts.php)."""
-    return [(code.strip(), unescape(name).strip()) for code, name in _ITEM_RE.findall(html)]
+    """[(prekės kodas, pavadinimas)] iš akcijos prekių sąrašo (ajax-discounts.php).
+
+    Kodai imami iš kiekvieno `addDiscoProd` (pavadinimo HTML jų neištrina);
+    pavadinimas – tekstas po kodo iki eilutės pabaigos.
+    """
+    matches = list(_ITEM_RE.finditer(html))
+    out = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(html)
+        segment = re.split(r"<br\s*/?>", html[match.end():end], maxsplit=1)[0]
+        text = unescape(_TAG_RE.sub("", segment.split("</a>", 1)[-1])).strip()
+        code = match.group(1).strip()
+        out.append((code, text.lstrip("-").strip()))
+    return out
 
 
 def fetch_fox_clearance() -> dict[str, dict]:
@@ -97,7 +111,10 @@ def fetch_fox_clearance() -> dict[str, dict]:
         response.raise_for_status()
         if _REF_LIST_MARK not in response.text:
             raise PromotionError(f"Fox B2B: nepavyko gauti {ref} prekių sąrašo")
-        for code, name in parse_fox_ref_items(response.text):
+        items = parse_fox_ref_items(response.text)
+        if len(items) != response.text.count("addDiscoProd"):
+            raise PromotionError(f"Fox B2B: {ref} sąrašas nuskaitytas nepilnai")
+        for code, name in items:
             key = code.upper()
             if key not in out or pct > out[key]["discount_percent"]:
                 out[key] = {"reference": ref, "discount_percent": pct, "name": name}
@@ -220,6 +237,20 @@ def sync_promotions(supplier: Supplier, *, notify: bool = True) -> dict | None:
     if notify and (events["new"] or events["ended"]):
         _safe(_alert_events, supplier, events)
     return stats
+
+
+@contextmanager
+def preview_promotions(supplier: Supplier):
+    """Dry-run: nuskaito ir pritaiko akcijas transakcijoje, kuri atšaukiama.
+
+    Bloke (pvz. `plan_stock`) matomos būsimos nuolaidos; DB ir laiškai nekeičiami.
+    """
+    with transaction.atomic():
+        stats = sync_promotions(supplier, notify=False)
+        try:
+            yield stats
+        finally:
+            transaction.set_rollback(True)
 
 
 # ------------------------------------------------------------------ pranešimai

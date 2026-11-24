@@ -21,6 +21,7 @@ from apps.pricing.engine import compute_selling_price
 from apps.suppliers.adapters.base import AdapterError
 from apps.suppliers.adapters.resolver import resolve_adapter
 from apps.suppliers.models import FeedRole, Supplier, SupplierFeed, SupplierReferenceItem
+from apps.suppliers.promotions import apply_discounts as apply_promotion_discounts
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,8 @@ def run_import(job: ImportJob) -> ImportJob:
         # Adapterio fetch metu nepavykę produktai – kaip klaidingos eilutės
         # (kitaip mark_absent_offers juos nulintų kaip dingusius).
         stats["errors"] += int(getattr(adapter, "fetch_errors", 0) or 0)
+        # pilnas importas nunulina nuolaidą – B2B akcijų nuolaidos grąžinamos iškart
+        apply_promotion_discounts(job.supplier)
 
         feed.last_success_at = timezone.now()
         feed.save(update_fields=["last_success_at", "updated_at"])

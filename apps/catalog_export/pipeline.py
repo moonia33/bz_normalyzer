@@ -395,9 +395,6 @@ def _import_feeds(feeds: list[SupplierFeed], run: PipelineRun) -> dict[int, int]
             }
         )
     run.details["imports"] = jobs
-    if feeds:
-        # pilnas importas nunulina nuolaidą – akcijų nuolaidos grąžinamos iškart
-        promotions.apply_discounts(feeds[0].supplier)
     failed = [j["feed"] for j in jobs if j["status"] != ImportJob.Status.SUCCESS]
     if failed:
         raise FeedImportError(f"feed import failed: {failed}")
@@ -857,9 +854,12 @@ def _stage_stock(schedule: SupplierSchedule, run: PipelineRun, dry_run: bool):
             base_ids = _base_catalog_feed_ids(feeds)
             mark_absent_offers(supplier, [jobs[i] for i in base_ids], run, dry_run)
         promo = promotions.sync_promotions(supplier)
-        if promo is not None:
-            run.details["promotions"] = promo
-    warehouse, items, stats = plan_stock(supplier)
+        warehouse, items, stats = plan_stock(supplier)
+    else:
+        with promotions.preview_promotions(supplier) as promo:
+            warehouse, items, stats = plan_stock(supplier)
+    if promo is not None:
+        run.details["promotions"] = promo
     run.details["stock"] = stats
     if items and not dry_run:
         _push(

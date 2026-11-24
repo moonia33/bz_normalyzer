@@ -19,6 +19,13 @@ CLEAR50 Discount reference applies to product: <b><a class="addDiscoProd" data-l
 
 
 class ParseTests(TestCase):
+    def test_ref_items_with_html_in_name(self):
+        html = (
+            '<a class="addDiscoProd" data-link="A1" href="#"><b>A1</b></a></b> - Gilet <i>XL</i><br/>'
+            '<a class="addDiscoProd" data-link="B2" href="#"><b>B2</b></a></b> - Plain'
+        )
+        self.assertEqual(promotions.parse_fox_ref_items(html), [("A1", "Gilet XL"), ("B2", "Plain")])
+
     def test_offer_refs(self):
         self.assertEqual(promotions.parse_fox_offer_refs(ORDER_HTML), {"FC": 10, "CLEAR50": 50})
 
@@ -124,3 +131,34 @@ class SyncTests(TestCase):
         self.assertEqual(promotions.apply_discounts(other), 0)
         offer.refresh_from_db()
         self.assertEqual(offer.discount_percent, 30)
+
+
+class DryRunAndImportTests(TestCase):
+    def setUp(self):
+        self.supplier = Supplier.objects.create(code="fox", name="FOX", sku_prefix="FX.")
+        self.offer = Offer.objects.create(
+            supplier=self.supplier, external_id="A1", sku="A1", name="A1", stock=5, is_available=True
+        )
+        self.listed = {"A1": {"reference": "CLEAR40", "discount_percent": 40, "name": "A1"}}
+
+    def test_preview_rolls_back(self):
+        with patch.dict(promotions.SOURCES, {"fox": lambda: self.listed}):
+            with promotions.preview_promotions(self.supplier) as stats:
+                self.assertEqual(stats["new"], 1)
+                self.assertEqual(Offer.objects.get(pk=self.offer.pk).discount_percent, 40)
+        self.assertIsNone(Offer.objects.get(pk=self.offer.pk).discount_percent)
+        self.assertFalse(SupplierPromotion.objects.exists())
+
+    def test_run_import_restores_discount(self):
+        from apps.ingestion.models import ImportJob
+        from apps.ingestion.pipeline import run_import
+        from apps.suppliers.models import SupplierFeed
+
+        with patch.dict(promotions.SOURCES, {"fox": lambda: self.listed}):
+            promotions.sync_promotions(self.supplier, notify=False)
+        Offer.objects.filter(pk=self.offer.pk).update(discount_percent=None)
+        feed = SupplierFeed.objects.create(supplier=self.supplier, name="f", url="http://x")
+        adapter = type("A", (), {"fetch": lambda self, uploaded_path=None: b"", "iter_items": lambda self, p: []})()
+        with patch("apps.ingestion.pipeline.resolve_adapter", return_value=adapter):
+            run_import(ImportJob.objects.create(supplier=self.supplier, feed=feed))
+        self.assertEqual(Offer.objects.get(pk=self.offer.pk).discount_percent, 40)
