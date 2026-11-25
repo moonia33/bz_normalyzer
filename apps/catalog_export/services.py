@@ -31,6 +31,10 @@ DEFAULT_TAX_CLASS = "standard"
 FALLBACK_TRANSLATION_LANG = "lt"
 
 
+# BE FeatureValue(Translation).value – CharField(max_length=255).
+FEATURE_VALUE_MAX_LEN = 255
+
+
 def _net(value: Decimal | None, includes_vat: bool, vat_rate: Decimal) -> Decimal | None:
     if value is None:
         return None
@@ -785,6 +789,8 @@ def _features(
             value, meta.get("datatype", "text"), meta.get("unit", ""),
             axis=resolved, supplier=supplier,
         )
+        if len(parsed.display or value) > FEATURE_VALUE_MAX_LEN:
+            return
         features.append(
             {
                 "code": code,
