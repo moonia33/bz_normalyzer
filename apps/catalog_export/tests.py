@@ -86,6 +86,13 @@ class ExportPayloadTests(TestCase):
         self.assertEqual(_group_code("GRP-1"), "GRP-1")
         self.assertEqual(_group_code(None), "")
 
+    def test_feature_value_longer_than_shop_limit_is_skipped(self):
+        self.product.attributes["specs"]["Gear Ratio"] = "5.1:1 " + "x" * 260
+        self.product.save()
+        item = build_catalog_payload()["items"][0]
+        self.assertNotIn("gear-ratio", {f["code"] for f in item["features"]})
+        self.assertIn("color", {f["code"] for f in item["features"]})
+
     def test_catalog_payload_shape_and_vat_math(self):
         payload = build_catalog_payload()
         self.assertEqual(payload["format_version"], 2)
