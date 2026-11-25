@@ -784,13 +784,13 @@ def _features(
         value = str(value).strip()
         if not is_meaningful_value(value) or code in seen:
             return
-        seen.add(code)
         parsed = parse_value(
             value, meta.get("datatype", "text"), meta.get("unit", ""),
             axis=resolved, supplier=supplier,
         )
         if len(parsed.display or value) > FEATURE_VALUE_MAX_LEN:
             return
+        seen.add(code)
         features.append(
             {
                 "code": code,
