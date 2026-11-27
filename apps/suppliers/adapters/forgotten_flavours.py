@@ -25,6 +25,8 @@ USER_AGENT = (
 DEFAULT_IN_STOCK_QTY = 10
 # Shopify edge rate-limiteris (429 'local_rate_limited', Retry-After).
 _PAGE_LIMIT = 250
+# Tiek produktų iš eilės nepavykus – svetainė laikoma nepasiekiama (ne po 5 bandymus kiekvienam).
+MAX_CONSECUTIVE_ERRORS = 10
 
 _SIZE_LETTERS = {
     "XS", "S", "M", "L", "XL", "XXL", "XXXL", "3XL", "4XL", "5XL",
@@ -70,6 +72,10 @@ def _html_to_text(body: str) -> str:
 
 
 ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+
+
+class SourceBlockedError(AdapterError):
+    """HTTP 401/403 (pvz. Cloudflare challenge) – kartoti beprasmiška, fetch nutraukiamas."""
 
 
 @register_adapter
@@ -124,6 +130,7 @@ class ForgottenFlavoursAdapter(BaseAdapter):
 
         items: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
+        consecutive_errors = 0
         for index, product in enumerate(products, start=1):
             try:
                 available = None
@@ -134,9 +141,18 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                     if delay:
                         time.sleep(delay)
                 items.extend(self._product_items(product, base_url, available))
+                consecutive_errors = 0
+            except SourceBlockedError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 errors.append({"handle": str(product.get("handle")), "error": str(exc)[:300]})
                 logger.warning("FF produkto klaida %s: %s", product.get("handle"), exc)
+                consecutive_errors += 1
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    raise AdapterError(
+                        f"Forgotten Flavours: {consecutive_errors} produktai iš eilės nepavyko "
+                        f"(paskutinė klaida: {str(exc)[:200]})"
+                    ) from exc
 
         payload = {"items": items, "errors": errors}
         # Shopify Markets kainas rodo pagal lankytojo šalį (iš srv2 – EUR).
@@ -176,6 +192,11 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         for attempt in range(retries + 1):
             try:
                 response = session.get(url, timeout=timeout)
+                if response.status_code in (401, 403):
+                    challenge = " (Cloudflare challenge)" if response.headers.get("cf-mitigated") else ""
+                    raise SourceBlockedError(
+                        f"Forgotten Flavours: HTTP {response.status_code}{challenge} – svetainė blokuoja užklausas: {url}"
+                    )
                 if response.status_code == 200 and response.text.strip().startswith(("{", "[")):
                     return response.json()
                 retry_after = int(response.headers.get("Retry-After") or 0)

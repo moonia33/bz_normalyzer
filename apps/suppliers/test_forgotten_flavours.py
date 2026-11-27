@@ -87,3 +87,68 @@ class TestCurrencyAndErrors:
         assert n.extra["rrp_price"] == "17.64"
         assert n.currency == "EUR"
         assert adapter.fetch_errors == 1
+
+
+class _Resp:
+    def __init__(self, status, body="", headers=None):
+        self.status_code = status
+        self.text = body
+        self.headers = headers or {}
+
+    def json(self):
+        return json.loads(self.text)
+
+
+class _Session:
+    def __init__(self, handler):
+        self.headers = {}
+        self.calls = []
+        self._handler = handler
+
+    def get(self, url, timeout=None):
+        self.calls.append(url)
+        return self._handler(url)
+
+
+def _fetch_with(monkeypatch, handler):
+    from apps.suppliers.adapters import forgotten_flavours as ff
+
+    session = _Session(handler)
+    monkeypatch.setattr(ff.requests, "Session", lambda: session)
+    monkeypatch.setattr(ff.time, "sleep", lambda s: None)
+    adapter = _adapter({"currency": "GBP", "retries": 5, "request_delay": 0})
+    adapter.feed.role = "stock"
+    return ff, adapter, session
+
+
+class TestFetchBlocked:
+    def test_cloudflare_challenge_fails_fast(self, monkeypatch):
+        products = json.dumps({"products": [_product(), {**_product(), "handle": "b"}]})
+
+        def handler(url):
+            if "products.json" in url:
+                return _Resp(200, products)
+            return _Resp(403, "<html>Verifying", {"cf-mitigated": "challenge"})
+
+        ff, adapter, session = _fetch_with(monkeypatch, handler)
+        import pytest
+
+        with pytest.raises(ff.SourceBlockedError, match="Cloudflare"):
+            adapter.fetch()
+        assert len([u for u in session.calls if u.endswith(".js")]) == 1
+
+    def test_consecutive_product_errors_abort(self, monkeypatch):
+        many = [{**_product(), "handle": f"h{i}"} for i in range(30)]
+
+        def handler(url):
+            if "products.json" in url:
+                return _Resp(200, json.dumps({"products": many}))
+            return _Resp(500, "oops")
+
+        ff, adapter, session = _fetch_with(monkeypatch, handler)
+        import pytest
+
+        with pytest.raises(ff.AdapterError, match="iš eilės"):
+            adapter.fetch()
+        product_calls = [u for u in session.calls if u.endswith(".js")]
+        assert len(product_calls) == ff.MAX_CONSECUTIVE_ERRORS * 6
