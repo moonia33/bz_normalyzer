@@ -29,6 +29,12 @@ Shopify edge rate-limitina (`429 local_rate_limited`, `Retry-After`):
 adapteris gerbia header'į + backoff; `request_delay` 1.0 s. Pilnas
 katalogas – 2 request'ai (products.json); stock – ~363 `.js` (~7–10 min).
 
+HTTP 401/403 (pvz. Cloudflare challenge `cf-mitigated: challenge`) – `SourceBlockedError`,
+fetch nutraukiamas iš karto (nekartojama kiekvienam produktui). Jei 10 produktų iš eilės
+nepavyksta – visas fetch nutraukiamas. Abiem atvejais importas nepavyksta, niekas
+nekeičiama, etapas kartojamas kitame tick'e (`MAX_FETCH_RETRIES`). Taip pipeline
+neužblokuoja kitų tiekėjų (2026-11-27 run'as vyko 11 val.).
+
 ## Env kintamieji
 
 Nereikia (viešas katalogas). Config – feed'ų JSON.
