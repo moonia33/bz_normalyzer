@@ -182,3 +182,17 @@ class TestFetchBudget:
         monkeypatch.setattr(ff.time, "sleep", waits.append)
         assert _adapter()._get_json(session, "https://x/y.js", 30, 3) == {"ok": 1}
         assert waits == [ff.MAX_RETRY_WAIT_SECONDS]
+
+    def test_retry_stops_at_deadline(self, monkeypatch):
+        from apps.suppliers.adapters import forgotten_flavours as ff
+        import pytest
+
+        waits = []
+        session = _Session(lambda url: _Resp(429, "slow", {"Retry-After": "60"}))
+        monkeypatch.setattr(ff.time, "sleep", waits.append)
+        adapter = _adapter()
+        adapter._max_minutes = 45
+        adapter._deadline = ff.time.monotonic() + 30
+        with pytest.raises(ff.SourceBlockedError, match="viršijo"):
+            adapter._get_json(session, "https://x/y.js", 30, 3)
+        assert waits == []

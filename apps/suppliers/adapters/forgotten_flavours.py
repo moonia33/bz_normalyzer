@@ -115,7 +115,8 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         retries = int(self.config.get("retries", 4))
         max_products = int(self.config.get("max_products") or 0)
         max_minutes = float(self.config.get("max_fetch_minutes") or DEFAULT_MAX_FETCH_MINUTES)
-        deadline = time.monotonic() + max_minutes * 60
+        self._max_minutes = max_minutes
+        self._deadline = time.monotonic() + max_minutes * 60
         base_url = str(self.config.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
 
         session = requests.Session()
@@ -137,11 +138,7 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         errors: list[dict[str, str]] = []
         consecutive_errors = 0
         for index, product in enumerate(products, start=1):
-            if time.monotonic() > deadline:
-                raise AdapterError(
-                    f"Forgotten Flavours: fetch viršijo {max_minutes:g} min. "
-                    f"({index - 1}/{len(products)} produktų) – importas nutraukiamas, niekas nekeičiama."
-                )
+            self._check_deadline(f"{index - 1}/{len(products)} produktų")
             try:
                 available = None
                 if fetch_avail:
@@ -164,6 +161,7 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                         f"(paskutinė klaida: {str(exc)[:200]})"
                     ) from exc
 
+        self._check_deadline(f"{len(products)}/{len(products)} produktų")
         payload = {"items": items, "errors": errors}
         # Shopify Markets kainas rodo pagal lankytojo šalį (iš srv2 – EUR).
         currency = self._store_currency(session, base_url, timeout) or str(
@@ -196,6 +194,14 @@ class ForgottenFlavoursAdapter(BaseAdapter):
 
     # ---------------------------------------------------------------- helpers
 
+    def _check_deadline(self, progress: str = "", wait: float = 0) -> None:
+        deadline = getattr(self, "_deadline", None)
+        if deadline is not None and time.monotonic() + wait > deadline:
+            raise SourceBlockedError(
+                f"Forgotten Flavours: fetch viršijo {self._max_minutes:g} min. ({progress}) – "
+                "importas nutraukiamas, niekas nekeičiama."
+            )
+
     def _get_json(self, session, url: str, timeout: int, retries: int) -> Any:
         """GET JSON su 429 Retry-After + HTTP>=500 backoff."""
         last_exc: Exception | None = None
@@ -215,12 +221,14 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                 )
                 wait = min(max(retry_after, 5 * (attempt + 1)), MAX_RETRY_WAIT_SECONDS)
                 if attempt < retries:
+                    self._check_deadline(url, wait)
                     time.sleep(wait)
             except AdapterError:
                 raise
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 if attempt < retries:
+                    self._check_deadline(url, 5 * (attempt + 1))
                     time.sleep(5 * (attempt + 1))
         raise last_exc or AdapterError(f"užklausa nepavyko: {url}")
 
