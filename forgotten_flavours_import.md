@@ -35,6 +35,9 @@ nepavyksta – visas fetch nutraukiamas. Abiem atvejais importas nepavyksta, nie
 nekeičiama, etapas kartojamas kitame tick'e (`MAX_FETCH_RETRIES`). Taip pipeline
 neužblokuoja kitų tiekėjų (2026-11-27 run'as vyko 11 val.).
 
+Viso fetch laiko riba – `max_fetch_minutes` (default 45): viršijus importas nutraukiamas
+(dalinis rezultatas nenaudojamas). `Retry-After` laukimas ribojamas iki 120 s.
+
 ## Env kintamieji
 
 Nereikia (viešas katalogas). Config – feed'ų JSON.

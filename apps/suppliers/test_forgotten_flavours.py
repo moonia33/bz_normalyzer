@@ -152,3 +152,47 @@ class TestFetchBlocked:
             adapter.fetch()
         product_calls = [u for u in session.calls if u.endswith(".js")]
         assert len(product_calls) == ff.MAX_CONSECUTIVE_ERRORS * 6
+
+
+class TestFetchBudget:
+    def test_fetch_time_budget_aborts(self, monkeypatch):
+        many = [{**_product(), "handle": f"h{i}"} for i in range(30)]
+        js = json.dumps({"variants": [{"id": 11, "available": True}]})
+
+        def handler(url):
+            if "products.json" in url:
+                return _Resp(200, json.dumps({"products": many}))
+            return _Resp(200, js)
+
+        ff, adapter, session = _fetch_with(monkeypatch, handler)
+        clock = iter(range(0, 100000, 600))  # kiekvienas kvietimas +10 min.
+        monkeypatch.setattr(ff.time, "monotonic", lambda: next(clock))
+        import pytest
+
+        with pytest.raises(ff.AdapterError, match="viršijo 45 min"):
+            adapter.fetch()
+        assert len([u for u in session.calls if u.endswith(".js")]) < 10
+
+    def test_retry_after_wait_is_capped(self, monkeypatch):
+        from apps.suppliers.adapters import forgotten_flavours as ff
+
+        waits = []
+        responses = iter([_Resp(429, "slow", {"Retry-After": "3600"}), _Resp(200, '{"ok": 1}')])
+        session = _Session(lambda url: next(responses))
+        monkeypatch.setattr(ff.time, "sleep", waits.append)
+        assert _adapter()._get_json(session, "https://x/y.js", 30, 3) == {"ok": 1}
+        assert waits == [ff.MAX_RETRY_WAIT_SECONDS]
+
+    def test_retry_stops_at_deadline(self, monkeypatch):
+        from apps.suppliers.adapters import forgotten_flavours as ff
+        import pytest
+
+        waits = []
+        session = _Session(lambda url: _Resp(429, "slow", {"Retry-After": "60"}))
+        monkeypatch.setattr(ff.time, "sleep", waits.append)
+        adapter = _adapter()
+        adapter._max_minutes = 45
+        adapter._deadline = ff.time.monotonic() + 30
+        with pytest.raises(ff.SourceBlockedError, match="viršijo"):
+            adapter._get_json(session, "https://x/y.js", 30, 3)
+        assert waits == []
