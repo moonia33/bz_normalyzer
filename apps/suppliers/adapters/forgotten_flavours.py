@@ -27,6 +27,9 @@ DEFAULT_IN_STOCK_QTY = 10
 _PAGE_LIMIT = 250
 # Tiek produktų iš eilės nepavykus – svetainė laikoma nepasiekiama (ne po 5 bandymus kiekvienam).
 MAX_CONSECUTIVE_ERRORS = 10
+# Viso fetch laiko riba: lėtas 429 backoff kiekvienam produktui neturi laikyti pipeline lock'o valandas.
+DEFAULT_MAX_FETCH_MINUTES = 45
+MAX_RETRY_WAIT_SECONDS = 120
 
 _SIZE_LETTERS = {
     "XS", "S", "M", "L", "XL", "XXL", "XXXL", "3XL", "4XL", "5XL",
@@ -111,6 +114,8 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         delay = float(self.config.get("request_delay", 1.0))
         retries = int(self.config.get("retries", 4))
         max_products = int(self.config.get("max_products") or 0)
+        max_minutes = float(self.config.get("max_fetch_minutes") or DEFAULT_MAX_FETCH_MINUTES)
+        deadline = time.monotonic() + max_minutes * 60
         base_url = str(self.config.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
 
         session = requests.Session()
@@ -132,6 +137,11 @@ class ForgottenFlavoursAdapter(BaseAdapter):
         errors: list[dict[str, str]] = []
         consecutive_errors = 0
         for index, product in enumerate(products, start=1):
+            if time.monotonic() > deadline:
+                raise AdapterError(
+                    f"Forgotten Flavours: fetch viršijo {max_minutes:g} min. "
+                    f"({index - 1}/{len(products)} produktų) – importas nutraukiamas, niekas nekeičiama."
+                )
             try:
                 available = None
                 if fetch_avail:
@@ -203,7 +213,7 @@ class ForgottenFlavoursAdapter(BaseAdapter):
                 last_exc = AdapterError(
                     f"HTTP {response.status_code}: {response.text[:80]}"
                 )
-                wait = max(retry_after, 5 * (attempt + 1))
+                wait = min(max(retry_after, 5 * (attempt + 1)), MAX_RETRY_WAIT_SECONDS)
                 if attempt < retries:
                     time.sleep(wait)
             except AdapterError:
